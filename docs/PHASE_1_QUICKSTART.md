@@ -30,7 +30,7 @@ docker --version
 ## 1. Clone the repo
 
 ```bash
-git clone https://github.com/EhsanRiz/SADP_II_Last_Try.git sadp-ii
+git clone https://github.com/EhsanRiz/sadp-ii-monitoring.git sadp-ii-monitoring
 cd sadp-ii
 git checkout -b phase-1-redesign
 ```

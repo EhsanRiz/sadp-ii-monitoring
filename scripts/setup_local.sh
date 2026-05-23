@@ -62,15 +62,15 @@ git log --oneline -3 2>/dev/null || true
 # ----------------------------------------------------------------------------
 # Uncomment one of the blocks below, then re-run this script.
 #
-# ---- Reuse SADP_II_Last_Try (force-push to overwrite old history) ----
+# ---- Reuse sadp-ii-monitoring (force-push to overwrite old history) ----
 # git remote remove origin 2>/dev/null || true
-# git remote add origin https://github.com/EhsanRiz/SADP_II_Last_Try.git
+# git remote add origin https://github.com/EhsanRiz/sadp-ii-monitoring.git
 # git branch -M main
 # git push -u --force origin main
 #
-# ---- Push to SADP_II_Last_Try on a new branch (preserves old main) ----
+# ---- Push to sadp-ii-monitoring on a new branch (preserves old main) ----
 # git remote remove origin 2>/dev/null || true
-# git remote add origin https://github.com/EhsanRiz/SADP_II_Last_Try.git
+# git remote add origin https://github.com/EhsanRiz/sadp-ii-monitoring.git
 # git checkout -B phase-1-rebuild
 # git push -u origin phase-1-rebuild
 #

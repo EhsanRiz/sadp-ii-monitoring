@@ -3,7 +3,7 @@
 **Status:** Draft v0.4 — for review by Ehsan Rizvi
 **Owner:** 4D Climate Solutions
 **Drafted:** 2026-05-22 · **Revised:** 2026-05-22 (v0.2 after 4D database review; v0.3 closing Excel-review open items; v0.4 schema refinement for partial Round 3 records)
-**Replaces:** the accumulated `*_FIX*.md` notes in `EhsanRiz/SADP_II_Last_Try`
+**Replaces:** the accumulated `*_FIX*.md` notes from prior iterations of the codebase
 
 **v0.4 changes from v0.3:**
 - **Partial registration model added.** Round 3 records imported from the 4D Excel don't have registration number, project title, period dates, costs, or signatures. So:
@@ -717,7 +717,7 @@ Client-side guards are **defense in depth, not authoritative** — RLS is the au
 
 ## 10. Existing Repo: Keep / Discard / Review
 
-The repo (`EhsanRiz/SADP_II_Last_Try`) carries useful scaffolding and a lot of cruft from past iteration. Phase 1 starts by triaging it.
+The legacy repo carries useful scaffolding and a lot of cruft from past iteration. Phase 1 starts by triaging it.
 
 ### 10.1 Keep (unchanged or near-unchanged)
 
@@ -766,7 +766,7 @@ These get replaced by a single, current `README.md` and a `docs/` folder with th
 ### 10.4 New top-level structure (target)
 
 ```
-SADP_II_Last_Try/
+legacy-repo/
 ├── README.md                       (concise, current)
 ├── docs/
 │   ├── PHASE_1_DESIGN.md           (this doc)
