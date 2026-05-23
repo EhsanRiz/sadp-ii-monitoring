@@ -21,7 +21,7 @@ export default defineConfig({
         short_name: 'SADP-II',
         description:
           'Smallholder Agriculture Development Project II — Monitoring app for 4D Climate Solutions and RSDA',
-        theme_color: '#15803d',
+        theme_color: '#006838',
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',

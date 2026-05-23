@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Logo } from '@/components/Logo';
 
 export function LoginPage() {
   const { user, signIn, loading } = useAuth();
@@ -36,9 +37,14 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>SADP-II Monitoring</CardTitle>
-          <CardDescription>Sign in to continue. Accounts are created by your Super Admin.</CardDescription>
+        <CardHeader className="space-y-4">
+          <Logo />
+          <div>
+            <CardTitle>SADP-II Monitoring</CardTitle>
+            <CardDescription className="mt-1">
+              Sign in to continue. Accounts are created by your Super Admin.
+            </CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">

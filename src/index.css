@@ -2,60 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-/* shadcn/ui CSS variables — slate base + green primary (SADP brand-ish) */
+/* shadcn/ui CSS variables — 4D Climate Solutions brand palette.
+ * Primary  #006838 (dark green) → 152° 100% 20%
+ * Accent   #8DC63F (lime green) → 81° 56% 51%
+ * Pulled from 4dcs.co.za theme-color meta + logo art.
+ */
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 152 30% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 152 30% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 152 30% 12%;
 
-    --primary: 142 71% 29%; /* green-700 */
-    --primary-foreground: 0 0% 98%;
+    --primary: 152 100% 20%;            /* #006838 — dark green */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 81 56% 51%;            /* #8DC63F — lime green */
+    --secondary-foreground: 152 30% 12%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 152 12% 95%;
+    --muted-foreground: 152 10% 40%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 81 56% 51%;               /* #8DC63F lime */
+    --accent-foreground: 152 30% 12%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 142 71% 29%;
+    --border: 152 15% 88%;
+    --input: 152 15% 88%;
+    --ring: 152 100% 20%;
 
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 142 71% 45%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 152 30% 8%;
+    --foreground: 0 0% 98%;
+    --card: 152 30% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 152 30% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 81 56% 51%;
+    --primary-foreground: 152 30% 12%;
+    --secondary: 152 30% 18%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 152 30% 18%;
+    --muted-foreground: 152 12% 70%;
+    --accent: 152 30% 18%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 142 71% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 152 30% 20%;
+    --input: 152 30% 20%;
+    --ring: 81 56% 51%;
   }
 }
 

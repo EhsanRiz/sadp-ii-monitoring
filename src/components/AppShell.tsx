@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/Logo';
 import { LogOut, LayoutDashboard, Sprout, Users2, MapPin, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,11 +33,11 @@ export function AppShell() {
   return (
     <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
       <aside className="border-r bg-muted/30 md:sticky md:top-0 md:h-screen md:flex md:flex-col">
-        <div className="p-6">
-          <div className="text-lg font-semibold">SADP-II</div>
-          <div className="text-xs text-muted-foreground">Monitoring</div>
+        <div className="p-5 border-b">
+          <Logo />
+          <div className="mt-2 text-sm font-semibold tracking-tight">SADP-II Monitoring</div>
         </div>
-        <nav className="px-3 space-y-1 flex-1 overflow-y-auto">
+        <nav className="px-3 py-4 space-y-1 flex-1 overflow-y-auto">
           {visible.map((it) => (
             <NavLink
               key={it.to}
