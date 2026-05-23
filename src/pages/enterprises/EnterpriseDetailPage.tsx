@@ -1,0 +1,437 @@
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEnterprise, useEnterpriseHistory, isCoverPageReady } from '@/lib/enterprises';
+import { useCommunityCouncils, useDistricts, useEnterpriseTypes, useResourceCenters, useVillages } from '@/lib/catalogs';
+import { supabase } from '@/lib/supabase';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { EnterpriseRow } from '@/types/database';
+import { FileText, Upload } from 'lucide-react';
+import { formatDateDMY, formatLSL } from '@/lib/utils';
+
+const ESMP_LABEL: Record<string, string> = {
+  not_started: 'Not started',
+  pending_app_completion: 'In app, in progress',
+  completed_uploaded: 'Uploaded (scanned)',
+  completed_in_app: 'Completed in app',
+};
+
+export function EnterpriseDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const { data: enterprise, isLoading, error } = useEnterprise(id);
+  const { data: types } = useEnterpriseTypes();
+  const { data: districts } = useDistricts();
+  const { data: ccs } = useCommunityCouncils(enterprise?.district_id ?? null);
+  const { data: rcs } = useResourceCenters(enterprise?.district_id ?? null);
+  const { data: villages } = useVillages(enterprise?.district_id ?? null);
+  const { data: history } = useEnterpriseHistory(id);
+  const qc = useQueryClient();
+
+  const [draft, setDraft] = useState<Partial<EnterpriseRow>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (enterprise) setDraft(enterprise);
+  }, [enterprise]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!enterprise) throw new Error('No enterprise');
+      const merged = { ...enterprise, ...draft };
+      const ready = isCoverPageReady(merged as EnterpriseRow);
+      const { error: err } = await supabase
+        .from('enterprises')
+        .update({
+          ...draft,
+          registration_completeness: ready ? 'cover_page_ready' : 'minimal',
+        })
+        .eq('id', enterprise.id);
+      if (err) throw err;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['enterprise', id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-history', id] });
+      qc.invalidateQueries({ queryKey: ['enterprises'] });
+    },
+    onError: (e: Error) => setSaveError(e.message),
+  });
+
+  const uploadEsmp = useMutation({
+    mutationFn: async (file: File) => {
+      if (!enterprise) throw new Error('No enterprise');
+      const path = `${enterprise.id}.pdf`;
+      const up = await supabase.storage
+        .from('esmp-pdfs')
+        .upload(path, file, { upsert: true, contentType: 'application/pdf' });
+      if (up.error) throw up.error;
+      const { data: signed } = await supabase.storage
+        .from('esmp-pdfs')
+        .createSignedUrl(path, 60 * 60 * 24 * 30);
+      const { error: err } = await supabase
+        .from('enterprises')
+        .update({
+          esmp_status: 'completed_uploaded',
+          esmp_uploaded_pdf_url: signed?.signedUrl ?? null,
+        })
+        .eq('id', enterprise.id);
+      if (err) throw err;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['enterprise', id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-history', id] });
+    },
+  });
+
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (error) return <p className="text-sm text-destructive">{(error as Error).message}</p>;
+  if (!enterprise) return null;
+
+  const ready = isCoverPageReady({ ...enterprise, ...draft } as EnterpriseRow);
+
+  function set<K extends keyof EnterpriseRow>(key: K, value: EnterpriseRow[K] | null) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{enterprise.beneficiary_short_name}</h1>
+          <p className="text-sm text-muted-foreground">
+            {types?.find((t) => t.id === enterprise.enterprise_type_id)?.name ?? '—'} · R
+            {enterprise.round_id} ·{' '}
+            {districts?.find((d) => d.id === enterprise.district_id)?.name ?? '—'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant={enterprise.registration_completeness === 'cover_page_ready' ? 'default' : 'outline'}>
+            {enterprise.registration_completeness === 'cover_page_ready' ? 'Cover-page ready' : 'Minimal'}
+          </Badge>
+          {ready && (
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/enterprises/${enterprise.id}/cover-page.pdf`} target="_blank" rel="noopener">
+                <FileText className="mr-2 h-4 w-4" />
+                Cover-page PDF
+              </Link>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Tabs defaultValue="details">
+        <TabsList>
+          <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="esmp">ESMP</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="details" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Identity</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label="Beneficiary short name">
+                <Input
+                  value={draft.beneficiary_short_name ?? ''}
+                  onChange={(e) => set('beneficiary_short_name', e.target.value)}
+                />
+              </Field>
+              <Field label="Formal applicant organisation">
+                <Input
+                  value={draft.applicant_organisation_name ?? ''}
+                  onChange={(e) => set('applicant_organisation_name', e.target.value)}
+                />
+              </Field>
+              <Field label="Project title">
+                <Input
+                  value={draft.project_title ?? ''}
+                  onChange={(e) => set('project_title', e.target.value || null)}
+                />
+              </Field>
+              <Field label="Registration number">
+                <Input
+                  value={draft.registration_number ?? ''}
+                  onChange={(e) => set('registration_number', e.target.value || null)}
+                />
+              </Field>
+              <Field label="Principal applicant">
+                <Input
+                  value={draft.principal_applicant_name ?? ''}
+                  onChange={(e) => set('principal_applicant_name', e.target.value || null)}
+                />
+              </Field>
+              <Field label="Service Provider (name)">
+                <Input
+                  value={draft.service_provider_name ?? ''}
+                  onChange={(e) => set('service_provider_name', e.target.value || null)}
+                />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Location</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label="Community Council">
+                <Select
+                  value={draft.community_council_id ?? undefined}
+                  onValueChange={(v) => set('community_council_id', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ccs?.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Resource Center">
+                <Select
+                  value={draft.resource_center_id ?? undefined}
+                  onValueChange={(v) => set('resource_center_id', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rcs?.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Village">
+                <Select
+                  value={draft.village_id ?? undefined}
+                  onValueChange={(v) => set('village_id', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {villages?.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Location detail">
+                <Input
+                  value={draft.location_detail ?? ''}
+                  onChange={(e) => set('location_detail', e.target.value || null)}
+                />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Financials + period</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label="Period start">
+                <Input
+                  type="date"
+                  value={draft.period_start ?? ''}
+                  onChange={(e) => set('period_start', e.target.value || null)}
+                />
+              </Field>
+              <Field label="Period end">
+                <Input
+                  type="date"
+                  value={draft.period_end ?? ''}
+                  onChange={(e) => set('period_end', e.target.value || null)}
+                />
+              </Field>
+              <Field label={`Total project cost ${formatLSL(draft.total_project_cost_lsl)}`}>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={draft.total_project_cost_lsl ?? ''}
+                  onChange={(e) =>
+                    set('total_project_cost_lsl', e.target.value === '' ? null : Number(e.target.value))
+                  }
+                />
+              </Field>
+              <Field label={`Total grant ${formatLSL(draft.total_grant_lsl)}`}>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={draft.total_grant_lsl ?? ''}
+                  onChange={(e) =>
+                    set('total_grant_lsl', e.target.value === '' ? null : Number(e.target.value))
+                  }
+                />
+              </Field>
+              <Field label={`Current grant payment ${formatLSL(draft.current_grant_payment_lsl)}`}>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={draft.current_grant_payment_lsl ?? ''}
+                  onChange={(e) =>
+                    set(
+                      'current_grant_payment_lsl',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                />
+              </Field>
+              <Field label="Beneficiary contact phone">
+                <Input
+                  value={draft.beneficiary_contact_phone ?? ''}
+                  onChange={(e) => set('beneficiary_contact_phone', e.target.value || null)}
+                />
+              </Field>
+            </CardContent>
+          </Card>
+
+          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+          <div className="flex items-center gap-3">
+            <Button onClick={() => save.mutate()} disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Completeness will auto-set to{' '}
+              <code>{ready ? 'cover_page_ready' : 'minimal'}</code> on save.
+            </p>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="esmp" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">ESMP status</CardTitle>
+              <CardDescription>
+                Phase 1 supports four states. Digital ESMP forms land in Phase 2.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Badge variant="outline">
+                  Current: {ESMP_LABEL[enterprise.esmp_status] ?? enterprise.esmp_status}
+                </Badge>
+                {enterprise.esmp_uploaded_pdf_url && (
+                  <a
+                    href={enterprise.esmp_uploaded_pdf_url}
+                    target="_blank"
+                    rel="noopener"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    View uploaded PDF
+                  </a>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Update status</Label>
+                <Select
+                  value={draft.esmp_status ?? enterprise.esmp_status}
+                  onValueChange={(v) =>
+                    set('esmp_status', v as EnterpriseRow['esmp_status'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ESMP_LABEL).map(([k, label]) => (
+                      <SelectItem key={k} value={k}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+                Save status
+              </Button>
+
+              <div className="border-t pt-4 space-y-2">
+                <Label>Upload scanned ESMP (PDF)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadEsmp.mutate(f);
+                    }}
+                  />
+                  {uploadEsmp.isPending && (
+                    <span className="text-xs text-muted-foreground inline-flex items-center">
+                      <Upload className="mr-1 h-3 w-3" /> Uploading…
+                    </span>
+                  )}
+                </div>
+                {uploadEsmp.error && (
+                  <p className="text-sm text-destructive">{(uploadEsmp.error as Error).message}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Audit trail</CardTitle>
+              <CardDescription>
+                Server-recorded via the <code>audit_trigger</code> on the enterprises table.
+                Read-only — no one (not even Super Admin) can edit it from the client.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {history && history.length === 0 && (
+                <p className="text-sm text-muted-foreground">No history yet.</p>
+              )}
+              <ul className="space-y-3">
+                {history?.map((row) => (
+                  <li key={row.id} className="border-l-2 pl-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge variant="outline">{row.action}</Badge>
+                      <span className="text-muted-foreground">
+                        {formatDateDMY(row.changed_at)} ·{' '}
+                        {new Date(row.changed_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    {row.action === 'UPDATE' && row.diff && (
+                      <pre className="mt-2 text-xs bg-muted rounded p-2 overflow-x-auto">
+                        {JSON.stringify(row.diff, null, 2)}
+                      </pre>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
