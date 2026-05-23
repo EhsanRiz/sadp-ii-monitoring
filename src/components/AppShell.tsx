@@ -33,9 +33,9 @@ export function AppShell() {
   return (
     <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
       <aside className="border-r bg-muted/30 md:sticky md:top-0 md:h-screen md:flex md:flex-col">
-        <div className="p-5 border-b">
+        <div className="p-5 border-b space-y-2">
           <Logo />
-          <div className="mt-2 text-sm font-semibold tracking-tight">SADP-II Monitoring</div>
+          <div className="text-xs text-muted-foreground font-medium">SADP-II Monitoring</div>
         </div>
         <nav className="px-3 py-4 space-y-1 flex-1 overflow-y-auto">
           {visible.map((it) => (
