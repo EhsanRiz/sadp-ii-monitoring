@@ -40,7 +40,11 @@ export function NewEnterprisePage() {
   const { data: rounds } = useRounds();
   const { data: types } = useEnterpriseTypes();
 
-  const [orgIdLocal, setOrgIdLocal] = useState<string | undefined>(undefined);
+  // Super Admin: default to their home org (if they have one set in user_profiles)
+  // so the dropdown pre-selects sensibly. They can still switch per-entry.
+  const [orgIdLocal, setOrgIdLocal] = useState<string | undefined>(
+    isSuperAdmin ? (organizationId ?? undefined) : undefined,
+  );
   const effectiveOrgId = isSuperAdmin ? orgIdLocal : (organizationId ?? undefined);
 
   const { data: districts } = useDistricts(effectiveOrgId ?? null);
