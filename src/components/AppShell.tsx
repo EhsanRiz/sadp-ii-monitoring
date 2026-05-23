@@ -20,21 +20,23 @@ const items: NavItem[] = [
 ];
 
 /**
- * App shell with a left nav and content outlet. Visible only to authenticated
- * users (RoleGate handles the auth check at the route level).
+ * App shell with a left nav and content outlet. The aside is sticky to the
+ * viewport so it doesn't scroll out of view on long enterprise/admin pages.
+ * The user/sign-out block lives in the same flex column so it sits at the
+ * bottom regardless of nav-item count, without absolute positioning.
  */
 export function AppShell() {
   const { user, role, isSuperAdmin, signOut } = useAuth();
   const visible = items.filter((i) => !i.superAdminOnly || isSuperAdmin);
 
   return (
-    <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
-      <aside className="border-r bg-muted/30">
+    <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
+      <aside className="border-r bg-muted/30 md:sticky md:top-0 md:h-screen md:flex md:flex-col">
         <div className="p-6">
           <div className="text-lg font-semibold">SADP-II</div>
           <div className="text-xs text-muted-foreground">Monitoring</div>
         </div>
-        <nav className="px-3 space-y-1">
+        <nav className="px-3 space-y-1 flex-1 overflow-y-auto">
           {visible.map((it) => (
             <NavLink
               key={it.to}
@@ -53,7 +55,7 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="absolute bottom-0 w-[260px] p-4 border-t bg-background hidden md:block">
+        <div className="p-4 border-t bg-background">
           <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
           <div className="text-xs font-medium capitalize mb-2">
             {role?.replace('_', ' ') ?? 'unknown role'}

@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useEnterprises, type EnterpriseListFilters } from '@/lib/enterprises';
-import type { EsmpStatus } from '@/types/database';
+import type { DrillingStatus, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
 import { useDistricts, useEnterpriseTypes, useResourceCenters } from '@/lib/catalogs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -32,7 +32,21 @@ const ESMP_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'destru
 };
 
 export function EnterprisesListPage() {
-  const [filters, setFilters] = useState<EnterpriseListFilters>({});
+  const [searchParams] = useSearchParams();
+  const initialFilters = useMemo<EnterpriseListFilters>(
+    () => ({
+      organizationCode: searchParams.get('orgCode') ?? null,
+      esmpStatus: (searchParams.get('esmp') as EsmpStatus) ?? null,
+      milestone1Status: (searchParams.get('m1') as Milestone1ReportStatus) ?? null,
+      drillingStatus: (searchParams.get('drilling') as DrillingStatus) ?? null,
+      completeness:
+        (searchParams.get('completeness') as 'minimal' | 'cover_page_ready') ?? null,
+    }),
+    // Only seed once from URL; user can clear afterwards
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [filters, setFilters] = useState<EnterpriseListFilters>(initialFilters);
   const { data: districts } = useDistricts();
   const { data: types } = useEnterpriseTypes();
   const { data: rcs } = useResourceCenters(filters.districtId ?? null);

@@ -4,13 +4,23 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import type { AuditLogRow, EnterpriseRow, EsmpStatus } from '@/types/database';
+import type {
+  AuditLogRow,
+  DrillingStatus,
+  EnterpriseRow,
+  EsmpStatus,
+  Milestone1ReportStatus,
+} from '@/types/database';
 
 export interface EnterpriseListFilters {
+  /** Super-admin convenience: filter to a specific org (e.g. '4D' or 'RSDA'). */
+  organizationCode?: string | null;
   districtId?: string | null;
   resourceCenterId?: string | null;
   enterpriseTypeId?: number | null;
   esmpStatus?: EsmpStatus | null;
+  milestone1Status?: Milestone1ReportStatus | null;
+  drillingStatus?: DrillingStatus | null;
   completeness?: 'minimal' | 'cover_page_ready' | null;
   search?: string;
 }
@@ -20,14 +30,25 @@ export function useEnterprises(filters: EnterpriseListFilters = {}) {
     queryKey: ['enterprises', filters],
     queryFn: async (): Promise<EnterpriseRow[]> => {
       let q = supabase.from('enterprises').select('*').order('created_at', { ascending: false });
+      if (filters.organizationCode) {
+        // Resolve org code → id, then filter. One round-trip more than ideal
+        // but keeps the URL pretty.
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('code', filters.organizationCode)
+          .single();
+        if (org?.id) q = q.eq('organization_id', org.id);
+      }
       if (filters.districtId) q = q.eq('district_id', filters.districtId);
       if (filters.resourceCenterId) q = q.eq('resource_center_id', filters.resourceCenterId);
       if (filters.enterpriseTypeId) q = q.eq('enterprise_type_id', filters.enterpriseTypeId);
       if (filters.esmpStatus) q = q.eq('esmp_status', filters.esmpStatus);
+      if (filters.milestone1Status) q = q.eq('milestone1_report_status', filters.milestone1Status);
+      if (filters.drillingStatus) q = q.eq('drilling_status', filters.drillingStatus);
       if (filters.completeness) q = q.eq('registration_completeness', filters.completeness);
       if (filters.search && filters.search.trim()) {
         const s = filters.search.trim();
-        // Match across short name and formal applicant name. Use ilike for case-insensitive.
         q = q.or(
           `beneficiary_short_name.ilike.%${s}%,applicant_organisation_name.ilike.%${s}%`,
         );
