@@ -1,0 +1,9 @@
+# SPA rewrite — every path falls back to index.html so React Router can handle it.
+# Without this, deep links (/login, /enterprises/:id, etc.) 404 on refresh.
+#
+# Render Static Sites reads this file from the publish directory.
+# Vite copies everything in public/ to dist/ on build.
+#
+# Status 200 = rewrite (URL stays the same); 301/302 would be a redirect.
+
+/*    /index.html   200
