@@ -127,6 +127,7 @@ export function EnterpriseDetailPage() {
       <Tabs defaultValue="details">
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="progress">Progress</TabsTrigger>
           <TabsTrigger value="esmp">ESMP</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
@@ -312,6 +313,111 @@ export function EnterpriseDetailPage() {
               <code>{ready ? 'cover_page_ready' : 'minimal'}</code> on save.
             </p>
           </div>
+        </TabsContent>
+
+        <TabsContent value="progress" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Progress + budget</CardTitle>
+              <CardDescription>
+                Tracking dimensions from the validated central-region progress report.
+                ESMP status lives on its own tab.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label={`Budget ${formatLSL(draft.budget_lsl)}`}>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={draft.budget_lsl ?? ''}
+                  onChange={(e) =>
+                    set('budget_lsl', e.target.value === '' ? null : Number(e.target.value))
+                  }
+                  placeholder="e.g. 250000"
+                />
+              </Field>
+              <Field label="Procurement Plan">
+                <Select
+                  value={draft.procurement_plan_status ?? enterprise.procurement_plan_status}
+                  onValueChange={(v) =>
+                    set('procurement_plan_status', v as EnterpriseRow['procurement_plan_status'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_started">Not started</SelectItem>
+                    <SelectItem value="in_progress">In progress</SelectItem>
+                    <SelectItem value="done">Done</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Business Plan">
+                <Select
+                  value={draft.business_plan_status ?? enterprise.business_plan_status}
+                  onValueChange={(v) =>
+                    set('business_plan_status', v as EnterpriseRow['business_plan_status'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_started">Not started</SelectItem>
+                    <SelectItem value="in_progress">In progress</SelectItem>
+                    <SelectItem value="done_to_be_validated">Done, to be validated</SelectItem>
+                    <SelectItem value="done_validated">Done & validated</SelectItem>
+                    <SelectItem value="submitted">Submitted</SelectItem>
+                    <SelectItem value="validated_submitted">Validated & submitted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Milestone 1 Report">
+                <Select
+                  value={draft.milestone1_report_status ?? enterprise.milestone1_report_status}
+                  onValueChange={(v) =>
+                    set('milestone1_report_status', v as EnterpriseRow['milestone1_report_status'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_started">Not started</SelectItem>
+                    <SelectItem value="in_progress">In progress</SelectItem>
+                    <SelectItem value="done_not_submitted">Done, not submitted</SelectItem>
+                    <SelectItem value="done_submitted">Done & submitted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Drilling">
+                <Select
+                  value={draft.drilling_status ?? enterprise.drilling_status}
+                  onValueChange={(v) =>
+                    set('drilling_status', v as EnterpriseRow['drilling_status'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unknown">Unknown</SelectItem>
+                    <SelectItem value="not_needed">Not needed</SelectItem>
+                    <SelectItem value="pre_existing">Pre-existing borehole</SelectItem>
+                    <SelectItem value="in_progress">In progress</SelectItem>
+                    <SelectItem value="drilled">Drilled</SelectItem>
+                    <SelectItem value="not_drilled">Not drilled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </CardContent>
+            <div className="px-6 pb-6">
+              <Button onClick={() => save.mutate()} disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="esmp" className="space-y-4">

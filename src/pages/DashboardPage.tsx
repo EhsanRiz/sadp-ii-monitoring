@@ -24,18 +24,23 @@ export function DashboardPage() {
       const total = await supabase
         .from('enterprises')
         .select('id', { count: 'exact', head: true });
-      const minimal = await supabase
+      const esmpDone = await supabase
         .from('enterprises')
         .select('id', { count: 'exact', head: true })
-        .eq('registration_completeness', 'minimal');
-      const noEsmp = await supabase
+        .in('esmp_status', ['completed_in_app', 'completed_uploaded']);
+      const m1Submitted = await supabase
         .from('enterprises')
         .select('id', { count: 'exact', head: true })
-        .eq('esmp_status', 'not_started');
+        .eq('milestone1_report_status', 'done_submitted');
+      const drillingDone = await supabase
+        .from('enterprises')
+        .select('id', { count: 'exact', head: true })
+        .in('drilling_status', ['drilled', 'pre_existing', 'not_needed']);
       return {
         total: total.count ?? 0,
-        minimal: minimal.count ?? 0,
-        noEsmp: noEsmp.count ?? 0,
+        esmpDone: esmpDone.count ?? 0,
+        m1Submitted: m1Submitted.count ?? 0,
+        drillingDone: drillingDone.count ?? 0,
       };
     },
   });
@@ -62,7 +67,7 @@ export function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Enterprises (your scope)</CardDescription>
@@ -78,21 +83,29 @@ export function DashboardPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Need cover-page completion</CardDescription>
-            <CardTitle className="text-4xl">{isLoading ? '…' : data?.minimal ?? 0}</CardTitle>
+            <CardDescription>ESMP completed</CardDescription>
+            <CardTitle className="text-4xl">{isLoading ? '…' : data?.esmpDone ?? 0}</CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            Round 3 imports start as <code>minimal</code> and need registration
-            number, dates, costs, and signatures before the cover page can render.
+            ESMP form either completed in-app or uploaded as a scanned PDF.
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>ESMP not started</CardDescription>
-            <CardTitle className="text-4xl">{isLoading ? '…' : data?.noEsmp ?? 0}</CardTitle>
+            <CardDescription>M1 report submitted</CardDescription>
+            <CardTitle className="text-4xl">{isLoading ? '…' : data?.m1Submitted ?? 0}</CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            ESMP digital forms ship in Phase 2 — for now, upload a scanned PDF or mark in-progress.
+            Milestone 1 report completed and submitted to the CGP Secretariat.
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Drilling resolved</CardDescription>
+            <CardTitle className="text-4xl">{isLoading ? '…' : data?.drillingDone ?? 0}</CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-muted-foreground">
+            Either drilled, pre-existing borehole on site, or not needed for the enterprise type.
           </CardContent>
         </Card>
       </div>

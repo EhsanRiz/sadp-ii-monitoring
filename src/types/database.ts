@@ -33,6 +33,26 @@ export type EsmpStatus =
   | 'pending_app_completion'
   | 'completed_uploaded'
   | 'completed_in_app';
+export type ProcurementPlanStatus = 'not_started' | 'in_progress' | 'done';
+export type BusinessPlanStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'done_to_be_validated'
+  | 'done_validated'
+  | 'submitted'
+  | 'validated_submitted';
+export type Milestone1ReportStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'done_not_submitted'
+  | 'done_submitted';
+export type DrillingStatus =
+  | 'unknown'
+  | 'not_needed'
+  | 'pre_existing'
+  | 'in_progress'
+  | 'drilled'
+  | 'not_drilled';
 export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE';
 
 // ---------------------------------------------------------------------------
@@ -275,11 +295,13 @@ export interface Database {
           cgp_received_date: string | null;
           cgp_officer_name: string | null;
           cgp_officer_signature_url: string | null;
-          borehole_pre_existing: boolean;
-          borehole_drilled: boolean;
-          borehole_drilling_incomplete: boolean;
           esmp_status: EsmpStatus;
           esmp_uploaded_pdf_url: string | null;
+          procurement_plan_status: ProcurementPlanStatus;
+          business_plan_status: BusinessPlanStatus;
+          milestone1_report_status: Milestone1ReportStatus;
+          drilling_status: DrillingStatus;
+          budget_lsl: number | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -315,11 +337,13 @@ export interface Database {
           cgp_received_date?: string | null;
           cgp_officer_name?: string | null;
           cgp_officer_signature_url?: string | null;
-          borehole_pre_existing?: boolean;
-          borehole_drilled?: boolean;
-          borehole_drilling_incomplete?: boolean;
           esmp_status?: EsmpStatus;
           esmp_uploaded_pdf_url?: string | null;
+          procurement_plan_status?: ProcurementPlanStatus;
+          business_plan_status?: BusinessPlanStatus;
+          milestone1_report_status?: Milestone1ReportStatus;
+          drilling_status?: DrillingStatus;
+          budget_lsl?: number | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -354,11 +378,13 @@ export interface Database {
           cgp_received_date?: string | null;
           cgp_officer_name?: string | null;
           cgp_officer_signature_url?: string | null;
-          borehole_pre_existing?: boolean;
-          borehole_drilled?: boolean;
-          borehole_drilling_incomplete?: boolean;
           esmp_status?: EsmpStatus;
           esmp_uploaded_pdf_url?: string | null;
+          procurement_plan_status?: ProcurementPlanStatus;
+          business_plan_status?: BusinessPlanStatus;
+          milestone1_report_status?: Milestone1ReportStatus;
+          drilling_status?: DrillingStatus;
+          budget_lsl?: number | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;

@@ -13,6 +13,10 @@
 ALTER TABLE public.user_profiles
   DROP CONSTRAINT IF EXISTS user_profiles_super_admin_no_org;
 
+-- Drop the new constraint first so the migration is fully idempotent
+ALTER TABLE public.user_profiles
+  DROP CONSTRAINT IF EXISTS user_profiles_org_required_for_non_super_admin;
+
 ALTER TABLE public.user_profiles
   ADD CONSTRAINT user_profiles_org_required_for_non_super_admin CHECK (
     role = 'super_admin' OR organization_id IS NOT NULL
