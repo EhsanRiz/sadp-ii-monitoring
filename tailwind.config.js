@@ -43,6 +43,34 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+        },
+        tint: {
+          success: 'hsl(var(--tint-success))',
+          warning: 'hsl(var(--tint-warning))',
+          info: 'hsl(var(--tint-info))',
+          danger: 'hsl(var(--tint-danger))',
+          neutral: 'hsl(var(--tint-neutral))',
+        },
+      },
+      keyframes: {
+        shimmer: {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
+      },
+      animation: {
+        shimmer: 'shimmer 1.6s linear infinite',
       },
       borderRadius: {
         lg: 'var(--radius)',

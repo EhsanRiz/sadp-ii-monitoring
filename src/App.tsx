@@ -1,4 +1,5 @@
 import { Route, Routes, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { RoleGate } from '@/components/RoleGate';
 import { AppShell } from '@/components/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
@@ -31,6 +32,13 @@ import { EnterpriseTypesAdminPage } from '@/pages/admin/EnterpriseTypesAdminPage
  */
 export default function App() {
   return (
+    <>
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+        toastOptions={{ duration: 4000 }}
+      />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -83,5 +91,6 @@ export default function App() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </>
   );
 }

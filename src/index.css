@@ -33,6 +33,23 @@
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
+    /* Semantic status tokens — green-leaning palette to live alongside the
+     * brand greens. Used for status pills, progress bars, chart series. */
+    --success: 152 71% 36%;             /* approved / compliant — sits between brand greens */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;              /* submitted / partial */
+    --warning-foreground: 30 35% 12%;
+    --info: 199 89% 48%;                /* draft / in progress / informational */
+    --info-foreground: 0 0% 100%;
+
+    /* Subtle ambient backgrounds — used by status sub-cards and stat tiles
+     * so the page isn't a uniform white wall. */
+    --tint-success: 152 60% 96%;
+    --tint-warning: 40 100% 96%;
+    --tint-info: 199 80% 97%;
+    --tint-danger: 0 80% 97%;
+    --tint-neutral: 152 20% 97%;
+
     --border: 152 15% 88%;
     --input: 152 15% 88%;
     --ring: 152 100% 20%;

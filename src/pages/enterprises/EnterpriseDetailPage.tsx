@@ -19,9 +19,24 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/StatusBadge';
-import type { EnterpriseRow } from '@/types/database';
+import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
+import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
 import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown } from 'lucide-react';
-import { formatDateDMY, formatLSL } from '@/lib/utils';
+import { formatDateDMY, formatLSL, cn } from '@/lib/utils';
+
+/** Colored left-edge border that matches a submission's status. */
+function statusBorder(status: SubmissionStatus | null | undefined): string {
+  switch (status) {
+    case 'approved':
+      return 'border-l-4 border-l-success';
+    case 'submitted':
+      return 'border-l-4 border-l-warning';
+    case 'draft':
+      return 'border-l-4 border-l-info';
+    default:
+      return 'border-l-4 border-l-muted-foreground/30';
+  }
+}
 
 const ESMP_LABEL: Record<string, string> = {
   not_started: 'Not started',
@@ -121,16 +136,25 @@ export function EnterpriseDetailPage() {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
+  const typeInfo = types?.find((t) => t.id === enterprise.enterprise_type_id);
+  const visual = getEnterpriseVisual(typeInfo?.name, typeInfo?.category as EnterpriseCategory);
+  const TypeIcon = visual.icon;
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{enterprise.beneficiary_short_name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {types?.find((t) => t.id === enterprise.enterprise_type_id)?.name ?? '—'} · R
-            {enterprise.round_id} ·{' '}
-            {districts?.find((d) => d.id === enterprise.district_id)?.name ?? '—'}
-          </p>
+        <div className="flex items-start gap-3">
+          <div className={cn('flex h-12 w-12 items-center justify-center rounded-lg shrink-0', visual.tileBg)}>
+            <TypeIcon className={cn('h-6 w-6', visual.iconColor)} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{enterprise.beneficiary_short_name}</h1>
+            <p className="text-sm text-muted-foreground">
+              {typeInfo?.name ?? '—'} · R
+              {enterprise.round_id} ·{' '}
+              {districts?.find((d) => d.id === enterprise.district_id)?.name ?? '—'}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={enterprise.registration_completeness === 'cover_page_ready' ? 'default' : 'outline'}>
@@ -339,11 +363,83 @@ export function EnterpriseDetailPage() {
         </TabsContent>
 
         <TabsContent value="progress" className="space-y-4">
+          <Card className="bg-gradient-to-br from-tint-success/40 to-background">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Progress at a glance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ProgressRow
+                label="Cover-page registration"
+                tone={enterprise.registration_completeness === 'cover_page_ready' ? 'success' : 'warning'}
+                value={enterprise.registration_completeness === 'cover_page_ready' ? 100 : 40}
+                detail={enterprise.registration_completeness === 'cover_page_ready' ? 'Ready' : 'Minimal info on file'}
+              />
+              <ProgressRow
+                label="Procurement plan"
+                tone={
+                  enterprise.procurement_plan_status === 'done' ? 'success'
+                    : enterprise.procurement_plan_status === 'in_progress' ? 'warning' : 'neutral'
+                }
+                value={
+                  enterprise.procurement_plan_status === 'done' ? 100
+                    : enterprise.procurement_plan_status === 'in_progress' ? 50 : 0
+                }
+                detail={enterprise.procurement_plan_status.replace(/_/g, ' ')}
+              />
+              <ProgressRow
+                label="Business plan"
+                tone={
+                  ['done_validated', 'validated_submitted'].includes(enterprise.business_plan_status) ? 'success'
+                    : ['done_to_be_validated', 'submitted'].includes(enterprise.business_plan_status) ? 'warning'
+                    : enterprise.business_plan_status === 'in_progress' ? 'info' : 'neutral'
+                }
+                value={
+                  enterprise.business_plan_status === 'validated_submitted' ? 100
+                    : enterprise.business_plan_status === 'submitted' ? 80
+                    : enterprise.business_plan_status === 'done_validated' ? 70
+                    : enterprise.business_plan_status === 'done_to_be_validated' ? 55
+                    : enterprise.business_plan_status === 'in_progress' ? 30
+                    : 0
+                }
+                detail={enterprise.business_plan_status.replace(/_/g, ' ')}
+              />
+              <ProgressRow
+                label="Milestone 1 report"
+                tone={
+                  enterprise.milestone1_report_status === 'done_submitted' ? 'success'
+                    : enterprise.milestone1_report_status === 'done_not_submitted' ? 'warning'
+                    : enterprise.milestone1_report_status === 'in_progress' ? 'info' : 'neutral'
+                }
+                value={
+                  enterprise.milestone1_report_status === 'done_submitted' ? 100
+                    : enterprise.milestone1_report_status === 'done_not_submitted' ? 75
+                    : enterprise.milestone1_report_status === 'in_progress' ? 40
+                    : 0
+                }
+                detail={enterprise.milestone1_report_status.replace(/_/g, ' ')}
+              />
+              <ProgressRow
+                label="Drilling"
+                tone={
+                  ['drilled', 'pre_existing', 'not_needed'].includes(enterprise.drilling_status) ? 'success'
+                    : enterprise.drilling_status === 'in_progress' ? 'warning'
+                    : enterprise.drilling_status === 'not_drilled' ? 'destructive' : 'neutral'
+                }
+                value={
+                  ['drilled', 'pre_existing', 'not_needed'].includes(enterprise.drilling_status) ? 100
+                    : enterprise.drilling_status === 'in_progress' ? 50
+                    : 0
+                }
+                detail={enterprise.drilling_status.replace(/_/g, ' ')}
+              />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Progress + budget</CardTitle>
               <CardDescription>
-                Tracking dimensions from the validated central-region progress report.
+                Edit any of the dimensions below. The summary above updates after you save.
                 ESMP status lives on its own tab.
               </CardDescription>
             </CardHeader>
@@ -469,7 +565,7 @@ export function EnterpriseDetailPage() {
           </Card>
 
           {/* 1. ESSF */}
-          <Card>
+          <Card className={cn('transition-shadow hover:shadow-md', statusBorder(essf.data?.status))}>
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -505,7 +601,7 @@ export function EnterpriseDetailPage() {
           </Card>
 
           {/* 2. EMMP */}
-          <Card>
+          <Card className={cn('transition-shadow hover:shadow-md', statusBorder(emmp.data?.status))}>
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -543,8 +639,8 @@ export function EnterpriseDetailPage() {
             </CardContent>
           </Card>
 
-          {/* 3. Inspection visits */}
-          <Card>
+          {/* 3. Inspection visits — border tone reflects most-recent visit */}
+          <Card className={cn('transition-shadow hover:shadow-md', statusBorder(inspections.data?.[0]?.status))}>
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -742,6 +838,44 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+type ProgressTone = 'success' | 'warning' | 'info' | 'destructive' | 'neutral';
+
+const PROGRESS_BAR: Record<ProgressTone, string> = {
+  success: 'bg-success',
+  warning: 'bg-warning',
+  info: 'bg-info',
+  destructive: 'bg-destructive',
+  neutral: 'bg-muted-foreground/40',
+};
+
+function ProgressRow({
+  label,
+  detail,
+  value,
+  tone,
+}: {
+  label: string;
+  detail: string;
+  value: number;
+  tone: ProgressTone;
+}) {
+  const pct = Math.min(100, Math.max(0, value));
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3 mb-1">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-xs text-muted-foreground capitalize">{detail}</span>
+      </div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
+        <div
+          className={cn('h-full rounded-full transition-all', PROGRESS_BAR[tone])}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
     </div>
   );
 }

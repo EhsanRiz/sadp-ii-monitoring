@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEnterprises, type EnterpriseListFilters } from '@/lib/enterprises';
-import type { DrillingStatus, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
+import type { DrillingStatus, EnterpriseRow, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
 import { useDistricts, useEnterpriseTypes, useResourceCenters } from '@/lib/catalogs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, FileText } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Plus, FileText, LayoutGrid, List, Sprout, ChevronRight } from 'lucide-react';
+import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
+import { cn } from '@/lib/utils';
 
 const ESMP_LABEL: Record<string, string> = {
   not_started: 'Not started',
@@ -30,6 +34,61 @@ const ESMP_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'destru
   completed_uploaded: 'secondary',
   completed_in_app: 'default',
 };
+
+/**
+ * 5-segment progress bar showing the five tracking dimensions for one enterprise.
+ * Each segment is green when "done-ish", amber for in-progress, grey for not-started.
+ */
+function dimensionTone(kind: 'cover' | 'esmp' | 'm1' | 'drilling' | 'biz', e: EnterpriseRow):
+  'done' | 'progress' | 'idle' {
+  switch (kind) {
+    case 'cover':
+      return e.registration_completeness === 'cover_page_ready' ? 'done' : 'progress';
+    case 'esmp':
+      return ['completed_in_app', 'completed_uploaded'].includes(e.esmp_status) ? 'done'
+        : e.esmp_status === 'pending_app_completion' ? 'progress' : 'idle';
+    case 'm1':
+      return e.milestone1_report_status === 'done_submitted' ? 'done'
+        : ['in_progress', 'done_not_submitted'].includes(e.milestone1_report_status) ? 'progress' : 'idle';
+    case 'drilling':
+      return ['drilled', 'pre_existing', 'not_needed'].includes(e.drilling_status) ? 'done'
+        : e.drilling_status === 'in_progress' ? 'progress'
+        : e.drilling_status === 'not_drilled' ? 'idle' : 'idle';
+    case 'biz':
+      return ['done_validated', 'validated_submitted'].includes(e.business_plan_status) ? 'done'
+        : ['done_to_be_validated', 'submitted', 'in_progress'].includes(e.business_plan_status) ? 'progress' : 'idle';
+  }
+}
+
+const SEG_CLASS: Record<'done' | 'progress' | 'idle', string> = {
+  done: 'bg-success',
+  progress: 'bg-warning',
+  idle: 'bg-muted',
+};
+
+function ProgressSegments({ e }: { e: EnterpriseRow }) {
+  const segments = [
+    { key: 'cover', label: 'Cover-page registration' },
+    { key: 'esmp', label: 'ESMP' },
+    { key: 'biz', label: 'Business plan' },
+    { key: 'm1', label: 'Milestone 1 report' },
+    { key: 'drilling', label: 'Drilling' },
+  ] as const;
+  return (
+    <div className="flex items-center gap-1" aria-label="Progress across five dimensions">
+      {segments.map((s) => {
+        const tone = dimensionTone(s.key, e);
+        return (
+          <span
+            key={s.key}
+            title={`${s.label}: ${tone}`}
+            className={cn('h-1.5 flex-1 rounded-full', SEG_CLASS[tone])}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 export function EnterprisesListPage() {
   const [searchParams] = useSearchParams();
@@ -47,6 +106,14 @@ export function EnterprisesListPage() {
     [],
   );
   const [filters, setFilters] = useState<EnterpriseListFilters>(initialFilters);
+  const [view, setView] = useState<'table' | 'cards'>(() => {
+    return (localStorage.getItem('enterprises-view') as 'table' | 'cards') ?? 'cards';
+  });
+  const setViewPersisted = (v: 'table' | 'cards') => {
+    setView(v);
+    localStorage.setItem('enterprises-view', v);
+  };
+
   const { data: districts } = useDistricts();
   const { data: types } = useEnterpriseTypes();
   const { data: rcs } = useResourceCenters(filters.districtId ?? null);
@@ -61,12 +128,37 @@ export function EnterprisesListPage() {
             {enterprises ? `${enterprises.length} shown` : 'Loading…'}
           </p>
         </div>
-        <Button asChild>
-          <Link to="/enterprises/new">
-            <Plus className="mr-2 h-4 w-4" />
-            New enterprise
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* view toggle */}
+          <div className="hidden md:flex rounded-md border bg-background overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewPersisted('cards')}
+              className={cn(
+                'px-2.5 py-1.5 text-xs flex items-center gap-1.5 transition-colors',
+                view === 'cards' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewPersisted('table')}
+              className={cn(
+                'px-2.5 py-1.5 text-xs flex items-center gap-1.5 transition-colors',
+                view === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+              )}
+            >
+              <List className="h-3.5 w-3.5" /> Table
+            </button>
+          </div>
+          <Button asChild>
+            <Link to="/enterprises/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New enterprise
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -177,65 +269,141 @@ export function EnterprisesListPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="pt-6">
-          {error && <p className="text-sm text-destructive">{(error as Error).message}</p>}
-          {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted-foreground">
-                <tr>
-                  <th className="py-2 pr-4">Beneficiary</th>
-                  <th className="py-2 pr-4">Type</th>
-                  <th className="py-2 pr-4">District</th>
-                  <th className="py-2 pr-4">Round</th>
-                  <th className="py-2 pr-4">Completeness</th>
-                  <th className="py-2 pr-4">ESMP</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {enterprises?.map((e) => (
-                  <tr key={e.id} className="border-t hover:bg-muted/40">
-                    <td className="py-2 pr-4 font-medium">{e.beneficiary_short_name}</td>
-                    <td className="py-2 pr-4 text-muted-foreground">
-                      {types?.find((t) => t.id === e.enterprise_type_id)?.name ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4 text-muted-foreground">
-                      {districts?.find((d) => d.id === e.district_id)?.name ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4 text-muted-foreground">R{e.round_id}</td>
-                    <td className="py-2 pr-4">
-                      <Badge variant={e.registration_completeness === 'cover_page_ready' ? 'default' : 'outline'}>
+      {error && (
+        <Card className="border-destructive bg-tint-danger">
+          <CardContent className="pt-6 text-sm text-destructive">
+            {(error as Error).message}
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <div className={view === 'cards' ? 'grid gap-3 md:grid-cols-2 lg:grid-cols-3' : ''}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className={view === 'cards' ? 'h-32 w-full' : 'h-10 w-full mb-2'} />
+          ))}
+        </div>
+      ) : enterprises && enterprises.length === 0 ? (
+        <EmptyState
+          icon={Sprout}
+          title="No enterprises match these filters"
+          description="Try clearing a filter, or register a new enterprise to see it here."
+          action={
+            <Button asChild size="sm">
+              <Link to="/enterprises/new">
+                <Plus className="mr-1 h-4 w-4" /> Register new enterprise
+              </Link>
+            </Button>
+          }
+        />
+      ) : view === 'cards' ? (
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {enterprises?.map((e) => {
+            const t = types?.find((x) => x.id === e.enterprise_type_id);
+            const v = getEnterpriseVisual(t?.name, t?.category as EnterpriseCategory);
+            const Icon = v.icon;
+            return (
+              <Link
+                key={e.id}
+                to={`/enterprises/${e.id}`}
+                className="group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+              >
+                <Card className="h-full transition-all group-hover:shadow-md group-hover:-translate-y-0.5 group-hover:border-primary/30">
+                  <CardContent className="pt-5 pb-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg shrink-0', v.tileBg)}>
+                        <Icon className={cn('h-5 w-5', v.iconColor)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate" title={e.beneficiary_short_name}>
+                          {e.beneficiary_short_name}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {t?.name ?? '—'} · R{e.round_id} ·{' '}
+                          {districts?.find((d) => d.id === e.district_id)?.name ?? '—'}
+                        </div>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge
+                        variant={e.registration_completeness === 'cover_page_ready' ? 'default' : 'outline'}
+                        className="text-[10px]"
+                      >
                         {e.registration_completeness === 'cover_page_ready' ? 'Cover-page ready' : 'Minimal'}
                       </Badge>
-                    </td>
-                    <td className="py-2 pr-4">
-                      <Badge variant={ESMP_VARIANT[e.esmp_status] ?? 'outline'}>
-                        {ESMP_LABEL[e.esmp_status] ?? e.esmp_status}
+                      <Badge variant={ESMP_VARIANT[e.esmp_status] ?? 'outline'} className="text-[10px]">
+                        ESMP: {ESMP_LABEL[e.esmp_status] ?? e.esmp_status}
                       </Badge>
-                    </td>
-                    <td className="py-2">
-                      <Button asChild variant="ghost" size="sm">
-                        <Link to={`/enterprises/${e.id}`}>
-                          <FileText className="mr-2 h-4 w-4" /> Open
-                        </Link>
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {enterprises && enterprises.length === 0 && (
+                    </div>
+                    <ProgressSegments e={e} />
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-muted-foreground">
                   <tr>
-                    <td className="py-8 text-center text-muted-foreground" colSpan={7}>
-                      No enterprises match these filters.
-                    </td>
+                    <th className="py-2 pr-4">Beneficiary</th>
+                    <th className="py-2 pr-4">District</th>
+                    <th className="py-2 pr-4">Round</th>
+                    <th className="py-2 pr-4">Progress</th>
+                    <th className="py-2 pr-4">ESMP</th>
+                    <th className="py-2"></th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </thead>
+                <tbody>
+                  {enterprises?.map((e) => {
+                    const t = types?.find((x) => x.id === e.enterprise_type_id);
+                    const v = getEnterpriseVisual(t?.name, t?.category as EnterpriseCategory);
+                    const Icon = v.icon;
+                    return (
+                      <tr key={e.id} className="border-t hover:bg-muted/40">
+                        <td className="py-2 pr-4 font-medium">
+                          <div className="flex items-center gap-2">
+                            <div className={cn('flex h-7 w-7 items-center justify-center rounded shrink-0', v.tileBg)}>
+                              <Icon className={cn('h-3.5 w-3.5', v.iconColor)} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="truncate">{e.beneficiary_short_name}</div>
+                              <div className="text-xs text-muted-foreground truncate">{t?.name ?? '—'}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2 pr-4 text-muted-foreground">
+                          {districts?.find((d) => d.id === e.district_id)?.name ?? '—'}
+                        </td>
+                        <td className="py-2 pr-4 text-muted-foreground">R{e.round_id}</td>
+                        <td className="py-2 pr-4 w-[180px]">
+                          <ProgressSegments e={e} />
+                        </td>
+                        <td className="py-2 pr-4">
+                          <Badge variant={ESMP_VARIANT[e.esmp_status] ?? 'outline'} className="text-[10px]">
+                            {ESMP_LABEL[e.esmp_status] ?? e.esmp_status}
+                          </Badge>
+                        </td>
+                        <td className="py-2">
+                          <Button asChild variant="ghost" size="sm">
+                            <Link to={`/enterprises/${e.id}`}>
+                              <FileText className="mr-2 h-4 w-4" /> Open
+                            </Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

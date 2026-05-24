@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useEnterprise } from '@/lib/enterprises';
 import {
@@ -110,7 +111,13 @@ export function EmmpEditPage() {
               setError(null);
               save.mutate(
                 { responses: draft, filled_by: user?.id ?? null },
-                { onError: (e: Error) => setError(e.message) },
+                {
+                  onSuccess: () => toast.success('Draft saved'),
+                  onError: (e: Error) => {
+                    setError(e.message);
+                    toast.error('Save failed', { description: e.message });
+                  },
+                },
               );
             }}
             disabled={!canDraft || save.isPending}
@@ -128,9 +135,18 @@ export function EmmpEditPage() {
                   onSuccess: () =>
                     transition.mutate(
                       { to: 'submitted', userId: user!.id },
-                      { onError: (e: Error) => setError(e.message) },
+                      {
+                        onSuccess: () => toast.success('EMMP submitted for approval'),
+                        onError: (e: Error) => {
+                          setError(e.message);
+                          toast.error('Submission failed', { description: e.message });
+                        },
+                      },
                     ),
-                  onError: (e: Error) => setError(e.message),
+                  onError: (e: Error) => {
+                    setError(e.message);
+                    toast.error('Save failed', { description: e.message });
+                  },
                 },
               );
             }}
@@ -144,7 +160,13 @@ export function EmmpEditPage() {
               setError(null);
               transition.mutate(
                 { to: 'approved', userId: user!.id },
-                { onError: (e: Error) => setError(e.message) },
+                {
+                  onSuccess: () => toast.success('EMMP approved'),
+                  onError: (e: Error) => {
+                    setError(e.message);
+                    toast.error('Approval failed', { description: e.message });
+                  },
+                },
               );
             }}
             disabled={!canApproveAction || transition.isPending}

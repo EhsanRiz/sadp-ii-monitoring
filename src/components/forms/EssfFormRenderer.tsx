@@ -3,9 +3,9 @@
  * responses object (the contents of essf_submissions.responses jsonb).
  *
  * Three tables in order:
- *   1. Site Sensitivity (5 issues × Low/Medium/High radio)
- *   2. Completeness (8 questions × Yes/No/N-A radio)
- *   3. Environmental & Social Checklist (24 Y/N questions in 4 groups)
+ *   1. Site Sensitivity (5 issues × Low/Medium/High clickable cards, color-coded)
+ *   2. Completeness (8 questions × Yes/No/N-A colored pills)
+ *   3. Environmental & Social Checklist (24 Y/N questions in 4 groups, colored pills)
  *
  * `readOnly` disables all inputs (used when status is 'approved').
  */
@@ -17,7 +17,9 @@ import {
 } from '@/forms/essfSchema';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { StatusPill, type StatusPillTone } from '@/components/ui/status-pill';
 import { cn } from '@/lib/utils';
+import { ListChecks } from 'lucide-react';
 
 interface EssfFormRendererProps {
   responses: EssfResponses;
@@ -25,9 +27,51 @@ interface EssfFormRendererProps {
   readOnly?: boolean;
 }
 
+const RATING_TONE: Record<'low' | 'medium' | 'high', StatusPillTone> = {
+  low: 'success',
+  medium: 'warning',
+  high: 'destructive',
+};
+
+const YN_TONE = { yes: 'success', no: 'destructive', n_a: 'neutral' } as const;
+
 export function EssfFormRenderer({ responses, onChange, readOnly = false }: EssfFormRendererProps) {
+  // Overall progress strip
+  const totalQuestions =
+    ESSF_SITE_SENSITIVITY.issues.length +
+    ESSF_COMPLETENESS.questions.length +
+    ESSF_CHECKLIST.groups.reduce((s, g) => s + g.questions.length, 0);
+  const filled =
+    ESSF_SITE_SENSITIVITY.issues.filter((i) => responses.site_sensitivity?.[i.id]).length +
+    ESSF_COMPLETENESS.questions.filter((q) => responses.completeness?.[q.id]).length +
+    ESSF_CHECKLIST.groups.reduce(
+      (s, g) => s + g.questions.filter((q) => responses.checklist?.[q.id]).length,
+      0,
+    );
+  const pct = totalQuestions ? Math.round((filled / totalQuestions) * 100) : 0;
+
   return (
     <div className="space-y-6">
+      <Card className="bg-gradient-to-r from-tint-success/50 to-background border-success/20">
+        <CardContent className="pt-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2 font-medium">
+              <ListChecks className="h-4 w-4 text-success" />
+              Form progress
+            </span>
+            <span className="tabular-nums text-muted-foreground">
+              {filled} / {totalQuestions} answered · {pct}%
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-success transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <SiteSensitivityTable responses={responses} onChange={onChange} readOnly={readOnly} />
       <CompletenessTable responses={responses} onChange={onChange} readOnly={readOnly} />
       <ChecklistTable responses={responses} onChange={onChange} readOnly={readOnly} />
@@ -36,7 +80,7 @@ export function EssfFormRenderer({ responses, onChange, readOnly = false }: Essf
 }
 
 // ----------------------------------------------------------------------------
-// Site Sensitivity — radio per row (Low / Medium / High)
+// Site Sensitivity — clickable descriptor cards, color-coded by rating
 // ----------------------------------------------------------------------------
 function SiteSensitivityTable({ responses, onChange, readOnly }: EssfFormRendererProps) {
   const setRating = (issueId: string, rating: 'low' | 'medium' | 'high') => {
@@ -44,6 +88,11 @@ function SiteSensitivityTable({ responses, onChange, readOnly }: EssfFormRendere
       ...responses,
       site_sensitivity: { ...(responses.site_sensitivity ?? {}), [issueId]: rating },
     });
+  };
+  const CELL_STYLES: Record<'low' | 'medium' | 'high', { selected: string }> = {
+    low:    { selected: 'border-success bg-success/10 ring-2 ring-success/20' },
+    medium: { selected: 'border-warning bg-warning/10 ring-2 ring-warning/20' },
+    high:   { selected: 'border-destructive bg-destructive/5 ring-2 ring-destructive/20' },
   };
   return (
     <Card>
@@ -82,10 +131,10 @@ function SiteSensitivityTable({ responses, onChange, readOnly }: EssfFormRendere
                             disabled={readOnly}
                             onClick={() => !readOnly && setRating(issue.id, rating)}
                             className={cn(
-                              'w-full text-left text-xs p-2 rounded border transition-colors',
+                              'w-full text-left text-xs p-2 rounded border transition-all',
                               isSelected
-                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                                : 'border-input hover:border-primary/40',
+                                ? CELL_STYLES[rating].selected
+                                : 'border-input hover:border-primary/40 hover:bg-muted/40',
                               readOnly && 'opacity-70 cursor-default',
                             )}
                           >
@@ -94,8 +143,14 @@ function SiteSensitivityTable({ responses, onChange, readOnly }: EssfFormRendere
                         </td>
                       );
                     })}
-                    <td className="py-3 pr-3 text-center font-medium capitalize">
-                      {selected ?? '—'}
+                    <td className="py-3 pr-3 text-center">
+                      {selected ? (
+                        <StatusPill tone={RATING_TONE[selected]} active onSelect={() => {}} disabled showIconWhenActive={false}>
+                          {selected}
+                        </StatusPill>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -109,7 +164,7 @@ function SiteSensitivityTable({ responses, onChange, readOnly }: EssfFormRendere
 }
 
 // ----------------------------------------------------------------------------
-// Completeness — Y/N/N-A per question
+// Completeness — Y / N / N-A colored pills
 // ----------------------------------------------------------------------------
 function CompletenessTable({ responses, onChange, readOnly }: EssfFormRendererProps) {
   const setAnswer = (qId: string, val: 'yes' | 'no' | 'n_a') => {
@@ -118,6 +173,7 @@ function CompletenessTable({ responses, onChange, readOnly }: EssfFormRendererPr
       completeness: { ...(responses.completeness ?? {}), [qId]: val },
     });
   };
+  const LABELS = { yes: 'Yes', no: 'No', n_a: 'N/A' } as const;
   return (
     <Card>
       <CardHeader>
@@ -127,45 +183,36 @@ function CompletenessTable({ responses, onChange, readOnly }: EssfFormRendererPr
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr className="border-b">
-              <th className="py-2 pr-3 w-[70%]">Item</th>
-              <th className="py-2 px-2 text-center w-[10%]">Yes</th>
-              <th className="py-2 px-2 text-center w-[10%]">No</th>
-              <th className="py-2 px-2 text-center w-[10%]">N/A</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ESSF_COMPLETENESS.questions.map((q) => {
-              const selected = responses.completeness?.[q.id];
-              return (
-                <tr key={q.id} className="border-b">
-                  <td className="py-2 pr-3">{q.label}</td>
+        <ul className="divide-y">
+          {ESSF_COMPLETENESS.questions.map((q) => {
+            const selected = responses.completeness?.[q.id];
+            return (
+              <li key={q.id} className="py-3 flex items-start gap-3 justify-between">
+                <span className="text-sm flex-1">{q.label}</span>
+                <div className="flex gap-1.5 shrink-0">
                   {(['yes', 'no', 'n_a'] as const).map((opt) => (
-                    <td key={opt} className="text-center py-2">
-                      <input
-                        type="radio"
-                        name={`comp-${q.id}`}
-                        disabled={readOnly}
-                        checked={selected === opt}
-                        onChange={() => setAnswer(q.id, opt)}
-                        className="cursor-pointer accent-primary disabled:cursor-default"
-                      />
-                    </td>
+                    <StatusPill
+                      key={opt}
+                      tone={YN_TONE[opt]}
+                      active={selected === opt}
+                      disabled={readOnly}
+                      onSelect={() => setAnswer(q.id, opt)}
+                    >
+                      {LABELS[opt]}
+                    </StatusPill>
                   ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </CardContent>
     </Card>
   );
 }
 
 // ----------------------------------------------------------------------------
-// 24-q Checklist — Y/N grouped A/B/C/D
+// 24-q Checklist — Y/N colored pills, grouped A/B/C/D
 // ----------------------------------------------------------------------------
 function ChecklistTable({ responses, onChange, readOnly }: EssfFormRendererProps) {
   const setAnswer = (qId: string, val: 'yes' | 'no') => {
@@ -183,41 +230,50 @@ function ChecklistTable({ responses, onChange, readOnly }: EssfFormRendererProps
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {ESSF_CHECKLIST.groups.map((group) => (
-          <div key={group.id} className="border rounded-md p-3 bg-muted/30">
-            <Label className="text-sm font-semibold">
-              {group.id}. {group.title}
-            </Label>
-            <table className="w-full text-sm mt-3">
-              <tbody>
+        {ESSF_CHECKLIST.groups.map((group) => {
+          const groupFilled = group.questions.filter((q) => responses.checklist?.[q.id]).length;
+          return (
+            <div key={group.id} className="border rounded-md p-3 bg-muted/30">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-sm font-semibold">
+                  {group.id}. {group.title}
+                </Label>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {groupFilled} / {group.questions.length}
+                </span>
+              </div>
+              <ul className="mt-3 divide-y">
                 {group.questions.map((q) => {
                   const selected = responses.checklist?.[q.id];
                   return (
-                    <tr key={q.id} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3">{q.label}</td>
-                      {(['yes', 'no'] as const).map((opt) => (
-                        <td key={opt} className="text-center py-2 w-[60px]">
-                          <label className="inline-flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`chk-${q.id}`}
-                              disabled={readOnly}
-                              checked={selected === opt}
-                              onChange={() => setAnswer(q.id, opt)}
-                              className="accent-primary disabled:cursor-default"
-                            />
-                            <span className="text-xs capitalize">{opt}</span>
-                          </label>
-                        </td>
-                      ))}
-                    </tr>
+                    <li key={q.id} className="py-2 flex items-start justify-between gap-3">
+                      <span className="text-sm flex-1">{q.label}</span>
+                      <div className="flex gap-1.5 shrink-0">
+                        <StatusPill
+                          tone="success"
+                          active={selected === 'yes'}
+                          disabled={readOnly}
+                          onSelect={() => setAnswer(q.id, 'yes')}
+                        >
+                          Yes
+                        </StatusPill>
+                        <StatusPill
+                          tone="destructive"
+                          active={selected === 'no'}
+                          disabled={readOnly}
+                          onSelect={() => setAnswer(q.id, 'no')}
+                        >
+                          No
+                        </StatusPill>
+                      </div>
+                    </li>
                   );
                 })}
-              </tbody>
-            </table>
-            <p className="mt-2 text-xs italic text-muted-foreground">{group.footer}</p>
-          </div>
-        ))}
+              </ul>
+              <p className="mt-2 text-xs italic text-muted-foreground">{group.footer}</p>
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );

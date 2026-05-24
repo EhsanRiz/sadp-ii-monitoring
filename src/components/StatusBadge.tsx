@@ -1,19 +1,36 @@
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { Check, Clock, Circle, FileEdit } from 'lucide-react';
 import type { SubmissionStatus } from '@/types/database';
 
-const STATUS_LABEL: Record<SubmissionStatus, string> = {
-  draft: 'Draft',
-  submitted: 'Submitted',
-  approved: 'Approved',
-};
+const STYLES = {
+  draft:     { label: 'Draft',       cls: 'bg-info/10 text-info border-info/30',                icon: FileEdit },
+  submitted: { label: 'Submitted',   cls: 'bg-warning/15 text-warning border-warning/40',       icon: Clock },
+  approved:  { label: 'Approved',    cls: 'bg-success/15 text-success border-success/40',       icon: Check },
+  not_started: { label: 'Not started', cls: 'bg-muted text-muted-foreground border-muted-foreground/30', icon: Circle },
+} as const;
 
-const STATUS_VARIANT: Record<SubmissionStatus, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  draft: 'outline',
-  submitted: 'secondary',
-  approved: 'default',
-};
+export type StatusBadgeKind = SubmissionStatus | 'not_started';
 
-export function StatusBadge({ status }: { status: SubmissionStatus | null | undefined }) {
-  if (!status) return <Badge variant="outline">Not started</Badge>;
-  return <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>;
+/** Colored, icon-prefixed status badge. Use anywhere we surface a workflow state. */
+export function StatusBadge({
+  status,
+  className,
+}: {
+  status: SubmissionStatus | null | undefined;
+  className?: string;
+}) {
+  const kind: StatusBadgeKind = status ?? 'not_started';
+  const { label, cls, icon: Icon } = STYLES[kind];
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium',
+        cls,
+        className,
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {label}
+    </span>
+  );
 }

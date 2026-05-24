@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useEnterprise } from '@/lib/enterprises';
 import {
@@ -209,7 +210,13 @@ export function InspectionEditPage() {
                   responses: draft as Record<string, unknown>,
                   inspected_by_name: inspectedByEdit,
                 },
-                { onError: (e: Error) => setEditError(e.message) },
+                {
+                  onSuccess: () => toast.success('Draft saved'),
+                  onError: (e: Error) => {
+                    setEditError(e.message);
+                    toast.error('Save failed', { description: e.message });
+                  },
+                },
               );
             }}
           >
@@ -229,9 +236,18 @@ export function InspectionEditPage() {
                   onSuccess: () =>
                     transition.mutate(
                       { to: 'submitted', userId: user!.id },
-                      { onError: (e: Error) => setEditError(e.message) },
+                      {
+                        onSuccess: () => toast.success('Inspection submitted for approval'),
+                        onError: (e: Error) => {
+                          setEditError(e.message);
+                          toast.error('Submission failed', { description: e.message });
+                        },
+                      },
                     ),
-                  onError: (e: Error) => setEditError(e.message),
+                  onError: (e: Error) => {
+                    setEditError(e.message);
+                    toast.error('Save failed', { description: e.message });
+                  },
                 },
               );
             }}
@@ -245,7 +261,13 @@ export function InspectionEditPage() {
               setEditError(null);
               transition.mutate(
                 { to: 'approved', userId: user!.id },
-                { onError: (e: Error) => setEditError(e.message) },
+                {
+                  onSuccess: () => toast.success('Inspection approved'),
+                  onError: (e: Error) => {
+                    setEditError(e.message);
+                    toast.error('Approval failed', { description: e.message });
+                  },
+                },
               );
             }}
           >
