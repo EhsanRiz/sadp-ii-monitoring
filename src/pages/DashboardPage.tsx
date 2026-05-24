@@ -64,9 +64,12 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
     queryKey: ['dashboard-counts', orgId ?? 'my-scope'],
     queryFn: async () => {
       // All five counts in parallel. Empty .eq() chain on null orgId means
-      // RLS scopes for us (Super Admin OR own-org check).
-      const scope = (q: ReturnType<typeof supabase.from>) =>
-        orgId ? q.eq('organization_id', orgId) : q;
+      // RLS scopes for us (Super Admin OR own-org check). `any` because the
+      // chain returns a different builder shape at each step but they all
+      // expose .eq()/.in() that we need.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const scope = <T extends { eq: (...a: any[]) => any }>(q: T): T =>
+        (orgId ? q.eq('organization_id', orgId) : q) as T;
       const [total, esmpDone, m1Submitted, drillingResolved] = await Promise.all([
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true })),
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true })).in('esmp_status', ['completed_in_app', 'completed_uploaded']),

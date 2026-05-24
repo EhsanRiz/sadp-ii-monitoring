@@ -346,7 +346,7 @@ export function canApprove(role: AppRole | null): boolean {
 export function canApproveSubmission(
   role: AppRole | null,
   currentUserId: string | null,
-  submission: { filled_by: string | null; status: SubmissionStatus } | null,
+  submission: { filled_by: string | null; status: SubmissionStatus } | null | undefined,
 ): boolean {
   if (!submission) return false;
   if (submission.status !== 'submitted') return false;

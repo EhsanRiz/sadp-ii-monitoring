@@ -432,7 +432,6 @@ export interface Database {
         };
         Relationships: [];
       };
-    };
       essf_submissions: {
         Row: {
           id: string;

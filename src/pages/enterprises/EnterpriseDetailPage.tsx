@@ -33,7 +33,8 @@ const ESMP_LABEL: Record<string, string> = {
 const COMPUTED_LABEL: Record<string, string> = {
   not_started: 'Not started',
   in_progress: 'In progress',
-  ready_for_m1: 'Ready for Milestone 1',
+  complete: 'Complete (ESSF + EMMP approved)',
+  legacy_pdf: 'Legacy PDF on file',
 };
 
 export function EnterpriseDetailPage() {
@@ -455,7 +456,7 @@ export function EnterpriseDetailPage() {
             <CardContent>
               <Badge
                 variant={
-                  esmpStatus.data?.computed_status === 'ready_for_m1'
+                  esmpStatus.data?.computed_status === 'complete'
                     ? 'default'
                     : esmpStatus.data?.computed_status === 'in_progress'
                       ? 'secondary'
