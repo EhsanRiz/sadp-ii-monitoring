@@ -54,6 +54,8 @@ export type DrillingStatus =
   | 'drilled'
   | 'not_drilled';
 export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE';
+export type SubmissionStatus = 'draft' | 'submitted' | 'approved';
+export type EnterpriseEsmpComputedStatus = 'not_started' | 'in_progress' | 'complete' | 'legacy_pdf';
 
 // ---------------------------------------------------------------------------
 // Database shape — matches `supabase gen types` output
@@ -431,7 +433,202 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: { [_ in never]: never };
+      essf_submissions: {
+        Row: {
+          id: string;
+          enterprise_id: string;
+          organization_id: string;
+          schema_version: number;
+          responses: Json;
+          status: SubmissionStatus;
+          filled_by: string | null;
+          submitted_at: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          enterprise_id: string;
+          organization_id?: string;       // trigger sets it
+          schema_version?: number;
+          responses?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          enterprise_id?: string;
+          organization_id?: string;
+          schema_version?: number;
+          responses?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      emmp_templates: {
+        Row: {
+          id: string;
+          enterprise_type_ids: number[];
+          title: string;
+          version: string;
+          schema: Json;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          enterprise_type_ids: number[];
+          title: string;
+          version: string;
+          schema: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          enterprise_type_ids?: number[];
+          title?: string;
+          version?: string;
+          schema?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      emmp_submissions: {
+        Row: {
+          id: string;
+          enterprise_id: string;
+          organization_id: string;
+          template_id: string;
+          responses: Json;
+          status: SubmissionStatus;
+          filled_by: string | null;
+          submitted_at: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          enterprise_id: string;
+          organization_id?: string;       // trigger sets it
+          template_id: string;
+          responses?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          enterprise_id?: string;
+          organization_id?: string;
+          template_id?: string;
+          responses?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inspection_visits: {
+        Row: {
+          id: string;
+          enterprise_id: string;
+          organization_id: string;
+          schema_version: number;
+          inspected_by_name: string;
+          visit_date: string;
+          responses: Json;
+          status: SubmissionStatus;
+          filled_by: string | null;
+          submitted_at: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          enterprise_id: string;
+          organization_id?: string;
+          schema_version?: number;
+          inspected_by_name: string;
+          visit_date?: string;
+          responses?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          enterprise_id?: string;
+          organization_id?: string;
+          schema_version?: number;
+          inspected_by_name?: string;
+          visit_date?: string;
+          responses?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+    };
+    Views: {
+      enterprise_esmp_status: {
+        Row: {
+          enterprise_id: string;
+          organization_id: string;
+          computed_status: EnterpriseEsmpComputedStatus;
+          essf_submission_id: string | null;
+          essf_status: SubmissionStatus | null;
+          emmp_submission_id: string | null;
+          emmp_status: SubmissionStatus | null;
+          emmp_template_id: string | null;
+        };
+        Relationships: [];
+      };
+      enterprise_m1_ready: {
+        Row: {
+          enterprise_id: string;
+          organization_id: string;
+          beneficiary_short_name: string;
+          m1_ready: boolean;
+          cover_page_ready: boolean;
+          essf_status: string;
+          emmp_status: string;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       current_user_org_id: { Args: Record<string, never>; Returns: string | null };
       current_user_role: { Args: Record<string, never>; Returns: AppRole | null };
@@ -453,3 +650,9 @@ export type VillageRow = Database['public']['Tables']['villages']['Row'];
 export type EnterpriseTypeRow = Database['public']['Tables']['enterprise_types']['Row'];
 export type EnterpriseRow = Database['public']['Tables']['enterprises']['Row'];
 export type AuditLogRow = Database['public']['Tables']['audit_log']['Row'];
+export type EssfSubmissionRow = Database['public']['Tables']['essf_submissions']['Row'];
+export type EmmpTemplateRow = Database['public']['Tables']['emmp_templates']['Row'];
+export type EmmpSubmissionRow = Database['public']['Tables']['emmp_submissions']['Row'];
+export type InspectionVisitRow = Database['public']['Tables']['inspection_visits']['Row'];
+export type EnterpriseEsmpStatusRow = Database['public']['Views']['enterprise_esmp_status']['Row'];
+export type EnterpriseM1ReadyRow = Database['public']['Views']['enterprise_m1_ready']['Row'];

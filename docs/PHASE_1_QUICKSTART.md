@@ -31,7 +31,7 @@ docker --version
 
 ```bash
 git clone https://github.com/EhsanRiz/sadp-ii-monitoring.git sadp-ii-monitoring
-cd sadp-ii
+cd sadp-ii-monitoring
 git checkout -b phase-1-redesign
 ```
 

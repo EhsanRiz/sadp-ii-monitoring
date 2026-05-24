@@ -38,8 +38,12 @@ find . -type f -name "*.pyc" -not -path "./node_modules/*" -delete 2>/dev/null |
 # ----------------------------------------------------------------------------
 # 3. git init + first commit
 # ----------------------------------------------------------------------------
-if [ ! -d .git ] || [ ! -f .git/HEAD ]; then
-  echo "Initialising git repo..."
+# A previous partial init may have left a half-finished .git with orphan tmp
+# objects from the sandbox (which couldn't finalise writes through iCloud). If
+# .git/HEAD is missing OR there are tmp_obj_* files lying around, start fresh.
+if [ ! -f .git/HEAD ] || find .git/objects -name 'tmp_obj_*' 2>/dev/null | grep -q .; then
+  echo "Re-initialising git repo (previous attempt was incomplete)..."
+  rm -rf .git
   git init -q
 fi
 

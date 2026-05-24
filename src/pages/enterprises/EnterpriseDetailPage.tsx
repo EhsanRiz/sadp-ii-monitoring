@@ -3,6 +3,13 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnterprise, useEnterpriseHistory, isCoverPageReady } from '@/lib/enterprises';
 import { useCommunityCouncils, useDistricts, useEnterpriseTypes, useResourceCenters, useVillages } from '@/lib/catalogs';
+import {
+  useEssfSubmission,
+  useEmmpSubmission,
+  useEmmpTemplateForType,
+  useInspectionVisits,
+  useEnterpriseEsmpStatus,
+} from '@/lib/esmp';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,8 +18,9 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { StatusBadge } from '@/components/StatusBadge';
 import type { EnterpriseRow } from '@/types/database';
-import { FileText, Upload } from 'lucide-react';
+import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown } from 'lucide-react';
 import { formatDateDMY, formatLSL } from '@/lib/utils';
 
 const ESMP_LABEL: Record<string, string> = {
@@ -20,6 +28,12 @@ const ESMP_LABEL: Record<string, string> = {
   pending_app_completion: 'In app, in progress',
   completed_uploaded: 'Uploaded (scanned)',
   completed_in_app: 'Completed in app',
+};
+
+const COMPUTED_LABEL: Record<string, string> = {
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  ready_for_m1: 'Ready for Milestone 1',
 };
 
 export function EnterpriseDetailPage() {
@@ -33,8 +47,16 @@ export function EnterpriseDetailPage() {
   const { data: history } = useEnterpriseHistory(id);
   const qc = useQueryClient();
 
+  // Phase-2 ESMP reads
+  const essf = useEssfSubmission(id);
+  const emmpTemplate = useEmmpTemplateForType(enterprise?.enterprise_type_id);
+  const emmp = useEmmpSubmission(id);
+  const inspections = useInspectionVisits(id);
+  const esmpStatus = useEnterpriseEsmpStatus(id);
+
   const [draft, setDraft] = useState<Partial<EnterpriseRow>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [showLegacy, setShowLegacy] = useState(false);
 
   useEffect(() => {
     if (enterprise) setDraft(enterprise);
@@ -421,76 +443,257 @@ export function EnterpriseDetailPage() {
         </TabsContent>
 
         <TabsContent value="esmp" className="space-y-4">
-          <Card>
-            <CardHeader>
+          {/* Overall computed status — green when ESSF + EMMP are both approved */}
+          <Card className="bg-muted/30">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base">ESMP status</CardTitle>
               <CardDescription>
-                Phase 1 supports four states. Digital ESMP forms land in Phase 2.
+                Computed from the three sub-forms below. M&E Officer or Team Leader must
+                approve each one. Approval is locked to a different user than the submitter.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Badge variant="outline">
-                  Current: {ESMP_LABEL[enterprise.esmp_status] ?? enterprise.esmp_status}
-                </Badge>
-                {enterprise.esmp_uploaded_pdf_url && (
-                  <a
-                    href={enterprise.esmp_uploaded_pdf_url}
-                    target="_blank"
-                    rel="noopener"
-                    className="text-sm text-primary hover:underline"
-                  >
-                    View uploaded PDF
-                  </a>
+            <CardContent>
+              <Badge
+                variant={
+                  esmpStatus.data?.computed_status === 'ready_for_m1'
+                    ? 'default'
+                    : esmpStatus.data?.computed_status === 'in_progress'
+                      ? 'secondary'
+                      : 'outline'
+                }
+              >
+                {COMPUTED_LABEL[esmpStatus.data?.computed_status ?? 'not_started']}
+              </Badge>
+            </CardContent>
+          </Card>
+
+          {/* 1. ESSF */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-primary" />
+                    Environmental & Social Screening Form (ESSF)
+                  </CardTitle>
+                  <CardDescription>
+                    One per enterprise. Identifies site sensitivity, project completeness, and a
+                    24-question checklist.
+                  </CardDescription>
+                </div>
+                <StatusBadge status={essf.data?.status ?? null} />
+              </div>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <div className="space-y-0.5">
+                {essf.data?.submitted_at && (
+                  <div>Submitted: {formatDateDMY(essf.data.submitted_at)}</div>
                 )}
+                {essf.data?.approved_at && (
+                  <div>Approved: {formatDateDMY(essf.data.approved_at)}</div>
+                )}
+                {!essf.data && <div>Not yet started.</div>}
               </div>
-
-              <div className="space-y-1.5">
-                <Label>Update status</Label>
-                <Select
-                  value={draft.esmp_status ?? enterprise.esmp_status}
-                  onValueChange={(v) =>
-                    set('esmp_status', v as EnterpriseRow['esmp_status'])
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ESMP_LABEL).map(([k, label]) => (
-                      <SelectItem key={k} value={k}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
-                Save status
+              <Button asChild size="sm" variant="outline">
+                <Link to={`/enterprises/${enterprise.id}/essf`}>
+                  {essf.data ? 'Open' : 'Start ESSF'}
+                  <ChevronRight className="ml-1 h-3 w-3" />
+                </Link>
               </Button>
+            </CardContent>
+          </Card>
 
-              <div className="border-t pt-4 space-y-2">
-                <Label>Upload scanned ESMP (PDF)</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) uploadEsmp.mutate(f);
-                    }}
-                  />
-                  {uploadEsmp.isPending && (
-                    <span className="text-xs text-muted-foreground inline-flex items-center">
-                      <Upload className="mr-1 h-3 w-3" /> Uploading…
-                    </span>
+          {/* 2. EMMP */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileCheck2 className="h-4 w-4 text-primary" />
+                    Environmental Management & Monitoring Plan (EMMP)
+                  </CardTitle>
+                  <CardDescription>
+                    {emmpTemplate.data
+                      ? `Template: ${emmpTemplate.data.title}`
+                      : emmpTemplate.isLoading
+                        ? 'Loading template…'
+                        : 'No in-app template for this enterprise type (use Legacy upload below).'}
+                  </CardDescription>
+                </div>
+                <StatusBadge status={emmp.data?.status ?? null} />
+              </div>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <div className="space-y-0.5">
+                {emmp.data?.submitted_at && (
+                  <div>Submitted: {formatDateDMY(emmp.data.submitted_at)}</div>
+                )}
+                {emmp.data?.approved_at && (
+                  <div>Approved: {formatDateDMY(emmp.data.approved_at)}</div>
+                )}
+                {!emmp.data && <div>Not yet started.</div>}
+              </div>
+              <Button asChild size="sm" variant="outline" disabled={!emmpTemplate.data}>
+                <Link to={`/enterprises/${enterprise.id}/emmp`}>
+                  {emmp.data ? 'Open' : 'Start EMMP'}
+                  <ChevronRight className="ml-1 h-3 w-3" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* 3. Inspection visits */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-primary" />
+                    Compliance monitoring visits
+                  </CardTitle>
+                  <CardDescription>
+                    21-aspect checklist across three phases (pre-construction, construction,
+                    operation). One row per site visit; the most recent one feeds the overall
+                    ESMP status.
+                  </CardDescription>
+                </div>
+                <Button asChild size="sm">
+                  <Link to={`/enterprises/${enterprise.id}/inspections/new`}>
+                    <Plus className="mr-1 h-3 w-3" />
+                    New visit
+                  </Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {inspections.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : inspections.data && inspections.data.length > 0 ? (
+                <ul className="divide-y text-sm">
+                  {inspections.data.map((v) => (
+                    <li
+                      key={v.id}
+                      className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {formatDateDMY(v.visit_date)} ·{' '}
+                          <span className="text-muted-foreground font-normal">
+                            {v.inspected_by_name}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {v.submitted_at && `Submitted ${formatDateDMY(v.submitted_at)}`}
+                          {v.submitted_at && v.approved_at && ' · '}
+                          {v.approved_at && `Approved ${formatDateDMY(v.approved_at)}`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={v.status} />
+                        <Button asChild size="sm" variant="outline">
+                          <Link to={`/enterprises/${enterprise.id}/inspections/${v.id}`}>
+                            Open
+                            <ChevronRight className="ml-1 h-3 w-3" />
+                          </Link>
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No visits recorded yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Legacy: scanned-PDF upload (collapsed by default) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <button
+                type="button"
+                onClick={() => setShowLegacy((s) => !s)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <div>
+                  <CardTitle className="text-sm">Legacy: scanned-PDF upload</CardTitle>
+                  <CardDescription className="text-xs">
+                    Pre-Phase-2 workflow. Use this only if the in-app forms are not yet
+                    suitable for a given enterprise (e.g. Fish Production while its EMMP
+                    template is being prepared).
+                  </CardDescription>
+                </div>
+                {showLegacy ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+            </CardHeader>
+            {showLegacy && (
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline">
+                    Current: {ESMP_LABEL[enterprise.esmp_status] ?? enterprise.esmp_status}
+                  </Badge>
+                  {enterprise.esmp_uploaded_pdf_url && (
+                    <a
+                      href={enterprise.esmp_uploaded_pdf_url}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      View uploaded PDF
+                    </a>
                   )}
                 </div>
-                {uploadEsmp.error && (
-                  <p className="text-sm text-destructive">{(uploadEsmp.error as Error).message}</p>
-                )}
-              </div>
-            </CardContent>
+
+                <div className="space-y-1.5">
+                  <Label>Update legacy status</Label>
+                  <Select
+                    value={draft.esmp_status ?? enterprise.esmp_status}
+                    onValueChange={(v) =>
+                      set('esmp_status', v as EnterpriseRow['esmp_status'])
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(ESMP_LABEL).map(([k, label]) => (
+                        <SelectItem key={k} value={k}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+                  Save status
+                </Button>
+
+                <div className="border-t pt-4 space-y-2">
+                  <Label>Upload scanned ESMP (PDF)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) uploadEsmp.mutate(f);
+                      }}
+                    />
+                    {uploadEsmp.isPending && (
+                      <span className="text-xs text-muted-foreground inline-flex items-center">
+                        <Upload className="mr-1 h-3 w-3" /> Uploading…
+                      </span>
+                    )}
+                  </div>
+                  {uploadEsmp.error && (
+                    <p className="text-sm text-destructive">{(uploadEsmp.error as Error).message}</p>
+                  )}
+                </div>
+              </CardContent>
+            )}
           </Card>
         </TabsContent>
 

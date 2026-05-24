@@ -9,6 +9,9 @@ import { EnterprisesListPage } from '@/pages/enterprises/EnterprisesListPage';
 import { EnterpriseDetailPage } from '@/pages/enterprises/EnterpriseDetailPage';
 import { NewEnterprisePage } from '@/pages/enterprises/NewEnterprisePage';
 import { CoverPagePdfRoute } from '@/pages/enterprises/CoverPagePdfRoute';
+import { EssfEditPage } from '@/pages/enterprises/EssfEditPage';
+import { EmmpEditPage } from '@/pages/enterprises/EmmpEditPage';
+import { InspectionEditPage } from '@/pages/enterprises/InspectionEditPage';
 import { OrganizationsAdminPage } from '@/pages/admin/OrganizationsAdminPage';
 import { UsersAdminPage } from '@/pages/admin/UsersAdminPage';
 import { DistrictsAdminPage } from '@/pages/admin/DistrictsAdminPage';
@@ -45,6 +48,10 @@ export default function App() {
         <Route path="/enterprises" element={<EnterprisesListPage />} />
         <Route path="/enterprises/new" element={<NewEnterprisePage />} />
         <Route path="/enterprises/:id" element={<EnterpriseDetailPage />} />
+        <Route path="/enterprises/:id/essf" element={<EssfEditPage />} />
+        <Route path="/enterprises/:id/emmp" element={<EmmpEditPage />} />
+        <Route path="/enterprises/:id/inspections/new" element={<InspectionEditPage />} />
+        <Route path="/enterprises/:id/inspections/:visitId" element={<InspectionEditPage />} />
       </Route>
 
       {/* Cover-page PDF — auth required, but renders raw PDF (not inside AppShell) */}

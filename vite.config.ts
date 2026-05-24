@@ -41,6 +41,9 @@ export default defineConfig({
       workbox: {
         // Don't precache uploaded user PDFs / images.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Phase 2 grew the JS bundle past the 2 MiB default. Bump precache ceiling
+        // to 5 MiB so the SW still picks up the main chunk.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/,
