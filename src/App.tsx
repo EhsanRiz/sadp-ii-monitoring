@@ -10,6 +10,7 @@ import { EnterprisesListPage } from '@/pages/enterprises/EnterprisesListPage';
 import { EnterpriseDetailPage } from '@/pages/enterprises/EnterpriseDetailPage';
 import { NewEnterprisePage } from '@/pages/enterprises/NewEnterprisePage';
 import { CoverPagePdfRoute } from '@/pages/enterprises/CoverPagePdfRoute';
+import { EsmpPdfRoute } from '@/pages/enterprises/EsmpPdfRoute';
 import { EssfEditPage } from '@/pages/enterprises/EssfEditPage';
 import { EmmpEditPage } from '@/pages/enterprises/EmmpEditPage';
 import { InspectionEditPage } from '@/pages/enterprises/InspectionEditPage';
@@ -68,6 +69,14 @@ export default function App() {
         element={
           <RoleGate>
             <CoverPagePdfRoute />
+          </RoleGate>
+        }
+      />
+      <Route
+        path="/enterprises/:id/esmp.pdf"
+        element={
+          <RoleGate>
+            <EsmpPdfRoute />
           </RoleGate>
         }
       />

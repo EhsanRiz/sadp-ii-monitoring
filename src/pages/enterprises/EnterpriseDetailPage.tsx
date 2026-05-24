@@ -168,6 +168,14 @@ export function EnterpriseDetailPage() {
               </Link>
             </Button>
           )}
+          {essf.data && (
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/enterprises/${enterprise.id}/esmp.pdf`} target="_blank" rel="noopener">
+                <FileText className="mr-2 h-4 w-4" />
+                ESMP report
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 

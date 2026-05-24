@@ -60,32 +60,42 @@ function dimensionTone(kind: 'cover' | 'esmp' | 'm1' | 'drilling' | 'biz', e: En
   }
 }
 
-const SEG_CLASS: Record<'done' | 'progress' | 'idle', string> = {
+const DOT_CLASS: Record<'done' | 'progress' | 'idle', string> = {
   done: 'bg-success',
   progress: 'bg-warning',
-  idle: 'bg-muted',
+  idle: 'bg-muted-foreground/25',
 };
 
-function ProgressSegments({ e }: { e: EnterpriseRow }) {
-  const segments = [
-    { key: 'cover', label: 'Cover-page registration' },
-    { key: 'esmp', label: 'ESMP' },
-    { key: 'biz', label: 'Business plan' },
-    { key: 'm1', label: 'Milestone 1 report' },
-    { key: 'drilling', label: 'Drilling' },
-  ] as const;
+const DIMENSIONS = [
+  { key: 'cover',    label: 'Cover-page registration' },
+  { key: 'esmp',     label: 'ESMP' },
+  { key: 'biz',      label: 'Business plan' },
+  { key: 'm1',       label: 'Milestone 1 report' },
+  { key: 'drilling', label: 'Drilling' },
+] as const;
+
+/**
+ * Compact five-dimension status row: one small dot per dimension, color-coded.
+ * green=done, amber=in-progress, muted-grey=not-started. Hover any dot for the
+ * dimension name + status.
+ */
+function ProgressDots({ e }: { e: EnterpriseRow }) {
+  const summary = DIMENSIONS.map((d) => dimensionTone(d.key, e));
+  const doneCount = summary.filter((t) => t === 'done').length;
   return (
-    <div className="flex items-center gap-1" aria-label="Progress across five dimensions">
-      {segments.map((s) => {
-        const tone = dimensionTone(s.key, e);
-        return (
+    <div className="flex items-center gap-2" aria-label={`${doneCount} of ${DIMENSIONS.length} dimensions complete`}>
+      <div className="flex items-center gap-1">
+        {DIMENSIONS.map((d, i) => (
           <span
-            key={s.key}
-            title={`${s.label}: ${tone}`}
-            className={cn('h-1.5 flex-1 rounded-full', SEG_CLASS[tone])}
+            key={d.key}
+            title={`${d.label}: ${summary[i]}`}
+            className={cn('h-2 w-2 rounded-full', DOT_CLASS[summary[i]])}
           />
-        );
-      })}
+        ))}
+      </div>
+      <span className="text-[10px] text-muted-foreground tabular-nums">
+        {doneCount} / {DIMENSIONS.length}
+      </span>
     </div>
   );
 }
@@ -336,7 +346,7 @@ export function EnterprisesListPage() {
                         ESMP: {ESMP_LABEL[e.esmp_status] ?? e.esmp_status}
                       </Badge>
                     </div>
-                    <ProgressSegments e={e} />
+                    <ProgressDots e={e} />
                   </CardContent>
                 </Card>
               </Link>
@@ -381,7 +391,7 @@ export function EnterprisesListPage() {
                         </td>
                         <td className="py-2 pr-4 text-muted-foreground">R{e.round_id}</td>
                         <td className="py-2 pr-4 w-[180px]">
-                          <ProgressSegments e={e} />
+                          <ProgressDots e={e} />
                         </td>
                         <td className="py-2 pr-4">
                           <Badge variant={ESMP_VARIANT[e.esmp_status] ?? 'outline'} className="text-[10px]">
