@@ -95,6 +95,48 @@ export function useEnterpriseHistory(id: string | undefined) {
   });
 }
 
+// ============================================================================
+// Storage metadata for the legacy ESMP PDF upload (bucket: esmp-pdfs)
+// ============================================================================
+export interface UploadedPdfMeta {
+  /** Storage object name, e.g. "<enterpriseId>.pdf" */
+  name: string;
+  /** Bytes */
+  size: number;
+  /** ISO date string — when the file was last replaced */
+  uploaded_at: string;
+}
+
+export function useUploadedEsmpPdfMeta(enterpriseId: string | undefined, present: boolean) {
+  return useQuery({
+    queryKey: ['esmp-pdf-meta', enterpriseId],
+    queryFn: async (): Promise<UploadedPdfMeta | null> => {
+      if (!enterpriseId) return null;
+      const name = `${enterpriseId}.pdf`;
+      const { data, error } = await supabase.storage
+        .from('esmp-pdfs')
+        .list('', { search: name, limit: 1 });
+      if (error) throw error;
+      const row = data?.find((d) => d.name === name);
+      if (!row) return null;
+      const meta = (row.metadata ?? {}) as { size?: number };
+      return {
+        name,
+        size: meta.size ?? 0,
+        uploaded_at: row.updated_at ?? row.created_at ?? new Date().toISOString(),
+      };
+    },
+    enabled: !!enterpriseId && present,
+  });
+}
+
+/** Bytes → "5.1 MB" / "248 KB" / "812 B" */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 /**
  * Check whether an enterprise has every cover-page-required field set —
  * mirrors the CHECK constraint in migration 060. Used to enable the

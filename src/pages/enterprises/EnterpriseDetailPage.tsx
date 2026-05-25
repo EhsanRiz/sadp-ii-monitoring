@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { useEnterprise, useEnterpriseHistory, isCoverPageReady } from '@/lib/enterprises';
+import {
+  useEnterprise,
+  useEnterpriseHistory,
+  isCoverPageReady,
+  useUploadedEsmpPdfMeta,
+  formatBytes,
+} from '@/lib/enterprises';
 import { useCommunityCouncils, useDistricts, useEnterpriseTypes, useResourceCenters, useVillages } from '@/lib/catalogs';
 import {
   useEssfSubmission,
@@ -78,6 +84,7 @@ export function EnterpriseDetailPage() {
   const [showLegacy, setShowLegacy] = useState(false);
   const [lastExtract, setLastExtract] = useState<ExtractPdfResult | null>(null);
   const extract = useExtractEsmpPdf(id ?? '');
+  const pdfMeta = useUploadedEsmpPdfMeta(id, !!enterprise?.esmp_uploaded_pdf_url);
 
   useEffect(() => {
     if (enterprise) setDraft(enterprise);
@@ -745,17 +752,43 @@ export function EnterpriseDetailPage() {
                   <Badge variant="outline">
                     Current: {ESMP_LABEL[enterprise.esmp_status] ?? enterprise.esmp_status}
                   </Badge>
-                  {enterprise.esmp_uploaded_pdf_url && (
-                    <a
-                      href={enterprise.esmp_uploaded_pdf_url}
-                      target="_blank"
-                      rel="noopener"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      View uploaded PDF
-                    </a>
-                  )}
                 </div>
+
+                {/* Uploaded-PDF file card. Original filename isn't preserved on
+                    upload (file is stored as <enterpriseId>.pdf), so we
+                    construct a sensible display name from the beneficiary and
+                    show storage metadata (size + last-updated) to make it
+                    obvious what's actually on file.                          */}
+                {enterprise.esmp_uploaded_pdf_url && (
+                  <a
+                    href={enterprise.esmp_uploaded_pdf_url}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="rounded-md bg-primary/10 p-2 shrink-0">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        ESMP — {enterprise.beneficiary_short_name}.pdf
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {pdfMeta.isLoading ? (
+                          'Loading file info…'
+                        ) : pdfMeta.data ? (
+                          <>
+                            {formatBytes(pdfMeta.data.size)} · Uploaded{' '}
+                            {formatDateDMY(pdfMeta.data.uploaded_at)}
+                          </>
+                        ) : (
+                          'PDF on file'
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-primary shrink-0">Open ↗</span>
+                  </a>
+                )}
 
                 {/* ---------- Auto-extract ESMP responses from the PDF ----------
                     Calls extract-esmp-pdf edge function which sends the PDF to
