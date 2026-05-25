@@ -387,10 +387,11 @@ export function useExtractEsmpPdf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<ExtractPdfResult> => {
-      // NOTE: deployed under "-v2" slug because the original extract-esmp-pdf
-      // slot got into a stuck state after a partial first deploy. The two
-      // function names are otherwise interchangeable.
-      const { data, error } = await supabase.functions.invoke('extract-esmp-pdf-v2', {
+      // NOTE: deployed under "-v3" slug. -v2 carries the same code logic but
+      // an older system prompt that under-detected ticks (they sit OUTSIDE
+      // the printed checkbox on these forms, not inside it). v3 has the
+      // corrected prompt. Earlier slugs cannot be re-deployed cleanly.
+      const { data, error } = await supabase.functions.invoke('extract-esmp-pdf-v3', {
         body: { enterpriseId },
       });
       if (error) throw error;

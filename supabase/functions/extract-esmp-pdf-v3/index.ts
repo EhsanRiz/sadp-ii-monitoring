@@ -227,7 +227,15 @@ The ESMP document has two parts:
   - ESSF (Environmental & Social Screening Form): pages with site sensitivity table, completeness Y/N/NA table, and a 24-question checklist.
   - EMMP (Environmental Management & Monitoring Plan): landscape table with rows per activity, listing impacts/mitigations/monitoring items as checkboxes plus three free-text columns (Person to Implement, Person to Monitor, Time Frame).
 
-For checkboxes, a tick / X / cross / circle inside the box means SELECTED. An empty or struck-through box means NOT selected. When the printed text near a box has been highlighted or underlined, that also counts as SELECTED.
+CRITICAL — checkbox detection on these printed forms:
+
+Every selectable item in the EMMP impacts/mitigations/monitoring columns is printed with a small empty square (☐) in front of its text. The field supervisor selects an item by drawing a handwritten tick / X / cross / slash. On these particular SADP-II forms, the handwritten mark almost NEVER lands inside the printed square — it usually appears OUTSIDE and slightly LEFT of the box, in a selection gutter between the cell's left border and the printed square. Sometimes it overlaps the edge of the box; sometimes it sits in clean whitespace to the left.
+
+When deciding if an item is selected, look at the ENTIRE row of that item across the whole cell, not just the inside of the printed square. ANY visible handwritten mark — ✓, check, X, cross, diagonal slash, line, dot, filled circle, scribble — in line with that item's row counts as SELECTED. The printed square will almost always remain empty even when the item IS selected.
+
+Bias toward over-detection of ticks in the impacts/mitigations/monitoring columns. A human reviews every draft before approval, so false positives are corrected easily. False negatives — missing a real tick — force the reviewer to re-tick by hand, which defeats the point of auto-extraction.
+
+For the ESSF Yes/No/NA columns (sections 2 and 3), the mark is usually a single tick in one of the three boxes and is much closer to the boxes themselves; treat those normally.
 
 For the EMMP, the THREE trailing free-text columns may contain "N/A" or "NOT APPLICABLE" or be empty — in any of those cases, return an empty string for that cell.`;
 
