@@ -401,11 +401,13 @@ export function useExtractEsmpPdf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<ExtractPdfResult> => {
-      // NOTE: deployed under "-v3" slug. -v2 carries the same code logic but
-      // an older system prompt that under-detected ticks (they sit OUTSIDE
-      // the printed checkbox on these forms, not inside it). v3 has the
-      // corrected prompt. Earlier slugs cannot be re-deployed cleanly.
-      const { data, error } = await supabase.functions.invoke('extract-esmp-pdf-v3', {
+      // NOTE: deployed under "-v4" slug. -v3 worked but used a positional
+      // ${rowId}.${prefix}${i} key scheme that drifted out of sync with the
+      // schema's 1-indexed item ids — extracted ticks didn't show up in
+      // the form (which keys by item.id). v4 tells Claude to use item.id
+      // verbatim and validates returned keys against the template.
+      // Earlier slugs cannot be re-deployed cleanly.
+      const { data, error } = await supabase.functions.invoke('extract-esmp-pdf-v4', {
         body: { enterpriseId },
       });
       // supabase-js wraps non-2xx responses as a FunctionsHttpError whose

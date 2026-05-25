@@ -736,9 +736,13 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
                     ''
                   ).trim();
 
-                  const impactList = renderItems(row.impacts, row.id, 'i', r);
-                  const mitigList = renderItems(row.mitigations, row.id, 'm', r);
-                  const monList = renderItems(row.monitoring, row.id, 'n', r);
+                  // Keys are item.id directly — the SAME scheme the form
+                  // reader/writer uses. Earlier versions used a positional
+                  // ${rowId}.${prefix}${i} scheme that drifted out of sync
+                  // with the schema's 1-indexed .m1/.m2 ids.
+                  const impactList = renderItems(row.impacts, r);
+                  const mitigList = renderItems(row.mitigations, r);
+                  const monList = renderItems(row.monitoring, r);
 
                   const zebra = idx % 2 === 1 ? { backgroundColor: COLORS.zebra } : {};
                   return (
@@ -853,19 +857,20 @@ function Check({ size = 10, color = '#0a6b2c' }: { size?: number; color?: string
  * checkboxes: a filled-tick box for selected items, an empty box for the
  * rest. Matches the look of the scanned reference templates where every
  * option is preceded by a square that the field supervisor ticks.
+ *
+ * Keys are item.id directly. EmmpFormRenderer writes responses keyed by
+ * item.id, so the PDF must read them by the same key to avoid an
+ * off-by-one drift.
  */
 function renderItems(
   items: Array<{ id: string; label: string }>,
-  rowId: string,
-  prefix: 'i' | 'm' | 'n',
   responses: Record<string, unknown>,
 ): React.ReactNode {
   if (!items || items.length === 0) {
     return null; // caller decides what to do — see renderEmmpRow's NOT APPLICABLE logic
   }
-  return items.map((item, i) => {
-    const key = `${rowId}.${prefix}${i}`;
-    const checked = responses[key] === true;
+  return items.map((item) => {
+    const checked = responses[item.id] === true;
     return (
       <View key={item.id} style={styles.emmpItemRow}>
         <View style={styles.emmpItemMark}>

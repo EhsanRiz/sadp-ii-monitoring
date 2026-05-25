@@ -878,7 +878,7 @@ export function EnterpriseDetailPage() {
                           </span>
                           <div className="mt-1.5">
                             <Button asChild size="sm" variant="outline" className="h-7 text-xs">
-                              <Link to={`/enterprises/${id}/essf/edit`}>
+                              <Link to={`/enterprises/${id}/essf`}>
                                 Go to ESSF to reopen →
                               </Link>
                             </Button>
@@ -955,11 +955,11 @@ export function EnterpriseDetailPage() {
                         )}
                         <div className="flex gap-2 pt-1">
                           <Button asChild size="sm">
-                            <Link to={`/enterprises/${id}/essf/edit`}>Review ESSF →</Link>
+                            <Link to={`/enterprises/${id}/essf`}>Review ESSF →</Link>
                           </Button>
                           {lastExtract.emmp.status === 'imported' && (
                             <Button asChild size="sm" variant="outline">
-                              <Link to={`/enterprises/${id}/emmp/edit`}>Review EMMP →</Link>
+                              <Link to={`/enterprises/${id}/emmp`}>Review EMMP →</Link>
                             </Button>
                           )}
                         </div>
