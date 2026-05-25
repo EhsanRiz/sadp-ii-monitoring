@@ -25,6 +25,8 @@ import {
   useTransitionM1,
 } from '@/lib/m1';
 import { M1NarrativeFormRenderer } from '@/components/forms/M1NarrativeFormRenderer';
+import { M1CashbookFormRenderer } from '@/components/forms/M1CashbookFormRenderer';
+import type { M1CashbookResponses } from '@/forms/m1CashbookSchema';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,10 +44,12 @@ export function M1EditPage() {
   const transition = useTransitionM1(enterpriseId!);
 
   const [narrative, setNarrative] = useState<M1NarrativeResponses>({});
+  const [cashbook, setCashbook] = useState<M1CashbookResponses>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (m1.data?.narrative) setNarrative(m1.data.narrative as M1NarrativeResponses);
+    if (m1.data?.cashbook) setCashbook(m1.data.cashbook as M1CashbookResponses);
   }, [m1.data]);
 
   if (!enterpriseId) return null;
@@ -144,10 +148,11 @@ export function M1EditPage() {
           />
         </TabsContent>
 
-        <TabsContent value="cashbook" className="mt-4">
-          <ComingSoon
-            label="Cashbook"
-            description="Repeating line-item ledger (Date / Item / Budget / Supplier / Description / Credit / Debit) with running Accum + Balance auto-computed."
+        <TabsContent value="cashbook" className="mt-4 space-y-4">
+          <M1CashbookFormRenderer
+            responses={cashbook}
+            onChange={setCashbook}
+            readOnly={isApproved}
           />
         </TabsContent>
         <TabsContent value="financial" className="mt-4">
@@ -205,7 +210,7 @@ export function M1EditPage() {
             onClick={() => {
               setError(null);
               save.mutate(
-                { narrative: narrative as Record<string, unknown>, filled_by: user?.id ?? null },
+                { narrative: narrative as Record<string, unknown>, cashbook: cashbook as Record<string, unknown>, filled_by: user?.id ?? null },
                 {
                   onSuccess: () => toast.success('Draft saved'),
                   onError: (e: Error) => {
@@ -225,7 +230,7 @@ export function M1EditPage() {
             onClick={() => {
               setError(null);
               save.mutate(
-                { narrative: narrative as Record<string, unknown>, filled_by: user?.id ?? null },
+                { narrative: narrative as Record<string, unknown>, cashbook: cashbook as Record<string, unknown>, filled_by: user?.id ?? null },
                 {
                   onSuccess: () =>
                     transition.mutate(

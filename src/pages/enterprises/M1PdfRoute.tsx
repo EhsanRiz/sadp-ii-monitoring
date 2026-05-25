@@ -13,6 +13,7 @@ import { useDistricts, useResourceCenters } from '@/lib/catalogs';
 import { useM1Submission } from '@/lib/m1';
 import { M1PdfDocument } from '@/pdf/M1Pdf';
 import type { M1NarrativeResponses } from '@/forms/m1NarrativeSchema';
+import type { M1CashbookResponses } from '@/forms/m1CashbookSchema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -78,6 +79,7 @@ export function M1PdfRoute() {
           districtName={districtName}
           resourceCenterName={resourceCenterName}
           narrative={(m1.data.narrative as M1NarrativeResponses | null) ?? null}
+          cashbook={(m1.data.cashbook as M1CashbookResponses | null) ?? null}
           reportDate={m1.data.report_date}
           m1PeriodStart={m1.data.m1_period_start}
           m1PeriodEnd={m1.data.m1_period_end}
