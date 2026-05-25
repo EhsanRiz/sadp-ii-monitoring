@@ -56,6 +56,15 @@ export type DrillingStatus =
 export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE';
 export type SubmissionStatus = 'draft' | 'submitted' | 'approved';
 export type EnterpriseEsmpComputedStatus = 'not_started' | 'in_progress' | 'complete' | 'legacy_pdf';
+export type M1ComputedStatus = 'not_started' | 'draft' | 'submitted' | 'approved';
+export type M1DocKind =
+  | 'bank_statement'
+  | 'transaction_history'
+  | 'invoice'
+  | 'receipt'
+  | 'audit_trail'
+  | 'contract'
+  | 'other';
 
 // ---------------------------------------------------------------------------
 // Database shape — matches `supabase gen types` output
@@ -567,6 +576,126 @@ export interface Database {
         };
         Relationships: [];
       };
+      m1_submissions: {
+        Row: {
+          id: string;
+          enterprise_id: string;
+          organization_id: string;
+          schema_version: number;
+          m1_period_start: string | null;
+          m1_period_end: string | null;
+          report_date: string | null;
+          narrative: Json;
+          cashbook: Json;
+          financial_report: Json;
+          bank_reconciliation: Json;
+          status: SubmissionStatus;
+          filled_by: string | null;
+          submitted_at: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          created_at: string;
+          updated_at: string;
+          imported_from_pdf_path: string | null;
+          imported_at: string | null;
+          import_notes: Json | null;
+        };
+        Insert: {
+          id?: string;
+          enterprise_id: string;
+          organization_id?: string;
+          schema_version?: number;
+          m1_period_start?: string | null;
+          m1_period_end?: string | null;
+          report_date?: string | null;
+          narrative?: Json;
+          cashbook?: Json;
+          financial_report?: Json;
+          bank_reconciliation?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          imported_from_pdf_path?: string | null;
+          imported_at?: string | null;
+          import_notes?: Json | null;
+        };
+        Update: {
+          id?: string;
+          enterprise_id?: string;
+          organization_id?: string;
+          schema_version?: number;
+          m1_period_start?: string | null;
+          m1_period_end?: string | null;
+          report_date?: string | null;
+          narrative?: Json;
+          cashbook?: Json;
+          financial_report?: Json;
+          bank_reconciliation?: Json;
+          status?: SubmissionStatus;
+          filled_by?: string | null;
+          submitted_at?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          imported_from_pdf_path?: string | null;
+          imported_at?: string | null;
+          import_notes?: Json | null;
+        };
+        Relationships: [];
+      };
+      m1_supporting_documents: {
+        Row: {
+          id: string;
+          submission_id: string;
+          enterprise_id: string;
+          organization_id: string;
+          kind: M1DocKind;
+          storage_path: string;
+          original_filename: string | null;
+          size_bytes: number | null;
+          notes: string | null;
+          uploaded_by: string | null;
+          uploaded_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          submission_id: string;
+          enterprise_id: string;
+          organization_id?: string;
+          kind?: M1DocKind;
+          storage_path: string;
+          original_filename?: string | null;
+          size_bytes?: number | null;
+          notes?: string | null;
+          uploaded_by?: string | null;
+          uploaded_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          submission_id?: string;
+          enterprise_id?: string;
+          organization_id?: string;
+          kind?: M1DocKind;
+          storage_path?: string;
+          original_filename?: string | null;
+          size_bytes?: number | null;
+          notes?: string | null;
+          uploaded_by?: string | null;
+          uploaded_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       inspection_visits: {
         Row: {
           id: string;
@@ -645,6 +774,19 @@ export interface Database {
         };
         Relationships: [];
       };
+      enterprise_m1_status: {
+        Row: {
+          enterprise_id: string;
+          organization_id: string;
+          status: M1ComputedStatus;
+          submission_id: string | null;
+          submitted_at: string | null;
+          approved_at: string | null;
+          report_date: string | null;
+          supporting_doc_count: number;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       current_user_org_id: { Args: Record<string, never>; Returns: string | null };
@@ -672,4 +814,7 @@ export type EmmpTemplateRow = Database['public']['Tables']['emmp_templates']['Ro
 export type EmmpSubmissionRow = Database['public']['Tables']['emmp_submissions']['Row'];
 export type InspectionVisitRow = Database['public']['Tables']['inspection_visits']['Row'];
 export type EnterpriseEsmpStatusRow = Database['public']['Views']['enterprise_esmp_status']['Row'];
+export type M1SubmissionRow = Database['public']['Tables']['m1_submissions']['Row'];
+export type M1SupportingDocumentRow = Database['public']['Tables']['m1_supporting_documents']['Row'];
+export type EnterpriseM1StatusRow = Database['public']['Views']['enterprise_m1_status']['Row'];
 export type EnterpriseM1ReadyRow = Database['public']['Views']['enterprise_m1_ready']['Row'];

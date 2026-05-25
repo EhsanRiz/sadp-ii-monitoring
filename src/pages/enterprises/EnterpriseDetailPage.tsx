@@ -20,6 +20,7 @@ import {
   ExtractPdfError,
   type ExtractPdfResult,
 } from '@/lib/esmp';
+import { useM1Submission } from '@/lib/m1';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -79,6 +80,7 @@ export function EnterpriseDetailPage() {
   const emmp = useEmmpSubmission(id);
   const inspections = useInspectionVisits(id);
   const esmpStatus = useEnterpriseEsmpStatus(id);
+  const m1 = useM1Submission(id);
 
   const [draft, setDraft] = useState<Partial<EnterpriseRow>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -726,6 +728,53 @@ export function EnterpriseDetailPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">No visits recorded yet.</p>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Milestone 1 progress report (Phase 1 scope: narrative only;
+              cashbook / financial / reconciliation / supporting-docs land in
+              Phase 2 & 3 inside the same m1_submissions row). */}
+          <Card className={statusBorder(m1.data?.status)}>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileCheck2 className="h-4 w-4" />
+                    Milestone 1 progress report
+                  </CardTitle>
+                  <CardDescription>
+                    Cover page · Narrative · Cashbook · Financial Report · Bank Reconciliation ·
+                    Supporting documents. Phase 1 currently wires up the narrative form; the
+                    other sections are placeholders in the M1 page.
+                  </CardDescription>
+                </div>
+                <StatusBadge status={m1.data?.status ?? null} />
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center gap-2 text-sm">
+              {m1.data ? (
+                <span className="text-muted-foreground">
+                  {m1.data.submitted_at && <>Submitted {formatDateDMY(m1.data.submitted_at)} · </>}
+                  {m1.data.approved_at && <>Approved {formatDateDMY(m1.data.approved_at)}</>}
+                  {!m1.data.submitted_at && !m1.data.approved_at && <>Draft in progress</>}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Not started.</span>
+              )}
+              <div className="ml-auto flex gap-2">
+                <Button asChild size="sm" variant={m1.data ? 'outline' : 'default'}>
+                  <Link to={`/enterprises/${id}/m1`}>
+                    {m1.data ? 'Open M1' : 'Start M1'}
+                  </Link>
+                </Button>
+                {m1.data && (
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/enterprises/${id}/m1.pdf`} target="_blank" rel="noopener">
+                      <FileText className="mr-1.5 h-3.5 w-3.5" /> M1 report PDF
+                    </Link>
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
 

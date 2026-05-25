@@ -14,6 +14,8 @@ import { EsmpPdfRoute } from '@/pages/enterprises/EsmpPdfRoute';
 import { EssfEditPage } from '@/pages/enterprises/EssfEditPage';
 import { EmmpEditPage } from '@/pages/enterprises/EmmpEditPage';
 import { InspectionEditPage } from '@/pages/enterprises/InspectionEditPage';
+import { M1EditPage } from '@/pages/enterprises/M1EditPage';
+import { M1PdfRoute } from '@/pages/enterprises/M1PdfRoute';
 import { OrganizationsAdminPage } from '@/pages/admin/OrganizationsAdminPage';
 import { UsersAdminPage } from '@/pages/admin/UsersAdminPage';
 import { DistrictsAdminPage } from '@/pages/admin/DistrictsAdminPage';
@@ -61,6 +63,7 @@ export default function App() {
         <Route path="/enterprises/:id/emmp" element={<EmmpEditPage />} />
         <Route path="/enterprises/:id/inspections/new" element={<InspectionEditPage />} />
         <Route path="/enterprises/:id/inspections/:visitId" element={<InspectionEditPage />} />
+        <Route path="/enterprises/:id/m1" element={<M1EditPage />} />
       </Route>
 
       {/* Cover-page PDF — auth required, but renders raw PDF (not inside AppShell) */}
@@ -69,6 +72,14 @@ export default function App() {
         element={
           <RoleGate>
             <CoverPagePdfRoute />
+          </RoleGate>
+        }
+      />
+      <Route
+        path="/enterprises/:id/m1.pdf"
+        element={
+          <RoleGate>
+            <M1PdfRoute />
           </RoleGate>
         }
       />

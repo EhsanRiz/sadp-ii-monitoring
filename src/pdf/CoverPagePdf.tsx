@@ -62,12 +62,26 @@ interface Props {
   resourceCenterName: string;
 }
 
-export function CoverPagePdfDocument({ enterprise: e, districtName, resourceCenterName }: Props) {
+export function CoverPagePdfDocument(props: Props) {
+  const { enterprise: e } = props;
+  return (
+    <Document title={`Cover page — ${e.beneficiary_short_name}`}>
+      <CoverPagePdfPage {...props} />
+    </Document>
+  );
+}
+
+/**
+ * Just the cover-page <Page>, without the Document wrapper. Lets M1Pdf
+ * embed the same cover content as its first page without duplicating
+ * the layout.
+ */
+export function CoverPagePdfPage({ enterprise: e, districtName, resourceCenterName }: Props) {
   const locationLine = [e.location_detail, resourceCenterName].filter(Boolean).join(' — ');
   const periodLine = `${formatDateDMY(e.period_start)} – ${formatDateDMY(e.period_end)}`;
 
   return (
-    <Document title={`Cover page — ${e.beneficiary_short_name}`}>
+    <>
       <Page size="A4" style={styles.page}>
         <Text style={styles.annexLabel}>Annex V/A: Applicant&apos;s Progress report Forms</Text>
         <Text style={styles.title}>I. PROJECT SUMMERY FORM</Text>
@@ -131,7 +145,7 @@ export function CoverPagePdfDocument({ enterprise: e, districtName, resourceCent
           )}
         </View>
       </Page>
-    </Document>
+    </>
   );
 }
 
