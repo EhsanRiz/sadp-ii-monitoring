@@ -13,7 +13,7 @@
  *   - emmp_submissions row exists with status='approved' (or the enterprise
  *     type has no template, in which case we show a placeholder note)
  */
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { Document, Page, StyleSheet, Text, View, Svg, Path } from '@react-pdf/renderer';
 import {
   ESSF_SITE_SENSITIVITY,
   ESSF_COMPLETENESS,
@@ -139,11 +139,76 @@ const styles = StyleSheet.create({
     borderBottom: `0.5pt solid ${COLORS.border}`,
     fontSize: 8,
   },
+  // For Yes/No/NA tick cells — flexbox center the SVG checkmark.
+  // Helvetica (the default @react-pdf font) has no ✓ glyph, so we render
+  // a tiny SVG inside the cell instead of a text character.
+  qCellTick: {
+    padding: 4,
+    borderRight: `0.5pt solid ${COLORS.border}`,
+    borderBottom: `0.5pt solid ${COLORS.border}`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   qNum: { width: '6%', textAlign: 'center' },
   qItem: { width: '64%' },
   qYN: { width: '7%', textAlign: 'center' },
   qNA: { width: '8%', textAlign: 'center' },
   qGuide: { width: '23%', fontStyle: 'italic', color: '#333' },
+  // Certification block (end of ESSF, after Section 3.0)
+  certificationH: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  certificationBody: {
+    fontSize: 9,
+    lineHeight: 1.5,
+    marginBottom: 14,
+  },
+  signaturesLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  sigRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginTop: 18,
+  },
+  sigCol: {
+    width: '60%',
+  },
+  sigDateCol: {
+    width: '32%',
+  },
+  sigLine: {
+    borderBottom: `0.7pt solid #222`,
+    height: 18,           // space above the line for the signature itself
+    paddingHorizontal: 4,
+    justifyContent: 'flex-end',
+  },
+  sigSignedName: {
+    fontSize: 9,
+    fontStyle: 'italic',
+    color: '#222',
+    paddingBottom: 2,
+  },
+  sigRoleLabel: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 3,
+  },
+  sigDateLabel: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginTop: 3,
+  },
   // 24-q checklist
   groupHeader: {
     flexDirection: 'row',
@@ -277,6 +342,17 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
   const subProjectAddress = header.sub_project_address || e.location_detail || '—';
   const extRep = header.extension_team_representative || '—';
   const extAddress = header.extension_team_address || '—';
+
+  // Certification signatures: stored under essf.signed if captured digitally.
+  // Otherwise we render blank signature lines for manual signing on print.
+  // (We deliberately do NOT fall back to the header-block reps here — a blank
+  // signature line that a person physically signs is meaningfully different
+  // from a typed name that wasn't part of any sign-off step.)
+  const signed = essf?.signed ?? {};
+  const extSignedName = signed.extension_team_rep_name ?? '';
+  const extSignedDate = signed.extension_team_rep_signed_at ?? '';
+  const spSignedName = signed.sub_project_rep_name ?? '';
+  const spSignedDate = signed.sub_project_rep_signed_at ?? '';
 
   const emmpTitleLine = emmpTemplate
     ? `ESMP – ${enterpriseTypeName.toUpperCase()}${emmpTemplateVersion ? ` (${emmpTemplateVersion})` : ''}`
@@ -419,9 +495,9 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
             return (
               <View key={q.id} style={styles.qRow} wrap={false}>
                 <Text style={[styles.qCell, { width: '70%' }]}>{q.label}</Text>
-                <Text style={[styles.qCell, styles.qYN]}>{v === 'yes' ? '✓' : ''}</Text>
-                <Text style={[styles.qCell, styles.qYN]}>{v === 'no' ? '✓' : ''}</Text>
-                <Text style={[styles.qCell, styles.qNA, { width: '16%' }]}>{v === 'n_a' ? '✓' : ''}</Text>
+                <View style={[styles.qCellTick, styles.qYN]}>{v === 'yes' ? <Check /> : null}</View>
+                <View style={[styles.qCellTick, styles.qYN]}>{v === 'no' ? <Check /> : null}</View>
+                <View style={[styles.qCellTick, styles.qNA, { width: '16%' }]}>{v === 'n_a' ? <Check /> : null}</View>
               </View>
             );
           })}
@@ -462,8 +538,8 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
                 <View key={q.id} style={styles.qRow} wrap={false}>
                   <Text style={[styles.qCell, styles.qNum]}>{i + 1}</Text>
                   <Text style={[styles.qCell, styles.qItem]}>{q.label}</Text>
-                  <Text style={[styles.qCell, styles.qYN]}>{v === 'yes' ? '✓' : ''}</Text>
-                  <Text style={[styles.qCell, styles.qYN]}>{v === 'no' ? '✓' : ''}</Text>
+                  <View style={[styles.qCellTick, styles.qYN]}>{v === 'yes' ? <Check /> : null}</View>
+                  <View style={[styles.qCellTick, styles.qYN]}>{v === 'no' ? <Check /> : null}</View>
                   <Text style={[styles.qCell, styles.qGuide]}>{guidance}</Text>
                 </View>,
               );
@@ -475,6 +551,63 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
             );
             return rows;
           })}
+        </View>
+
+        {/* ----- Certification + signatures (matches reference page 5) ----- */}
+        <View wrap={false} style={{ marginTop: 18 }}>
+          <Text style={styles.certificationH}>CERTIFICATION</Text>
+          <Text style={styles.certificationBody}>
+            We certify that we have thoroughly examined all the potential adverse effects
+            of this sub-project. To the best of our knowledge, the sub-project plan as
+            described in the application and associated planning reports (e.g. ESMP, RAP,
+            PMP), if any, will be adequate to avoid or minimize all adverse environmental
+            and social impacts.
+          </Text>
+          <Text style={styles.signaturesLabel}>SIGNATURES:</Text>
+
+          {/* Extension Team Representative */}
+          <View style={styles.sigRow} wrap={false}>
+            <View style={styles.sigCol}>
+              <View style={styles.sigLine}>
+                {extSignedName ? (
+                  <Text style={styles.sigSignedName}>{extSignedName}</Text>
+                ) : null}
+              </View>
+              <Text style={styles.sigRoleLabel}>Extension Team Representative</Text>
+            </View>
+            <View style={styles.sigDateCol}>
+              <View style={styles.sigLine}>
+                {extSignedDate ? (
+                  <Text style={styles.sigSignedName}>
+                    {formatDateDMY(extSignedDate) || extSignedDate}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={styles.sigDateLabel}>Date</Text>
+            </View>
+          </View>
+
+          {/* Sub-project Representative */}
+          <View style={styles.sigRow} wrap={false}>
+            <View style={styles.sigCol}>
+              <View style={styles.sigLine}>
+                {spSignedName ? (
+                  <Text style={styles.sigSignedName}>{spSignedName}</Text>
+                ) : null}
+              </View>
+              <Text style={styles.sigRoleLabel}>Sub-project Representative</Text>
+            </View>
+            <View style={styles.sigDateCol}>
+              <View style={styles.sigLine}>
+                {spSignedDate ? (
+                  <Text style={styles.sigSignedName}>
+                    {formatDateDMY(spSignedDate) || spSignedDate}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={styles.sigDateLabel}>Date</Text>
+            </View>
+          </View>
         </View>
 
         <Text
@@ -602,6 +735,26 @@ function cap(s: string): string {
 }
 
 /**
+ * Check-mark SVG. Used in place of the U+2713 ✓ character, which the default
+ * @react-pdf/renderer Helvetica font does not include — text checkmarks were
+ * silently rendering as blank in sections 2.0 and 3.0 of the ESMP report.
+ */
+function Check({ size = 10, color = '#0a6b2c' }: { size?: number; color?: string } = {}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12">
+      <Path
+        d="M 1.8 6.2 L 4.8 9.2 L 10.2 2.6"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+/**
  * Render impact / mitigation / monitoring items with a ✓ in front of selected
  * ones, dash for the rest. Matches the "M ..." style from the canonical doc.
  */
@@ -619,7 +772,13 @@ function renderItems(
     const checked = responses[key] === true;
     return (
       <View key={item.id} style={styles.emmpItemRow}>
-        <Text style={styles.emmpItemMark}>{checked ? '✓' : '·'}</Text>
+        <View style={styles.emmpItemMark}>
+          {checked ? (
+            <Check size={7} color={COLORS.brandGreen} />
+          ) : (
+            <Text style={{ fontSize: 8, color: '#999' }}>·</Text>
+          )}
+        </View>
         <Text style={[styles.emmpItemLabel, checked ? { fontWeight: 'bold' } : { color: '#333' }]}>
           {item.label}
         </Text>
