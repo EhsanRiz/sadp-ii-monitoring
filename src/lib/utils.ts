@@ -21,6 +21,24 @@ export function formatLSL(value: number | string | null | undefined): string {
 }
 
 /**
+ * Format an LSL amount for the paper-form cover page:
+ *   "LSL 500 000.00" — LSL prefix, non-breaking space as thousand separator,
+ *   period decimal. Matches the canonical Annex V/A printed format.
+ */
+export function formatLSLCoverPage(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const n = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(n)) return '';
+  // Use 'fr-FR' which renders with space thousand separators and comma decimal,
+  // then swap the comma back to a period to match the sample.
+  const formatted = n.toLocaleString('fr-FR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).replace(',', '.');
+  return `LSL ${formatted}`;
+}
+
+/**
  * Format an ISO date string as dd/mm/yyyy (Annex V/A cover-page format).
  * Returns '' for null/empty input.
  */
