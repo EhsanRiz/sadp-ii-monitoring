@@ -16,7 +16,7 @@ import { EmmpFormRenderer, type EmmpSchema } from '@/components/forms/EmmpFormRe
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Send, Check, Save, Printer, Unlock, History } from 'lucide-react';
+import { ArrowLeft, Send, Check, Save, Printer, Unlock, History, Sparkles, AlertTriangle } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 
 export function EmmpEditPage() {
@@ -138,6 +138,56 @@ export function EmmpEditPage() {
             {emmp.data.submitted_at && <div>Submitted: {formatDateDMY(emmp.data.submitted_at)}</div>}
             {emmp.data.approved_at && !wasReopened && (
               <div>Approved: {formatDateDMY(emmp.data.approved_at)}</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PDF-import review banner. Same pattern as the ESSF page. */}
+      {emmp.data?.imported_from_pdf_path && emmp.data.status !== 'approved' && (
+        <Card className="border-warning/40 bg-warning/5">
+          <CardContent className="pt-4 space-y-2">
+            <div className="flex items-start gap-2 text-sm">
+              <Sparkles className="h-4 w-4 mt-0.5 text-warning shrink-0" />
+              <div>
+                <p className="font-medium text-warning">
+                  Auto-imported from PDF — please review before submitting
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Claude extracted these responses from the uploaded scanned ESMP on{' '}
+                  {emmp.data.imported_at ? formatDateDMY(emmp.data.imported_at) : '—'}.
+                  Verify every row below, especially the trailing person/timeframe text
+                  columns which are most error-prone for handwritten content.
+                </p>
+              </div>
+            </div>
+            {Array.isArray(emmp.data.import_notes) && emmp.data.import_notes.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  {emmp.data.import_notes.length} extraction note
+                  {emmp.data.import_notes.length !== 1 ? 's' : ''} — click to expand
+                </summary>
+                <ul className="mt-2 space-y-1 pl-3">
+                  {(emmp.data.import_notes as Array<{ field?: string; note: string; confidence?: string }>).map((n, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <AlertTriangle
+                        className={
+                          'h-3 w-3 mt-0.5 shrink-0 ' +
+                          (n.confidence === 'low' ? 'text-destructive' : 'text-warning')
+                        }
+                      />
+                      <span>
+                        {n.field && (
+                          <code className="font-mono text-[10px] bg-muted px-1 rounded mr-1">
+                            {n.field}
+                          </code>
+                        )}
+                        {n.note}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </CardContent>
         </Card>

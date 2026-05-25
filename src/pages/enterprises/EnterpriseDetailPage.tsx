@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useEnterprise, useEnterpriseHistory, isCoverPageReady } from '@/lib/enterprises';
 import { useCommunityCouncils, useDistricts, useEnterpriseTypes, useResourceCenters, useVillages } from '@/lib/catalogs';
 import {
@@ -9,6 +10,8 @@ import {
   useEmmpTemplateForType,
   useInspectionVisits,
   useEnterpriseEsmpStatus,
+  useExtractEsmpPdf,
+  type ExtractPdfResult,
 } from '@/lib/esmp';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/StatusBadge';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
-import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown } from 'lucide-react';
+import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import { formatDateDMY, formatLSL, cn } from '@/lib/utils';
 
 /** Colored left-edge border that matches a submission's status. */
@@ -73,6 +76,8 @@ export function EnterpriseDetailPage() {
   const [draft, setDraft] = useState<Partial<EnterpriseRow>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showLegacy, setShowLegacy] = useState(false);
+  const [lastExtract, setLastExtract] = useState<ExtractPdfResult | null>(null);
+  const extract = useExtractEsmpPdf(id ?? '');
 
   useEffect(() => {
     if (enterprise) setDraft(enterprise);
@@ -751,6 +756,134 @@ export function EnterpriseDetailPage() {
                     </a>
                   )}
                 </div>
+
+                {/* ---------- Auto-extract ESMP responses from the PDF ----------
+                    Calls extract-esmp-pdf edge function which sends the PDF to
+                    Claude, parses structured responses, and writes draft
+                    essf_submissions + emmp_submissions rows. Field supervisor
+                    reviews + corrects before submitting — see the warning
+                    banners that appear on the ESSF / EMMP edit pages.        */}
+                {enterprise.esmp_uploaded_pdf_url && (
+                  <div className="rounded-md border border-info/30 bg-info/5 p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-sm">
+                        <div className="font-medium flex items-center gap-1.5">
+                          <Sparkles className="h-4 w-4 text-info" />
+                          Auto-extract responses from the PDF
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Reads the uploaded PDF and creates draft ESSF + EMMP submissions
+                          you can review and approve. Will overwrite any existing draft —
+                          approved submissions are left untouched (reopen them first if you
+                          want to re-import).
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setLastExtract(null);
+                          extract.mutate(undefined, {
+                            onSuccess: (data) => {
+                              setLastExtract(data);
+                              const parts: string[] = [];
+                              if (data.essf.has_data) parts.push('ESSF');
+                              if (data.emmp.status === 'imported' && data.emmp.has_data)
+                                parts.push('EMMP');
+                              toast.success(
+                                parts.length
+                                  ? `Drafted: ${parts.join(' + ')}`
+                                  : 'Extraction returned no data — see notes',
+                              );
+                            },
+                            onError: (e: Error) =>
+                              toast.error('Extraction failed', { description: e.message }),
+                          });
+                        }}
+                        disabled={extract.isPending}
+                      >
+                        {extract.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Extracting…
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Extract responses
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    {extract.isPending && (
+                      <p className="text-xs text-muted-foreground">
+                        Reading the PDF and asking Claude to map responses to the form
+                        schema. Usually takes 20–60 seconds for a 15-page document.
+                      </p>
+                    )}
+                    {lastExtract && (
+                      <div className="space-y-2 mt-2 border-t pt-2">
+                        <div className="text-xs flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="border-success/40 text-success">
+                            ESSF: drafted{lastExtract.essf.has_data ? '' : ' (empty)'}
+                          </Badge>
+                          {lastExtract.emmp.status === 'imported' && (
+                            <Badge variant="outline" className="border-success/40 text-success">
+                              EMMP: drafted{lastExtract.emmp.has_data ? '' : ' (empty)'}
+                            </Badge>
+                          )}
+                          {lastExtract.emmp.status === 'no_template' && (
+                            <Badge variant="outline">
+                              EMMP: skipped — no template for this enterprise type
+                            </Badge>
+                          )}
+                          {lastExtract.emmp.status === 'approved_skip' && (
+                            <Badge variant="outline" className="border-warning/40 text-warning">
+                              EMMP: already approved — left untouched
+                            </Badge>
+                          )}
+                        </div>
+                        {lastExtract.notes.length > 0 && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                              {lastExtract.notes.length} extraction note
+                              {lastExtract.notes.length !== 1 ? 's' : ''} — click to expand
+                            </summary>
+                            <ul className="mt-2 space-y-1 pl-3">
+                              {lastExtract.notes.map((n, i) => (
+                                <li key={i} className="flex items-start gap-1.5">
+                                  <AlertTriangle
+                                    className={cn(
+                                      'h-3 w-3 mt-0.5 shrink-0',
+                                      n.confidence === 'low' ? 'text-destructive' : 'text-warning',
+                                    )}
+                                  />
+                                  <span>
+                                    {n.field && (
+                                      <code className="font-mono text-[10px] bg-muted px-1 rounded mr-1">
+                                        {n.field}
+                                      </code>
+                                    )}
+                                    {n.note}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                        <div className="flex gap-2 pt-1">
+                          <Button asChild size="sm" variant="outline">
+                            <Link to={`/enterprises/${id}/essf/edit`}>Review ESSF →</Link>
+                          </Button>
+                          {lastExtract.emmp.status === 'imported' && (
+                            <Button asChild size="sm" variant="outline">
+                              <Link to={`/enterprises/${id}/emmp/edit`}>Review EMMP →</Link>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <Label>Update legacy status</Label>

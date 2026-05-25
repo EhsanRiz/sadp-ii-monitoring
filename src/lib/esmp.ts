@@ -356,6 +356,55 @@ export function canApproveSubmission(
   return true;
 }
 
+// ============================================================================
+// PDF auto-import (extract-esmp-pdf edge function)
+// ============================================================================
+export interface ImportNote {
+  field?: string;
+  note: string;
+  confidence?: 'low' | 'medium' | 'high';
+}
+
+export interface ExtractPdfResult {
+  ok: boolean;
+  enterprise_id: string;
+  essf: { status: 'imported'; has_data: boolean };
+  emmp: { status: 'imported' | 'no_template' | 'approved_skip'; has_data: boolean };
+  notes: ImportNote[];
+}
+
+/**
+ * Calls the extract-esmp-pdf edge function. The function reads the
+ * enterprise's uploaded ESMP PDF, sends it to Claude, parses the structured
+ * response, and writes draft essf_submissions + emmp_submissions rows
+ * stamped imported_from_pdf_path / imported_at / import_notes.
+ *
+ * Field supervisor MUST review the result before submitting — extraction is
+ * not 100% accurate on scanned/handwritten forms. The UI surfaces a
+ * "review and confirm" banner when essf.imported_from_pdf_path is set.
+ */
+export function useExtractEsmpPdf(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<ExtractPdfResult> => {
+      // NOTE: deployed under "-v2" slug because the original extract-esmp-pdf
+      // slot got into a stuck state after a partial first deploy. The two
+      // function names are otherwise interchangeable.
+      const { data, error } = await supabase.functions.invoke('extract-esmp-pdf-v2', {
+        body: { enterpriseId },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error((data as { error?: string })?.error ?? 'Extraction failed');
+      return data as ExtractPdfResult;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['essf', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['emmp', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-esmp-status', enterpriseId] });
+    },
+  });
+}
+
 /**
  * Reopen an already-approved submission back to draft for editing.
  * Same role set as approvers — Field Supervisors shouldn't be able to undo an

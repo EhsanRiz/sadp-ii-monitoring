@@ -446,6 +446,9 @@ export interface Database {
           approved_at: string | null;
           created_at: string;
           updated_at: string;
+          imported_from_pdf_path: string | null;
+          imported_at: string | null;
+          import_notes: Json | null;
         };
         Insert: {
           id?: string;
@@ -460,6 +463,9 @@ export interface Database {
           approved_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          imported_from_pdf_path?: string | null;
+          imported_at?: string | null;
+          import_notes?: Json | null;
         };
         Update: {
           id?: string;
@@ -474,6 +480,9 @@ export interface Database {
           approved_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          imported_from_pdf_path?: string | null;
+          imported_at?: string | null;
+          import_notes?: Json | null;
         };
         Relationships: [];
       };
@@ -518,6 +527,9 @@ export interface Database {
           approved_at: string | null;
           created_at: string;
           updated_at: string;
+          imported_from_pdf_path: string | null;
+          imported_at: string | null;
+          import_notes: Json | null;
         };
         Insert: {
           id?: string;
@@ -532,6 +544,9 @@ export interface Database {
           approved_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          imported_from_pdf_path?: string | null;
+          imported_at?: string | null;
+          import_notes?: Json | null;
         };
         Update: {
           id?: string;
@@ -546,6 +561,9 @@ export interface Database {
           approved_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          imported_from_pdf_path?: string | null;
+          imported_at?: string | null;
+          import_notes?: Json | null;
         };
         Relationships: [];
       };

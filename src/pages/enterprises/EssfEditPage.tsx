@@ -16,7 +16,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { EssfResponses } from '@/forms/essfSchema';
-import { ArrowLeft, Send, Check, Save, Printer, Unlock, History } from 'lucide-react';
+import { ArrowLeft, Send, Check, Save, Printer, Unlock, History, Sparkles, AlertTriangle } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 
 export function EssfEditPage() {
@@ -123,6 +123,58 @@ export function EssfEditPage() {
             )}
             {essf.data.approved_at && !wasReopened && (
               <div>Approved: {formatDateDMY(essf.data.approved_at)}</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PDF-import review banner. Shown when this submission was auto-
+          populated by the extract-esmp-pdf edge function. Field supervisor
+          must review the highlighted items before submitting. */}
+      {essf.data?.imported_from_pdf_path && essf.data.status !== 'approved' && (
+        <Card className="border-warning/40 bg-warning/5">
+          <CardContent className="pt-4 space-y-2">
+            <div className="flex items-start gap-2 text-sm">
+              <Sparkles className="h-4 w-4 mt-0.5 text-warning shrink-0" />
+              <div>
+                <p className="font-medium text-warning">
+                  Auto-imported from PDF — please review before submitting
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Claude extracted these responses from the uploaded scanned ESMP on{' '}
+                  {essf.data.imported_at ? formatDateDMY(essf.data.imported_at) : '—'}.
+                  Verify every field below, especially anything flagged below as a
+                  low-confidence read.
+                </p>
+              </div>
+            </div>
+            {Array.isArray(essf.data.import_notes) && essf.data.import_notes.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  {essf.data.import_notes.length} extraction note
+                  {essf.data.import_notes.length !== 1 ? 's' : ''} — click to expand
+                </summary>
+                <ul className="mt-2 space-y-1 pl-3">
+                  {(essf.data.import_notes as Array<{ field?: string; note: string; confidence?: string }>).map((n, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <AlertTriangle
+                        className={
+                          'h-3 w-3 mt-0.5 shrink-0 ' +
+                          (n.confidence === 'low' ? 'text-destructive' : 'text-warning')
+                        }
+                      />
+                      <span>
+                        {n.field && (
+                          <code className="font-mono text-[10px] bg-muted px-1 rounded mr-1">
+                            {n.field}
+                          </code>
+                        )}
+                        {n.note}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </CardContent>
         </Card>
