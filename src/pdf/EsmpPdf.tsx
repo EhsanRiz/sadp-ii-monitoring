@@ -298,6 +298,47 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 7.5,
   },
+  // EMMP "Not Applicable" label rendered when a row has no ticked items
+  notApplicableText: {
+    fontStyle: 'italic',
+    color: '#888',
+    fontSize: 7.5,
+    textAlign: 'center',
+    paddingVertical: 4,
+  },
+  // EMMP signature block (last EMMP page) — 2x2 grid: Beneficiary +
+  // Extension Agent on top, PFO + Service Provider on bottom.
+  emmpSigGrid: {
+    marginTop: 14,
+    fontSize: 9,
+  },
+  emmpSigRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 18,
+  },
+  emmpSigCell: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  emmpSigLabel: {
+    fontWeight: 'bold',
+    paddingRight: 6,
+    fontSize: 9,
+  },
+  emmpSigLine: {
+    flex: 1,
+    borderBottom: `0.7pt solid #222`,
+    height: 16,
+    paddingHorizontal: 4,
+    justifyContent: 'flex-end',
+  },
+  emmpSigName: {
+    fontSize: 8.5,
+    fontStyle: 'italic',
+    paddingBottom: 2,
+  },
   // empty-state for missing forms
   emptyNote: {
     padding: 18,
@@ -674,9 +715,12 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
                 </View>
                 {section.rows.map((row, idx) => {
                   const r = emmpResponses ?? {};
-                  const impactList = renderItems(row.impacts, row.id, 'i', r);
-                  const mitigList = renderItems(row.mitigations, row.id, 'm', r);
-                  const monList = renderItems(row.monitoring, row.id, 'n', r);
+                  // A row is "not applicable" when nothing has been ticked
+                  // anywhere AND no person/timeframe text was supplied.
+                  const anyTicked =
+                    row.impacts.some((_, i) => r[`${row.id}.i${i}`] === true) ||
+                    row.mitigations.some((_, i) => r[`${row.id}.m${i}`] === true) ||
+                    row.monitoring.some((_, i) => r[`${row.id}.n${i}`] === true);
                   const personImpl =
                     (r[`${row.id}.person_implement`] as string | undefined) ??
                     row.default_person_implement ??
@@ -689,18 +733,38 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
                     (r[`${row.id}.timeframe`] as string | undefined) ??
                     row.default_timeframe ??
                     '';
+                  const anyText =
+                    personImpl.trim() !== '' || personMon.trim() !== '' || timeframe.trim() !== '';
+                  const isNotApplicable = !anyTicked && !anyText;
+
+                  const impactList = renderItems(row.impacts, row.id, 'i', r);
+                  const mitigList = renderItems(row.mitigations, row.id, 'm', r);
+                  const monList = renderItems(row.monitoring, row.id, 'n', r);
+
                   const zebra = idx % 2 === 1 ? { backgroundColor: COLORS.zebra } : {};
                   return (
                     <View key={row.id} style={[styles.emmpRow, zebra]} wrap={false}>
                       <Text style={[styles.emmpCell, styles.emmpColPhase, { fontWeight: 'bold' }]}>
                         {row.activity}
                       </Text>
-                      <View style={[styles.emmpCell, styles.emmpColImpacts]}>{impactList}</View>
-                      <View style={[styles.emmpCell, styles.emmpColMitigations]}>{mitigList}</View>
-                      <View style={[styles.emmpCell, styles.emmpColMonitoring]}>{monList}</View>
-                      <Text style={[styles.emmpCell, styles.emmpColPerson1]}>{personImpl}</Text>
-                      <Text style={[styles.emmpCell, styles.emmpColPerson2]}>{personMon}</Text>
-                      <Text style={[styles.emmpCell, styles.emmpColTimeframe]}>{timeframe}</Text>
+                      <View style={[styles.emmpCell, styles.emmpColImpacts]}>
+                        {isNotApplicable ? <NotApplicable /> : impactList}
+                      </View>
+                      <View style={[styles.emmpCell, styles.emmpColMitigations]}>
+                        {isNotApplicable ? <NotApplicable /> : mitigList}
+                      </View>
+                      <View style={[styles.emmpCell, styles.emmpColMonitoring]}>
+                        {isNotApplicable ? <NotApplicable /> : monList}
+                      </View>
+                      <Text style={[styles.emmpCell, styles.emmpColPerson1]}>
+                        {isNotApplicable ? '' : personImpl}
+                      </Text>
+                      <Text style={[styles.emmpCell, styles.emmpColPerson2]}>
+                        {isNotApplicable ? '' : personMon}
+                      </Text>
+                      <Text style={[styles.emmpCell, styles.emmpColTimeframe]}>
+                        {isNotApplicable ? '' : timeframe}
+                      </Text>
                     </View>
                   );
                 })}
@@ -714,6 +778,34 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
           </Text>
         )}
 
+        {/* ----- EMMP signatures (matches reference page 10) ----- */}
+        {emmpTemplate && (
+          <View style={styles.emmpSigGrid} wrap={false}>
+            <View style={styles.emmpSigRow}>
+              <View style={styles.emmpSigCell}>
+                <Text style={styles.emmpSigLabel}>Beneficiary</Text>
+                <View style={styles.emmpSigLine}>
+                  <Text style={styles.emmpSigName}>{subProjectName}</Text>
+                </View>
+              </View>
+              <View style={styles.emmpSigCell}>
+                <Text style={styles.emmpSigLabel}>Extension Agent</Text>
+                <View style={styles.emmpSigLine} />
+              </View>
+            </View>
+            <View style={styles.emmpSigRow}>
+              <View style={styles.emmpSigCell}>
+                <Text style={styles.emmpSigLabel}>PFO</Text>
+                <View style={styles.emmpSigLine} />
+              </View>
+              <View style={styles.emmpSigCell}>
+                <Text style={styles.emmpSigLabel}>Service Provider</Text>
+                <View style={styles.emmpSigLine} />
+              </View>
+            </View>
+          </View>
+        )}
+
         <Text
           style={styles.pageNumber}
           render={({ pageNumber, totalPages }) => `Page | ${pageNumber} of ${totalPages}`}
@@ -722,6 +814,15 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
       </Page>
     </Document>
   );
+}
+
+/**
+ * "NOT APPLICABLE" text — used in EMMP cells when the field supervisor
+ * left every option in a row unticked AND no person/timeframe was filled.
+ * Auto-fills empty rows so the printed PDF doesn't look incomplete.
+ */
+function NotApplicable() {
+  return <Text style={styles.notApplicableText}>NOT APPLICABLE</Text>;
 }
 
 // --------------------------- helpers ---------------------------
@@ -755,8 +856,10 @@ function Check({ size = 10, color = '#0a6b2c' }: { size?: number; color?: string
 }
 
 /**
- * Render impact / mitigation / monitoring items with a ✓ in front of selected
- * ones, dash for the rest. Matches the "M ..." style from the canonical doc.
+ * Render impact / mitigation / monitoring items as printed-form-style
+ * checkboxes: a filled-tick box for selected items, an empty box for the
+ * rest. Matches the look of the scanned reference templates where every
+ * option is preceded by a square that the field supervisor ticks.
  */
 function renderItems(
   items: Array<{ id: string; label: string }>,
@@ -765,7 +868,7 @@ function renderItems(
   responses: Record<string, unknown>,
 ): React.ReactNode {
   if (!items || items.length === 0) {
-    return <Text style={{ fontStyle: 'italic', color: '#999', fontSize: 7 }}>—</Text>;
+    return null; // caller decides what to do — see renderEmmpRow's NOT APPLICABLE logic
   }
   return items.map((item, i) => {
     const key = `${rowId}.${prefix}${i}`;
@@ -773,11 +876,7 @@ function renderItems(
     return (
       <View key={item.id} style={styles.emmpItemRow}>
         <View style={styles.emmpItemMark}>
-          {checked ? (
-            <Check size={7} color={COLORS.brandGreen} />
-          ) : (
-            <Text style={{ fontSize: 8, color: '#999' }}>·</Text>
-          )}
+          <CheckBox checked={checked} size={7.5} />
         </View>
         <Text style={[styles.emmpItemLabel, checked ? { fontWeight: 'bold' } : { color: '#333' }]}>
           {item.label}
@@ -785,4 +884,31 @@ function renderItems(
       </View>
     );
   });
+}
+
+/**
+ * SVG checkbox: an outlined square, with a check inside when selected.
+ * Replaces ☑ / ☐ characters, which aren't in the default Helvetica glyph set.
+ */
+function CheckBox({ checked, size = 8 }: { checked: boolean; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12">
+      <Path
+        d="M 1 1 H 11 V 11 H 1 Z"
+        stroke="#333"
+        strokeWidth={1}
+        fill="none"
+      />
+      {checked && (
+        <Path
+          d="M 3 6.2 L 5.4 8.5 L 9.2 3.5"
+          stroke={COLORS.brandGreen}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      )}
+    </Svg>
+  );
 }

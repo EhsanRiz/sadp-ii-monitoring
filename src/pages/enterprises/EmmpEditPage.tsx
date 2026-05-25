@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { useEnterprise } from '@/lib/enterprises';
 import {
   canApproveSubmission,
+  canReopen,
   canSubmit,
   useEmmpSubmission,
   useEmmpTemplateForType,
@@ -15,7 +16,7 @@ import { EmmpFormRenderer, type EmmpSchema } from '@/components/forms/EmmpFormRe
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Send, Check, Save } from 'lucide-react';
+import { ArrowLeft, Send, Check, Save, Printer, Unlock, History } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 
 export function EmmpEditPage() {
@@ -40,9 +41,36 @@ export function EmmpEditPage() {
 
   const status = emmp.data?.status ?? null;
   const isApproved = status === 'approved';
+  const wasReopened = status === 'draft' && !!emmp.data?.approved_at;
   const canDraft = canSubmit(role) && !isApproved && !!template.data;
   const canSubmitAction = canSubmit(role) && (status === 'draft' || status === null) && !!template.data;
   const canApproveAction = canApproveSubmission(role, user?.id ?? null, emmp.data);
+  const canReopenAction = isApproved && canReopen(role);
+  const hasSubmission = !!emmp.data;
+
+  const handleReopen = () => {
+    setError(null);
+    if (
+      !window.confirm(
+        'Reopen this approved EMMP for editing?\n\n' +
+          'The form will return to draft status. The original submitted and ' +
+          'approved dates stay on file as historical record. After your edits, ' +
+          'you will need to submit and have someone re-approve it.',
+      )
+    ) {
+      return;
+    }
+    transition.mutate(
+      { to: 'draft', userId: user!.id },
+      {
+        onSuccess: () => toast.success('EMMP reopened for editing'),
+        onError: (e: Error) => {
+          setError(e.message);
+          toast.error('Could not reopen', { description: e.message });
+        },
+      },
+    );
+  };
 
   if (!template.data) {
     return (
@@ -80,14 +108,37 @@ export function EmmpEditPage() {
           </h1>
           <p className="text-sm text-muted-foreground">{template.data.title}</p>
         </div>
-        <StatusBadge status={status} />
+        <div className="flex items-center gap-2">
+          {hasSubmission && (
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              title="Open the printable ESMP report (cover + ESSF + EMMP)"
+            >
+              <Link to={`/enterprises/${enterpriseId}/esmp.pdf`} target="_blank" rel="noopener">
+                <Printer className="mr-2 h-4 w-4" /> Print / PDF
+              </Link>
+            </Button>
+          )}
+          <StatusBadge status={status} />
+        </div>
       </div>
 
       {emmp.data && (emmp.data.submitted_at || emmp.data.approved_at) && (
         <Card className="bg-muted/30">
           <CardContent className="pt-4 text-xs text-muted-foreground space-y-1">
+            {wasReopened && (
+              <div className="flex items-center gap-1.5 text-warning font-medium">
+                <History className="h-3.5 w-3.5" />
+                Reopened for editing — previously approved on{' '}
+                {formatDateDMY(emmp.data.approved_at!)}
+              </div>
+            )}
             {emmp.data.submitted_at && <div>Submitted: {formatDateDMY(emmp.data.submitted_at)}</div>}
-            {emmp.data.approved_at && <div>Approved: {formatDateDMY(emmp.data.approved_at)}</div>}
+            {emmp.data.approved_at && !wasReopened && (
+              <div>Approved: {formatDateDMY(emmp.data.approved_at)}</div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -104,8 +155,32 @@ export function EmmpEditPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">Actions</CardTitle>
+          <CardDescription>
+            Draft saves keep your progress private. Submitting hands the form to your M&E
+            Officer or Team Leader for approval. Approval can only be given by someone other
+            than the person who submitted. Once approved, the form locks — an M&E Officer,
+            Team Leader, or Super Admin can reopen it for further edits.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
+          {canReopenAction && (
+            <Button
+              onClick={handleReopen}
+              disabled={transition.isPending}
+              variant="outline"
+              className="border-warning text-warning hover:bg-warning/10 hover:text-warning"
+            >
+              <Unlock className="mr-2 h-4 w-4" />
+              {transition.isPending ? 'Reopening…' : 'Reopen for editing'}
+            </Button>
+          )}
+          {hasSubmission && (
+            <Button asChild variant="outline">
+              <Link to={`/enterprises/${enterpriseId}/esmp.pdf`} target="_blank" rel="noopener">
+                <Printer className="mr-2 h-4 w-4" /> Print / PDF
+              </Link>
+            </Button>
+          )}
           <Button
             onClick={() => {
               setError(null);
