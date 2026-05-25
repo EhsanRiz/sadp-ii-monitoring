@@ -383,6 +383,20 @@ export interface ExtractPdfResult {
  * not 100% accurate on scanned/handwritten forms. The UI surfaces a
  * "review and confirm" banner when essf.imported_from_pdf_path is set.
  */
+/**
+ * Custom error class so callers can branch on the HTTP status. The most
+ * important case is 409 — the backend refuses to overwrite an already-
+ * approved submission, and the UI shows a "Reopen first" affordance.
+ */
+export class ExtractPdfError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ExtractPdfError';
+    this.status = status;
+  }
+}
+
 export function useExtractEsmpPdf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -394,8 +408,29 @@ export function useExtractEsmpPdf(enterpriseId: string) {
       const { data, error } = await supabase.functions.invoke('extract-esmp-pdf-v3', {
         body: { enterpriseId },
       });
-      if (error) throw error;
-      if (!data?.ok) throw new Error((data as { error?: string })?.error ?? 'Extraction failed');
+      // supabase-js wraps non-2xx responses as a FunctionsHttpError whose
+      // `context` field holds the raw Response object — we read the body
+      // out of it so the toast can show the actual server message instead
+      // of the unhelpful "Edge Function returned a non-2xx status code".
+      if (error) {
+        const ctx = (error as { context?: Response }).context;
+        let serverMsg = error.message ?? 'Extraction failed';
+        let status = ctx?.status ?? 0;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const body = await ctx.json();
+            if (body && typeof body === 'object' && typeof body.error === 'string') {
+              serverMsg = body.error;
+            }
+          } catch {
+            /* body was empty or non-JSON; keep the default message */
+          }
+        }
+        throw new ExtractPdfError(serverMsg, status);
+      }
+      if (!data?.ok) {
+        throw new ExtractPdfError((data as { error?: string })?.error ?? 'Extraction failed', 0);
+      }
       return data as ExtractPdfResult;
     },
     onSuccess: () => {

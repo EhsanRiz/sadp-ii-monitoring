@@ -17,6 +17,7 @@ import {
   useInspectionVisits,
   useEnterpriseEsmpStatus,
   useExtractEsmpPdf,
+  ExtractPdfError,
   type ExtractPdfResult,
 } from '@/lib/esmp';
 import { supabase } from '@/lib/supabase';
@@ -791,12 +792,21 @@ export function EnterpriseDetailPage() {
                 )}
 
                 {/* ---------- Auto-extract ESMP responses from the PDF ----------
-                    Calls extract-esmp-pdf edge function which sends the PDF to
-                    Claude, parses structured responses, and writes draft
+                    Calls extract-esmp-pdf-v3 edge function which sends the PDF
+                    to Claude, parses structured responses, and writes draft
                     essf_submissions + emmp_submissions rows. Field supervisor
                     reviews + corrects before submitting — see the warning
-                    banners that appear on the ESSF / EMMP edit pages.        */}
-                {enterprise.esmp_uploaded_pdf_url && (
+                    banners that appear on the ESSF / EMMP edit pages.
+
+                    We pre-flight check the submission states so the user
+                    isn't surprised by a 409 from the server: if either form
+                    is currently approved, the button is disabled and we
+                    point at the relevant "Reopen for editing" affordance.   */}
+                {enterprise.esmp_uploaded_pdf_url && (() => {
+                  const essfApproved = essf.data?.status === 'approved';
+                  const emmpApproved = emmp.data?.status === 'approved';
+                  const blocked = essfApproved; // ESSF block triggers a 409; EMMP-only just gets skipped
+                  return (
                   <div className="rounded-md border border-info/30 bg-info/5 p-3 space-y-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="text-sm">
@@ -807,8 +817,7 @@ export function EnterpriseDetailPage() {
                         <p className="text-xs text-muted-foreground mt-1">
                           Reads the uploaded PDF and creates draft ESSF + EMMP submissions
                           you can review and approve. Will overwrite any existing draft —
-                          approved submissions are left untouched (reopen them first if you
-                          want to re-import).
+                          approved submissions are left untouched.
                         </p>
                       </div>
                       <Button
@@ -824,15 +833,24 @@ export function EnterpriseDetailPage() {
                                 parts.push('EMMP');
                               toast.success(
                                 parts.length
-                                  ? `Drafted: ${parts.join(' + ')}`
+                                  ? `Drafted: ${parts.join(' + ')} — open to review`
                                   : 'Extraction returned no data — see notes',
                               );
                             },
-                            onError: (e: Error) =>
-                              toast.error('Extraction failed', { description: e.message }),
+                            onError: (e: Error) => {
+                              if (e instanceof ExtractPdfError && e.status === 409) {
+                                toast.error('Cannot re-import', {
+                                  description:
+                                    e.message +
+                                    ' Open the ESSF and click "Reopen for editing", then try again.',
+                                });
+                              } else {
+                                toast.error('Extraction failed', { description: e.message });
+                              }
+                            },
                           });
                         }}
-                        disabled={extract.isPending}
+                        disabled={extract.isPending || blocked}
                       >
                         {extract.isPending ? (
                           <>
@@ -847,6 +865,34 @@ export function EnterpriseDetailPage() {
                         )}
                       </Button>
                     </div>
+                    {blocked && (
+                      <div className="flex items-start gap-1.5 rounded border border-warning/30 bg-warning/5 p-2 text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
+                        <div className="flex-1">
+                          <span className="font-medium text-warning">
+                            ESSF is already approved
+                          </span>
+                          <span className="text-muted-foreground">
+                            {' '}— re-importing would overwrite a signed-off form. Reopen it
+                            for editing first if you want to re-run extraction.
+                          </span>
+                          <div className="mt-1.5">
+                            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                              <Link to={`/enterprises/${id}/essf/edit`}>
+                                Go to ESSF to reopen →
+                              </Link>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {!blocked && emmpApproved && (
+                      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                        <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
+                        Note: EMMP is approved and will be left untouched. ESSF re-import
+                        will proceed normally.
+                      </div>
+                    )}
                     {extract.isPending && (
                       <p className="text-xs text-muted-foreground">
                         Reading the PDF and asking Claude to map responses to the form
@@ -854,7 +900,11 @@ export function EnterpriseDetailPage() {
                       </p>
                     )}
                     {lastExtract && (
-                      <div className="space-y-2 mt-2 border-t pt-2">
+                      <div className="space-y-2 mt-2 border-t pt-3">
+                        <div className="text-sm font-medium flex items-center gap-1.5 text-success">
+                          <Sparkles className="h-4 w-4" />
+                          Drafts ready — review and submit
+                        </div>
                         <div className="text-xs flex flex-wrap items-center gap-2">
                           <Badge variant="outline" className="border-success/40 text-success">
                             ESSF: drafted{lastExtract.essf.has_data ? '' : ' (empty)'}
@@ -876,10 +926,10 @@ export function EnterpriseDetailPage() {
                           )}
                         </div>
                         {lastExtract.notes.length > 0 && (
-                          <details className="text-xs">
+                          <details className="text-xs" open>
                             <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                               {lastExtract.notes.length} extraction note
-                              {lastExtract.notes.length !== 1 ? 's' : ''} — click to expand
+                              {lastExtract.notes.length !== 1 ? 's' : ''} — click to collapse
                             </summary>
                             <ul className="mt-2 space-y-1 pl-3">
                               {lastExtract.notes.map((n, i) => (
@@ -904,7 +954,7 @@ export function EnterpriseDetailPage() {
                           </details>
                         )}
                         <div className="flex gap-2 pt-1">
-                          <Button asChild size="sm" variant="outline">
+                          <Button asChild size="sm">
                             <Link to={`/enterprises/${id}/essf/edit`}>Review ESSF →</Link>
                           </Button>
                           {lastExtract.emmp.status === 'imported' && (
@@ -916,7 +966,8 @@ export function EnterpriseDetailPage() {
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 <div className="space-y-1.5">
                   <Label>Update legacy status</Label>
