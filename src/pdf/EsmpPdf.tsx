@@ -298,13 +298,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 7.5,
   },
-  // EMMP "Not Applicable" label rendered when a row has no ticked items
+  // "NOT APPLICABLE" label for empty trailing cells (Person to Implement,
+  // Person to Monitor, Time Frame). Matches reference visual: plain text,
+  // left-aligned, slightly muted to differentiate from real entries.
   notApplicableText: {
-    fontStyle: 'italic',
-    color: '#888',
     fontSize: 7.5,
-    textAlign: 'center',
-    paddingVertical: 4,
+    color: '#555',
+    fontStyle: 'italic',
   },
   // EMMP signature block (last EMMP page) — 2x2 grid: Beneficiary +
   // Extension Agent on top, PFO + Service Provider on bottom.
@@ -715,27 +715,26 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
                 </View>
                 {section.rows.map((row, idx) => {
                   const r = emmpResponses ?? {};
-                  // A row is "not applicable" when nothing has been ticked
-                  // anywhere AND no person/timeframe text was supplied.
-                  const anyTicked =
-                    row.impacts.some((_, i) => r[`${row.id}.i${i}`] === true) ||
-                    row.mitigations.some((_, i) => r[`${row.id}.m${i}`] === true) ||
-                    row.monitoring.some((_, i) => r[`${row.id}.n${i}`] === true);
-                  const personImpl =
+                  // Item lists always render so the printed form shows the
+                  // available options (as ticked or unticked checkboxes).
+                  // Only the three trailing free-text cells show
+                  // NOT APPLICABLE when blank — matches reference page 3
+                  // where unticked rows still show the option list.
+                  const personImpl = (
                     (r[`${row.id}.person_implement`] as string | undefined) ??
                     row.default_person_implement ??
-                    '';
-                  const personMon =
+                    ''
+                  ).trim();
+                  const personMon = (
                     (r[`${row.id}.person_monitor`] as string | undefined) ??
                     row.default_person_monitor ??
-                    '';
-                  const timeframe =
+                    ''
+                  ).trim();
+                  const timeframe = (
                     (r[`${row.id}.timeframe`] as string | undefined) ??
                     row.default_timeframe ??
-                    '';
-                  const anyText =
-                    personImpl.trim() !== '' || personMon.trim() !== '' || timeframe.trim() !== '';
-                  const isNotApplicable = !anyTicked && !anyText;
+                    ''
+                  ).trim();
 
                   const impactList = renderItems(row.impacts, row.id, 'i', r);
                   const mitigList = renderItems(row.mitigations, row.id, 'm', r);
@@ -747,24 +746,18 @@ export function EsmpPdfDocument(props: EsmpPdfDocumentProps) {
                       <Text style={[styles.emmpCell, styles.emmpColPhase, { fontWeight: 'bold' }]}>
                         {row.activity}
                       </Text>
-                      <View style={[styles.emmpCell, styles.emmpColImpacts]}>
-                        {isNotApplicable ? <NotApplicable /> : impactList}
+                      <View style={[styles.emmpCell, styles.emmpColImpacts]}>{impactList}</View>
+                      <View style={[styles.emmpCell, styles.emmpColMitigations]}>{mitigList}</View>
+                      <View style={[styles.emmpCell, styles.emmpColMonitoring]}>{monList}</View>
+                      <View style={[styles.emmpCell, styles.emmpColPerson1]}>
+                        {personImpl ? <Text>{personImpl}</Text> : <NotApplicable />}
                       </View>
-                      <View style={[styles.emmpCell, styles.emmpColMitigations]}>
-                        {isNotApplicable ? <NotApplicable /> : mitigList}
+                      <View style={[styles.emmpCell, styles.emmpColPerson2]}>
+                        {personMon ? <Text>{personMon}</Text> : <NotApplicable />}
                       </View>
-                      <View style={[styles.emmpCell, styles.emmpColMonitoring]}>
-                        {isNotApplicable ? <NotApplicable /> : monList}
+                      <View style={[styles.emmpCell, styles.emmpColTimeframe]}>
+                        {timeframe ? <Text>{timeframe}</Text> : <NotApplicable />}
                       </View>
-                      <Text style={[styles.emmpCell, styles.emmpColPerson1]}>
-                        {isNotApplicable ? '' : personImpl}
-                      </Text>
-                      <Text style={[styles.emmpCell, styles.emmpColPerson2]}>
-                        {isNotApplicable ? '' : personMon}
-                      </Text>
-                      <Text style={[styles.emmpCell, styles.emmpColTimeframe]}>
-                        {isNotApplicable ? '' : timeframe}
-                      </Text>
                     </View>
                   );
                 })}
