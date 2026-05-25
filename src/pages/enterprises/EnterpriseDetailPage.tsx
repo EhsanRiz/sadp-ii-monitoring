@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -86,6 +86,11 @@ export function EnterpriseDetailPage() {
   const [lastExtract, setLastExtract] = useState<ExtractPdfResult | null>(null);
   const extract = useExtractEsmpPdf(id ?? '');
   const pdfMeta = useUploadedEsmpPdfMeta(id, !!enterprise?.esmp_uploaded_pdf_url);
+  // Allow direct links to land on a specific tab — used by the
+  // "Back to enterprise" buttons on EssfEditPage / EmmpEditPage which
+  // pass ?tab=esmp so the user returns to where they were.
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') ?? 'details';
 
   useEffect(() => {
     if (enterprise) setDraft(enterprise);
@@ -192,7 +197,7 @@ export function EnterpriseDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="details">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="progress">Progress</TabsTrigger>
@@ -805,7 +810,10 @@ export function EnterpriseDetailPage() {
                 {enterprise.esmp_uploaded_pdf_url && (() => {
                   const essfApproved = essf.data?.status === 'approved';
                   const emmpApproved = emmp.data?.status === 'approved';
-                  const blocked = essfApproved; // ESSF block triggers a 409; EMMP-only just gets skipped
+                  // Block extraction when EITHER form is approved — re-running
+                  // would skip the approved one anyway and leave the user with
+                  // a half-imported state. Better to be explicit.
+                  const blocked = essfApproved || emmpApproved;
                   return (
                   <div className="rounded-md border border-info/30 bg-info/5 p-3 space-y-2">
                     <div className="flex items-start justify-between gap-3">
@@ -870,27 +878,40 @@ export function EnterpriseDetailPage() {
                         <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
                         <div className="flex-1">
                           <span className="font-medium text-warning">
-                            ESSF is already approved
+                            {essfApproved && emmpApproved
+                              ? 'ESSF and EMMP are both already approved'
+                              : essfApproved
+                                ? 'ESSF is already approved'
+                                : 'EMMP is already approved'}
                           </span>
                           <span className="text-muted-foreground">
-                            {' '}— re-importing would overwrite a signed-off form. Reopen it
+                            {' '}— re-importing would overwrite{' '}
+                            {essfApproved && emmpApproved ? 'signed-off forms' : 'a signed-off form'}.
+                            Reopen{' '}
+                            {essfApproved && emmpApproved
+                              ? 'both forms'
+                              : essfApproved
+                                ? 'the ESSF'
+                                : 'the EMMP'}{' '}
                             for editing first if you want to re-run extraction.
                           </span>
-                          <div className="mt-1.5">
-                            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
-                              <Link to={`/enterprises/${id}/essf`}>
-                                Go to ESSF to reopen →
-                              </Link>
-                            </Button>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {essfApproved && (
+                              <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                                <Link to={`/enterprises/${id}/essf`}>
+                                  Reopen ESSF →
+                                </Link>
+                              </Button>
+                            )}
+                            {emmpApproved && (
+                              <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                                <Link to={`/enterprises/${id}/emmp`}>
+                                  Reopen EMMP →
+                                </Link>
+                              </Button>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    )}
-                    {!blocked && emmpApproved && (
-                      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                        <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
-                        Note: EMMP is approved and will be left untouched. ESSF re-import
-                        will proceed normally.
                       </div>
                     )}
                     {extract.isPending && (
@@ -969,32 +990,14 @@ export function EnterpriseDetailPage() {
                   );
                 })()}
 
-                <div className="space-y-1.5">
-                  <Label>Update legacy status</Label>
-                  <Select
-                    value={draft.esmp_status ?? enterprise.esmp_status}
-                    onValueChange={(v) =>
-                      set('esmp_status', v as EnterpriseRow['esmp_status'])
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(ESMP_LABEL).map(([k, label]) => (
-                        <SelectItem key={k} value={k}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
-                  Save status
-                </Button>
+                {/* The old "Update legacy status" dropdown lived here. It's
+                    been removed because esmp_status is now derived from the
+                    digital forms (essf + emmp) — a manual dropdown that
+                    could contradict the form state was confusing UX. Status
+                    pill at top of the ESMP tab reflects the computed view. */}
 
                 <div className="border-t pt-4 space-y-2">
-                  <Label>Upload scanned ESMP (PDF)</Label>
+                  <Label>{enterprise.esmp_uploaded_pdf_url ? 'Replace scanned ESMP (PDF)' : 'Upload scanned ESMP (PDF)'}</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       type="file"

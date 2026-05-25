@@ -80,8 +80,8 @@ export function EssfEditPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2">
-            <Link to={`/enterprises/${enterpriseId}`}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to enterprise
+            <Link to={`/enterprises/${enterpriseId}?tab=esmp`}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to ESMP
             </Link>
           </Button>
           <h1 className="text-2xl font-semibold tracking-tight">
