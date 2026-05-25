@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { useEnterprise } from '@/lib/enterprises';
 import {
   canApproveSubmission,
+  canReopen,
   canSubmit,
   useEssfSubmission,
   useSaveEssfDraft,
@@ -15,7 +16,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { EssfResponses } from '@/forms/essfSchema';
-import { ArrowLeft, Send, Check, Save } from 'lucide-react';
+import { ArrowLeft, Send, Check, Save, Printer, Unlock, History } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 
 export function EssfEditPage() {
@@ -39,9 +40,40 @@ export function EssfEditPage() {
 
   const status = essf.data?.status ?? null;
   const isApproved = status === 'approved';
+  // A submission that was once approved but is now back to draft — useful for
+  // displaying "Previously approved on …" on the trail card.
+  const wasReopened = status === 'draft' && !!essf.data?.approved_at;
   const canDraft = canSubmit(role) && !isApproved;
   const canSubmitAction = canSubmit(role) && (status === 'draft' || status === null);
   const canApproveAction = canApproveSubmission(role, user?.id ?? null, essf.data);
+  const canReopenAction = isApproved && canReopen(role);
+  // Print is offered whenever an ESSF submission exists — it just opens the
+  // existing /esmp.pdf route, which is the canonical printable artifact.
+  const hasSubmission = !!essf.data;
+
+  const handleReopen = () => {
+    setError(null);
+    if (
+      !window.confirm(
+        'Reopen this approved ESSF for editing?\n\n' +
+          'The form will return to draft status. The original submitted and ' +
+          'approved dates stay on file as historical record. After your edits, ' +
+          'you will need to submit and have someone re-approve it.',
+      )
+    ) {
+      return;
+    }
+    transition.mutate(
+      { to: 'draft', userId: user!.id },
+      {
+        onSuccess: () => toast.success('ESSF reopened for editing'),
+        onError: (e: Error) => {
+          setError(e.message);
+          toast.error('Could not reopen', { description: e.message });
+        },
+      },
+    );
+  };
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -59,16 +91,37 @@ export function EssfEditPage() {
             Environmental and Social Screening Form
           </p>
         </div>
-        <StatusBadge status={status} />
+        <div className="flex items-center gap-2">
+          {hasSubmission && (
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              title="Open the printable ESMP report (cover + ESSF + EMMP)"
+            >
+              <Link to={`/enterprises/${enterpriseId}/esmp.pdf`} target="_blank" rel="noopener">
+                <Printer className="mr-2 h-4 w-4" /> Print / PDF
+              </Link>
+            </Button>
+          )}
+          <StatusBadge status={status} />
+        </div>
       </div>
 
       {essf.data && (
         <Card className="bg-muted/30">
           <CardContent className="pt-4 text-xs text-muted-foreground space-y-1">
+            {wasReopened && (
+              <div className="flex items-center gap-1.5 text-warning font-medium">
+                <History className="h-3.5 w-3.5" />
+                Reopened for editing — previously approved on{' '}
+                {formatDateDMY(essf.data.approved_at!)}
+              </div>
+            )}
             {essf.data.submitted_at && (
               <div>Submitted: {formatDateDMY(essf.data.submitted_at)}</div>
             )}
-            {essf.data.approved_at && (
+            {essf.data.approved_at && !wasReopened && (
               <div>Approved: {formatDateDMY(essf.data.approved_at)}</div>
             )}
           </CardContent>
@@ -85,10 +138,29 @@ export function EssfEditPage() {
           <CardDescription>
             Draft saves keep your progress private. Submitting hands the form to your M&E
             Officer or Team Leader for approval. Approval can only be given by someone other
-            than the person who submitted.
+            than the person who submitted. Once approved, the form locks — an M&E Officer,
+            Team Leader, or Super Admin can reopen it for further edits.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
+          {canReopenAction && (
+            <Button
+              onClick={handleReopen}
+              disabled={transition.isPending}
+              variant="outline"
+              className="border-warning text-warning hover:bg-warning/10 hover:text-warning"
+            >
+              <Unlock className="mr-2 h-4 w-4" />
+              {transition.isPending ? 'Reopening…' : 'Reopen for editing'}
+            </Button>
+          )}
+          {hasSubmission && (
+            <Button asChild variant="outline">
+              <Link to={`/enterprises/${enterpriseId}/esmp.pdf`} target="_blank" rel="noopener">
+                <Printer className="mr-2 h-4 w-4" /> Print / PDF
+              </Link>
+            </Button>
+          )}
           <Button
             onClick={() => {
               setError(null);

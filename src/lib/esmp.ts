@@ -355,3 +355,14 @@ export function canApproveSubmission(
   if (currentUserId && submission.filled_by === currentUserId) return false;
   return true;
 }
+
+/**
+ * Reopen an already-approved submission back to draft for editing.
+ * Same role set as approvers — Field Supervisors shouldn't be able to undo an
+ * approval they didn't have authority to grant in the first place.
+ * approved_at / approved_by / submitted_at stay set as historical record;
+ * the UI surfaces this as "Previously approved on …".
+ */
+export function canReopen(role: AppRole | null): boolean {
+  return canApprove(role);
+}
