@@ -161,3 +161,178 @@ export function canApproveM1Submission(
 export function canReopenM1(role: AppRole | null): boolean {
   return canApproveM1(role);
 }
+
+// ============================================================================
+// Source M1 PDF — upload + auto-extraction (Phase 3a)
+// ============================================================================
+
+const M1_SOURCE_BUCKET = 'm1-supporting-docs';
+
+/** Storage path for a given enterprise's source M1 PDF. Always `<id>/_source.pdf`. */
+export function m1SourcePdfPath(enterpriseId: string): string {
+  return `${enterpriseId}/_source.pdf`;
+}
+
+export interface UploadedM1PdfMeta {
+  path: string;
+  size: number;
+  uploaded_at: string;
+}
+
+/**
+ * Read storage metadata for the source M1 PDF (size + last-modified) so the UI
+ * can render a file card without separately tracking it. Returns null if no
+ * source PDF is on file.
+ */
+export function useUploadedM1PdfMeta(enterpriseId: string | undefined, present: boolean) {
+  return useQuery({
+    queryKey: ['m1-source-pdf-meta', enterpriseId],
+    queryFn: async (): Promise<UploadedM1PdfMeta | null> => {
+      if (!enterpriseId) return null;
+      // storage.list with search lets us look up a known filename inside a
+      // prefix without paginating the whole bucket.
+      const { data, error } = await supabase.storage
+        .from(M1_SOURCE_BUCKET)
+        .list(enterpriseId, { search: '_source.pdf', limit: 1 });
+      if (error) throw error;
+      const row = data?.find((d) => d.name === '_source.pdf');
+      if (!row) return null;
+      const meta = (row.metadata ?? {}) as { size?: number };
+      return {
+        path: `${enterpriseId}/_source.pdf`,
+        size: meta.size ?? 0,
+        uploaded_at: row.updated_at ?? row.created_at ?? new Date().toISOString(),
+      };
+    },
+    enabled: !!enterpriseId && present,
+  });
+}
+
+/**
+ * Upload (or replace) the source M1 PDF for an enterprise, then stamp
+ * uploaded_pdf_path / uploaded_pdf_uploaded_at on the m1_submissions row
+ * (creating a draft row if none exists).
+ */
+export function useUploadM1SourcePdf(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      if (!file) throw new Error('No file provided');
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        throw new Error('Source M1 PDF must be a .pdf file');
+      }
+      const path = m1SourcePdfPath(enterpriseId);
+      const up = await supabase.storage
+        .from(M1_SOURCE_BUCKET)
+        .upload(path, file, { upsert: true, contentType: 'application/pdf' });
+      if (up.error) throw up.error;
+
+      // Stamp the path on the m1_submissions row (create draft if missing).
+      const existing = await supabase
+        .from('m1_submissions')
+        .select('id, status')
+        .eq('enterprise_id', enterpriseId)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      const stamp = {
+        uploaded_pdf_path: path,
+        uploaded_pdf_uploaded_at: new Date().toISOString(),
+      };
+      if (existing.data) {
+        const { error } = await supabase
+          .from('m1_submissions')
+          .update(stamp)
+          .eq('id', existing.data.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('m1_submissions').insert({
+          enterprise_id: enterpriseId,
+          status: 'draft',
+          ...stamp,
+        });
+        if (error) throw error;
+      }
+      return { path };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['m1-source-pdf-meta', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-m1-status', enterpriseId] });
+    },
+  });
+}
+
+/** Notes object surfaced from Claude via the extract-m1-pdf edge function. */
+export interface M1ImportNote {
+  field?: string;
+  note: string;
+  confidence?: 'low' | 'medium' | 'high';
+}
+
+export interface ExtractM1Result {
+  ok: boolean;
+  enterprise_id: string;
+  narrative_sections_filled: number;
+  cashbook_entry_count: number;
+  notes: M1ImportNote[];
+}
+
+export class ExtractM1Error extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ExtractM1Error';
+    this.status = status;
+  }
+}
+
+/**
+ * Call the extract-m1-pdf edge function. The edge function reads the previously
+ * uploaded source PDF, sends it to Claude, parses the response, and writes a
+ * draft m1_submissions row stamped with imported_from_pdf_path / imported_at /
+ * import_notes. Field supervisor reviews + corrects in the M1 page before
+ * submitting.
+ */
+export function useExtractM1Pdf(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<ExtractM1Result> => {
+      // First deploy at slug 'extract-m1-pdf'. If/when the stuck-slug pattern
+      // hits us on a re-deploy, bump to extract-m1-pdf-v2 here.
+      const { data, error } = await supabase.functions.invoke('extract-m1-pdf', {
+        body: { enterpriseId },
+      });
+      if (error) {
+        const ctx = (error as { context?: Response }).context;
+        let serverMsg = error.message ?? 'Extraction failed';
+        const status = ctx?.status ?? 0;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const body = await ctx.json();
+            if (body && typeof body === 'object' && typeof body.error === 'string') {
+              serverMsg = body.error;
+            }
+          } catch {
+            /* ignore non-JSON body */
+          }
+        }
+        throw new ExtractM1Error(serverMsg, status);
+      }
+      if (!data?.ok) {
+        throw new ExtractM1Error((data as { error?: string })?.error ?? 'Extraction failed', 0);
+      }
+      return data as ExtractM1Result;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-m1-status', enterpriseId] });
+    },
+  });
+}
+
+/** Bytes → "5.1 MB" / "248 KB" — kept here so M1 callers don't import from lib/enterprises. */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}

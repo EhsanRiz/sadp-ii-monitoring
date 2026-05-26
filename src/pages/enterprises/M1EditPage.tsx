@@ -31,7 +31,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Save, Send, Check, Printer, Unlock, History, Construction } from 'lucide-react';
+import { ArrowLeft, Save, Send, Check, Printer, Unlock, History, Construction, Sparkles, AlertTriangle } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 import type { M1NarrativeResponses } from '@/forms/m1NarrativeSchema';
 
@@ -126,6 +126,58 @@ export function M1EditPage() {
             {m1.data.submitted_at && <div>Submitted: {formatDateDMY(m1.data.submitted_at)}</div>}
             {m1.data.approved_at && !wasReopened && (
               <div>Approved: {formatDateDMY(m1.data.approved_at)}</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Auto-import banner — shown when the M1 row was populated by the
+          extract-m1-pdf edge function and hasn't been approved yet. The
+          field supervisor must review the draft before submitting. */}
+      {m1.data?.imported_from_pdf_path && m1.data.status !== 'approved' && (
+        <Card className="border-warning/40 bg-warning/5">
+          <CardContent className="pt-4 space-y-2">
+            <div className="flex items-start gap-2 text-sm">
+              <Sparkles className="h-4 w-4 mt-0.5 text-warning shrink-0" />
+              <div>
+                <p className="font-medium text-warning">
+                  Auto-imported from PDF — please review before submitting
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Claude extracted the narrative + cashbook from the uploaded scanned M1
+                  report on{' '}
+                  {m1.data.imported_at ? formatDateDMY(m1.data.imported_at) : '—'}.
+                  Verify every section, especially anything flagged below as low confidence.
+                </p>
+              </div>
+            </div>
+            {Array.isArray(m1.data.import_notes) && m1.data.import_notes.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  {m1.data.import_notes.length} extraction note
+                  {m1.data.import_notes.length !== 1 ? 's' : ''} — click to expand
+                </summary>
+                <ul className="mt-2 space-y-1 pl-3">
+                  {(m1.data.import_notes as Array<{ field?: string; note: string; confidence?: string }>).map((n, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <AlertTriangle
+                        className={
+                          'h-3 w-3 mt-0.5 shrink-0 ' +
+                          (n.confidence === 'low' ? 'text-destructive' : 'text-warning')
+                        }
+                      />
+                      <span>
+                        {n.field && (
+                          <code className="font-mono text-[10px] bg-muted px-1 rounded mr-1">
+                            {n.field}
+                          </code>
+                        )}
+                        {n.note}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </CardContent>
         </Card>

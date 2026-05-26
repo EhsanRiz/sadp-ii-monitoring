@@ -599,6 +599,8 @@ export interface Database {
           imported_from_pdf_path: string | null;
           imported_at: string | null;
           import_notes: Json | null;
+          uploaded_pdf_path: string | null;
+          uploaded_pdf_uploaded_at: string | null;
         };
         Insert: {
           id?: string;
@@ -622,6 +624,8 @@ export interface Database {
           imported_from_pdf_path?: string | null;
           imported_at?: string | null;
           import_notes?: Json | null;
+          uploaded_pdf_path?: string | null;
+          uploaded_pdf_uploaded_at?: string | null;
         };
         Update: {
           id?: string;
@@ -645,6 +649,8 @@ export interface Database {
           imported_from_pdf_path?: string | null;
           imported_at?: string | null;
           import_notes?: Json | null;
+          uploaded_pdf_path?: string | null;
+          uploaded_pdf_uploaded_at?: string | null;
         };
         Relationships: [];
       };

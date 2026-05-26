@@ -20,7 +20,15 @@ import {
   ExtractPdfError,
   type ExtractPdfResult,
 } from '@/lib/esmp';
-import { useM1Submission } from '@/lib/m1';
+import {
+  useM1Submission,
+  useUploadM1SourcePdf,
+  useUploadedM1PdfMeta,
+  useExtractM1Pdf,
+  ExtractM1Error,
+  formatBytes as formatBytesM1,
+  type ExtractM1Result,
+} from '@/lib/m1';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -81,6 +89,10 @@ export function EnterpriseDetailPage() {
   const inspections = useInspectionVisits(id);
   const esmpStatus = useEnterpriseEsmpStatus(id);
   const m1 = useM1Submission(id);
+  const m1PdfMeta = useUploadedM1PdfMeta(id, !!m1.data?.uploaded_pdf_path);
+  const uploadM1Pdf = useUploadM1SourcePdf(id ?? '');
+  const extractM1 = useExtractM1Pdf(id ?? '');
+  const [lastM1Extract, setLastM1Extract] = useState<ExtractM1Result | null>(null);
 
   const [draft, setDraft] = useState<Partial<EnterpriseRow>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1092,6 +1104,204 @@ export function EnterpriseDetailPage() {
                   </Button>
                 )}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Source M1 PDF + Auto-extract.
+              Same shape as the Legacy ESMP section: upload a scanned/printed
+              M1 report PDF, click Extract, get a draft narrative + cashbook
+              to review on the M1 page. Approved submissions are protected
+              from being overwritten (409 → Reopen-first guide). */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Source M1 PDF</CardTitle>
+              <CardDescription>
+                Upload a scanned/printed M1 report and let Claude pre-fill the digital
+                narrative + cashbook from it. You always review the draft before
+                submitting — extraction is never auto-approved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {m1.data?.uploaded_pdf_path ? (
+                <div className="flex items-center gap-3 rounded-md border p-3">
+                  <div className="rounded-md bg-primary/10 p-2 shrink-0">
+                    <FileText className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      M1 source — {enterprise.beneficiary_short_name}.pdf
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {m1PdfMeta.isLoading ? (
+                        'Loading file info…'
+                      ) : m1PdfMeta.data ? (
+                        <>
+                          {formatBytesM1(m1PdfMeta.data.size)} · Uploaded{' '}
+                          {formatDateDMY(m1PdfMeta.data.uploaded_at)}
+                        </>
+                      ) : (
+                        'PDF on file'
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No source PDF uploaded yet.</p>
+              )}
+
+              <div className="space-y-1.5">
+                <Label>{m1.data?.uploaded_pdf_path ? 'Replace source PDF' : 'Upload source PDF'}</Label>
+                <Input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    uploadM1Pdf.mutate(f, {
+                      onSuccess: () => toast.success('Source M1 PDF uploaded'),
+                      onError: (err: Error) =>
+                        toast.error('Upload failed', { description: err.message }),
+                    });
+                    // Reset the input so re-uploading the same file fires onChange.
+                    e.target.value = '';
+                  }}
+                  disabled={uploadM1Pdf.isPending}
+                />
+                {uploadM1Pdf.isPending && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Uploading…
+                  </p>
+                )}
+              </div>
+
+              {/* Extract panel */}
+              {m1.data?.uploaded_pdf_path && (() => {
+                const m1Approved = m1.data?.status === 'approved';
+                return (
+                  <div className="rounded-md border border-info/30 bg-info/5 p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-sm">
+                        <div className="font-medium flex items-center gap-1.5">
+                          <Sparkles className="h-4 w-4 text-info" />
+                          Auto-extract from this PDF
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Reads the uploaded PDF and writes a draft narrative + cashbook
+                          onto the M1 submission. Approved submissions are left untouched
+                          (reopen first if you want to re-import).
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setLastM1Extract(null);
+                          extractM1.mutate(undefined, {
+                            onSuccess: (data) => {
+                              setLastM1Extract(data);
+                              toast.success(
+                                `Drafted: ${data.narrative_sections_filled}/7 narrative sections, ${data.cashbook_entry_count} cashbook entries`,
+                              );
+                            },
+                            onError: (e: Error) => {
+                              if (e instanceof ExtractM1Error && e.status === 409) {
+                                toast.error('Cannot re-import', {
+                                  description:
+                                    e.message +
+                                    ' Open the M1 page and Reopen for editing, then try again.',
+                                });
+                              } else {
+                                toast.error('Extraction failed', { description: e.message });
+                              }
+                            },
+                          });
+                        }}
+                        disabled={extractM1.isPending || m1Approved}
+                      >
+                        {extractM1.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extracting…
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" /> Extract responses
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    {m1Approved && (
+                      <div className="flex items-start gap-1.5 rounded border border-warning/30 bg-warning/5 p-2 text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
+                        <div className="flex-1">
+                          <span className="font-medium text-warning">M1 is already approved</span>
+                          <span className="text-muted-foreground">
+                            {' '}— re-importing would overwrite a signed-off submission. Reopen
+                            the M1 first if you want to re-run extraction.
+                          </span>
+                          <div className="mt-1.5">
+                            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                              <Link to={`/enterprises/${id}/m1`}>Go to M1 to reopen →</Link>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {extractM1.isPending && (
+                      <p className="text-xs text-muted-foreground">
+                        Reading the PDF and asking Claude to map narrative + cashbook.
+                        Usually 30–90 seconds depending on PDF length.
+                      </p>
+                    )}
+                    {lastM1Extract && (
+                      <div className="space-y-2 mt-2 border-t pt-3">
+                        <div className="text-sm font-medium flex items-center gap-1.5 text-success">
+                          <Sparkles className="h-4 w-4" /> Draft ready — review and submit
+                        </div>
+                        <div className="text-xs flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="border-success/40 text-success">
+                            Narrative: {lastM1Extract.narrative_sections_filled} / 7 sections
+                          </Badge>
+                          <Badge variant="outline" className="border-success/40 text-success">
+                            Cashbook: {lastM1Extract.cashbook_entry_count} entries
+                          </Badge>
+                        </div>
+                        {lastM1Extract.notes.length > 0 && (
+                          <details className="text-xs" open>
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                              {lastM1Extract.notes.length} extraction note
+                              {lastM1Extract.notes.length !== 1 ? 's' : ''} — click to collapse
+                            </summary>
+                            <ul className="mt-2 space-y-1 pl-3">
+                              {lastM1Extract.notes.map((n, i) => (
+                                <li key={i} className="flex items-start gap-1.5">
+                                  <AlertTriangle
+                                    className={cn(
+                                      'h-3 w-3 mt-0.5 shrink-0',
+                                      n.confidence === 'low' ? 'text-destructive' : 'text-warning',
+                                    )}
+                                  />
+                                  <span>
+                                    {n.field && (
+                                      <code className="font-mono text-[10px] bg-muted px-1 rounded mr-1">
+                                        {n.field}
+                                      </code>
+                                    )}
+                                    {n.note}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                        <div className="flex gap-2 pt-1">
+                          <Button asChild size="sm">
+                            <Link to={`/enterprises/${id}/m1`}>Review M1 draft →</Link>
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
