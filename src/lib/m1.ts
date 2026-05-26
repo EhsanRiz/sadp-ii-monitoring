@@ -396,9 +396,15 @@ export function useExtractM1Pdf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<ExtractM1Result> => {
-      // First deploy at slug 'extract-m1-pdf'. If/when the stuck-slug pattern
-      // hits us on a re-deploy, bump to extract-m1-pdf-v2 here.
-      const { data, error } = await supabase.functions.invoke('extract-m1-pdf', {
+      // NOTE: deployed under "-v2" slug. -v1 worked but its prompt let
+      // Claude pull entries from bank statements + supplier receipts
+      // pages — which over-counted cashbook rows ~2-3x because the
+      // cashbook is the SUPERVISOR'S CONSOLIDATED view, not the raw
+      // bank-recorded transactions. v2's prompt scopes extraction to
+      // the cashbook page only and explicitly lists supporting docs
+      // to ignore. -v1 stays deployed for reference; future re-deploys
+      // bump the suffix per PROGRESS.md §6 stuck-slug pattern.
+      const { data, error } = await supabase.functions.invoke('extract-m1-pdf-v2', {
         body: { enterpriseId },
       });
       if (error) {
