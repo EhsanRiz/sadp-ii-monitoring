@@ -14,6 +14,8 @@ import { useM1Submission } from '@/lib/m1';
 import { M1PdfDocument } from '@/pdf/M1Pdf';
 import type { M1NarrativeResponses } from '@/forms/m1NarrativeSchema';
 import type { M1CashbookResponses } from '@/forms/m1CashbookSchema';
+import type { M1FinancialReportResponses } from '@/forms/m1FinancialReportSchema';
+import type { M1BankReconciliationResponses } from '@/forms/m1BankReconciliationSchema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -80,6 +82,8 @@ export function M1PdfRoute() {
           resourceCenterName={resourceCenterName}
           narrative={(m1.data.narrative as M1NarrativeResponses | null) ?? null}
           cashbook={(m1.data.cashbook as M1CashbookResponses | null) ?? null}
+          financialReport={(m1.data.financial_report as M1FinancialReportResponses | null) ?? null}
+          bankReconciliation={(m1.data.bank_reconciliation as M1BankReconciliationResponses | null) ?? null}
           reportDate={m1.data.report_date}
           m1PeriodStart={m1.data.m1_period_start}
           m1PeriodEnd={m1.data.m1_period_end}

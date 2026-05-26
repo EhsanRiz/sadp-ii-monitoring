@@ -26,6 +26,10 @@ import {
 } from '@/lib/m1';
 import { M1NarrativeFormRenderer } from '@/components/forms/M1NarrativeFormRenderer';
 import { M1CashbookFormRenderer } from '@/components/forms/M1CashbookFormRenderer';
+import { M1FinancialReportFormRenderer } from '@/components/forms/M1FinancialReportFormRenderer';
+import { M1BankReconciliationFormRenderer } from '@/components/forms/M1BankReconciliationFormRenderer';
+import type { M1FinancialReportResponses } from '@/forms/m1FinancialReportSchema';
+import type { M1BankReconciliationResponses } from '@/forms/m1BankReconciliationSchema';
 import type { M1CashbookResponses } from '@/forms/m1CashbookSchema';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -45,11 +49,15 @@ export function M1EditPage() {
 
   const [narrative, setNarrative] = useState<M1NarrativeResponses>({});
   const [cashbook, setCashbook] = useState<M1CashbookResponses>({});
+  const [financialReport, setFinancialReport] = useState<M1FinancialReportResponses>({});
+  const [bankReconciliation, setBankReconciliation] = useState<M1BankReconciliationResponses>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (m1.data?.narrative) setNarrative(m1.data.narrative as M1NarrativeResponses);
     if (m1.data?.cashbook) setCashbook(m1.data.cashbook as M1CashbookResponses);
+    if (m1.data?.financial_report) setFinancialReport(m1.data.financial_report as M1FinancialReportResponses);
+    if (m1.data?.bank_reconciliation) setBankReconciliation(m1.data.bank_reconciliation as M1BankReconciliationResponses);
   }, [m1.data]);
 
   if (!enterpriseId) return null;
@@ -207,16 +215,18 @@ export function M1EditPage() {
             readOnly={isApproved}
           />
         </TabsContent>
-        <TabsContent value="financial" className="mt-4">
-          <ComingSoon
-            label="Financial Report"
-            description="Categorised budget items (Equipment, Inputs, Labour, Transportation, Travel, Other, Technical Assistance, Technology Transfer) with auto 20% / 20% / 60% Beneficiary / IFAD / Grant-IDA split."
+        <TabsContent value="financial" className="mt-4 space-y-4">
+          <M1FinancialReportFormRenderer
+            responses={financialReport}
+            onChange={setFinancialReport}
+            readOnly={isApproved}
           />
         </TabsContent>
-        <TabsContent value="reconciliation" className="mt-4">
-          <ComingSoon
-            label="Bank Reconciliation"
-            description="Matching grant beneficiary contribution + SADP grant funds, less eligible expenditure, against bank statement balance. Unexplained-differences computed and must reach 0."
+        <TabsContent value="reconciliation" className="mt-4 space-y-4">
+          <M1BankReconciliationFormRenderer
+            responses={bankReconciliation}
+            onChange={setBankReconciliation}
+            readOnly={isApproved}
           />
         </TabsContent>
         <TabsContent value="supporting" className="mt-4">
@@ -262,7 +272,13 @@ export function M1EditPage() {
             onClick={() => {
               setError(null);
               save.mutate(
-                { narrative: narrative as Record<string, unknown>, cashbook: cashbook as Record<string, unknown>, filled_by: user?.id ?? null },
+                {
+                  narrative: narrative as Record<string, unknown>,
+                  cashbook: cashbook as Record<string, unknown>,
+                  financial_report: financialReport as Record<string, unknown>,
+                  bank_reconciliation: bankReconciliation as Record<string, unknown>,
+                  filled_by: user?.id ?? null,
+                },
                 {
                   onSuccess: () => toast.success('Draft saved'),
                   onError: (e: Error) => {
@@ -282,7 +298,13 @@ export function M1EditPage() {
             onClick={() => {
               setError(null);
               save.mutate(
-                { narrative: narrative as Record<string, unknown>, cashbook: cashbook as Record<string, unknown>, filled_by: user?.id ?? null },
+                {
+                  narrative: narrative as Record<string, unknown>,
+                  cashbook: cashbook as Record<string, unknown>,
+                  financial_report: financialReport as Record<string, unknown>,
+                  bank_reconciliation: bankReconciliation as Record<string, unknown>,
+                  filled_by: user?.id ?? null,
+                },
                 {
                   onSuccess: () =>
                     transition.mutate(
