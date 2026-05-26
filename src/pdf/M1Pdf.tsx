@@ -17,6 +17,8 @@ import {
   computeBudgetCodeSpend,
   computeCashbookTotals,
   computeRunningBalances,
+  computeRunningAccum,
+  computeBudgetBalances,
   type M1CashbookEntry,
   type M1CashbookResponses,
 } from '@/forms/m1CashbookSchema';
@@ -417,6 +419,10 @@ function CashbookPage({
   const opening = cashbook.opening_balance ?? 0;
   const entries: M1CashbookEntry[] = cashbook.entries ?? [];
   const balances = computeRunningBalances(entries, opening);
+  const accums = computeRunningAccum(entries);
+  // Budget Balance is blank by default (no planned-per-code anchor wired);
+  // empty map yields NaN per row, which we render as a blank cell.
+  const budgetBalances = computeBudgetBalances(entries, new Map<string, number>());
   const totals = computeCashbookTotals(entries, opening);
   const byCode = computeBudgetCodeSpend(entries);
 
@@ -477,6 +483,8 @@ function CashbookPage({
 
         {sorted.map((e, i) => {
           const balance = balances.get(e.id) ?? 0;
+          const accum = accums.get(e.id) ?? 0;
+          const budgetBal = budgetBalances.get(e.id);
           const zebra = i % 2 === 1 ? styles.cashZebra : {};
           return (
             <View key={e.id} style={[styles.cashRow, zebra]} wrap={false}>
@@ -492,7 +500,13 @@ function CashbookPage({
                 {e.debit ? formatM(e.debit) : ''}
               </Text>
               <Text style={[styles.cashCell, styles.cashCellRight, { width: CASHBOOK_COLUMNS[7].width }]}>
+                {accum > 0 ? formatM(accum) : ''}
+              </Text>
+              <Text style={[styles.cashCell, styles.cashCellRight, { width: CASHBOOK_COLUMNS[8].width }]}>
                 {formatM(balance)}
+              </Text>
+              <Text style={[styles.cashCell, styles.cashCellRight, { width: CASHBOOK_COLUMNS[9].width }]}>
+                {typeof budgetBal === 'number' && Number.isFinite(budgetBal) ? formatM(budgetBal) : ''}
               </Text>
             </View>
           );
@@ -500,7 +514,7 @@ function CashbookPage({
 
         {/* Totals row */}
         <View style={styles.cashTotalsRow}>
-          <Text style={[styles.cashTotalsCell, { width: '70%', textAlign: 'right' }]}>Totals:</Text>
+          <Text style={[styles.cashTotalsCell, { width: '55%', textAlign: 'right' }]}>Totals:</Text>
           <Text style={[styles.cashTotalsCell, styles.cashCellRight, { width: CASHBOOK_COLUMNS[5].width }]}>
             {formatM(totals.totalCredits)}
           </Text>
@@ -508,8 +522,12 @@ function CashbookPage({
             {formatM(totals.totalDebits)}
           </Text>
           <Text style={[styles.cashTotalsCell, styles.cashCellRight, { width: CASHBOOK_COLUMNS[7].width }]}>
+            {formatM(totals.totalDebits)}
+          </Text>
+          <Text style={[styles.cashTotalsCell, styles.cashCellRight, { width: CASHBOOK_COLUMNS[8].width }]}>
             {formatM(totals.closingBalance)}
           </Text>
+          <Text style={[styles.cashTotalsCell, { width: CASHBOOK_COLUMNS[9].width }]} />
         </View>
       </View>
 

@@ -23,6 +23,8 @@ import { Plus, Trash2, BookOpen, AlertTriangle } from 'lucide-react';
 import {
   blankEntry,
   CASHBOOK_COLUMNS,
+  computeRunningAccum,
+  computeBudgetBalances,
   computeBudgetCodeSpend,
   computeCashbookTotals,
   computeRunningBalances,
@@ -50,6 +52,15 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
   const entries = responses.entries ?? [];
 
   const balances = useMemo(() => computeRunningBalances(entries, opening), [entries, opening]);
+  const accums = useMemo(() => computeRunningAccum(entries), [entries]);
+  // Budget Balance column is empty by default (no planned-per-code map wired
+  // from Financial Report yet). Passing an empty map yields NaN for every
+  // row, which we render as a blank cell — matches the printed form
+  // behaviour where the column exists for layout but isn't filled in.
+  const budgetBalances = useMemo(
+    () => computeBudgetBalances(entries, new Map<string, number>()),
+    [entries],
+  );
   const totals = useMemo(() => computeCashbookTotals(entries, opening), [entries, opening]);
   const byCode = useMemo(() => computeBudgetCodeSpend(entries), [entries]);
 
@@ -153,6 +164,8 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                 <tbody>
                   {entries.map((e) => {
                     const balance = balances.get(e.id) ?? 0;
+                    const accum = accums.get(e.id) ?? 0;
+                    const budgetBal = budgetBalances.get(e.id);
                     const credit = Number(e.credit) || 0;
                     const debit = Number(e.debit) || 0;
                     const bothPositive = credit > 0 && debit > 0;
@@ -227,6 +240,9 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                             placeholder="0.00"
                           />
                         </td>
+                        <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">
+                          {accum > 0 ? formatM(accum) : ''}
+                        </td>
                         <td className={cn(
                           'py-1.5 pr-2 text-right tabular-nums font-medium',
                           balance < 0 && 'text-destructive',
@@ -237,6 +253,12 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                               <AlertTriangle className="h-2.5 w-2.5" /> both
                             </div>
                           )}
+                        </td>
+                        <td className={cn(
+                          'py-1.5 pr-2 text-right tabular-nums text-muted-foreground',
+                          typeof budgetBal === 'number' && budgetBal < 0 && 'text-destructive',
+                        )}>
+                          {typeof budgetBal === 'number' && Number.isFinite(budgetBal) ? formatM(budgetBal) : ''}
                         </td>
                         {!readOnly && (
                           <td className="py-1.5">
@@ -259,12 +281,14 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                     <td colSpan={5} className="py-2 pr-2 text-right">Totals:</td>
                     <td className="py-2 pr-2 text-right tabular-nums">{formatM(totals.totalCredits)}</td>
                     <td className="py-2 pr-2 text-right tabular-nums">{formatM(totals.totalDebits)}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{formatM(totals.totalDebits)}</td>
                     <td className={cn(
                       'py-2 pr-2 text-right tabular-nums',
                       totals.closingBalance < 0 && 'text-destructive',
                     )}>
                       {formatM(totals.closingBalance)}
                     </td>
+                    <td />
                     {!readOnly && <td />}
                   </tr>
                 </tbody>

@@ -61,21 +61,29 @@ export interface M1CashbookResponses {
  * Column order for the spreadsheet view AND the PDF table. Kept in one place
  * so they can't drift apart.
  */
+/**
+ * Column order for the spreadsheet view AND the PDF table. Single source of
+ * truth so they can't drift apart. Matches the printed SADP-II cashbook
+ * template: 5 user-input columns followed by 5 numeric columns (2 entered,
+ * 3 computed).
+ */
 export const CASHBOOK_COLUMNS = [
-  { id: 'date',         label: 'Date',         width: '10%', align: 'left'  as const },
-  { id: 'item',         label: 'Item',         width: '18%', align: 'left'  as const },
-  { id: 'budget_code',  label: 'Budget code',  width: '10%', align: 'left'  as const },
-  { id: 'supplier',     label: 'Supplier',     width: '14%', align: 'left'  as const },
-  { id: 'description',  label: 'Description',  width: '18%', align: 'left'  as const },
-  { id: 'credit',       label: 'Credit (M)',   width: '10%', align: 'right' as const },
-  { id: 'debit',        label: 'Debit (M)',    width: '10%', align: 'right' as const },
-  { id: 'balance',      label: 'Balance (M)',  width: '10%', align: 'right' as const },
+  { id: 'date',           label: 'Date',           width: '8%',  align: 'left'  as const },
+  { id: 'item',           label: 'Item',           width: '14%', align: 'left'  as const },
+  { id: 'budget_code',    label: 'Budget',         width: '7%',  align: 'left'  as const },
+  { id: 'supplier',       label: 'Supplier',       width: '12%', align: 'left'  as const },
+  { id: 'description',    label: 'Description',    width: '14%', align: 'left'  as const },
+  { id: 'credit',         label: 'Credit (M)',     width: '8%',  align: 'right' as const },
+  { id: 'debit',          label: 'Debit (M)',      width: '8%',  align: 'right' as const },
+  { id: 'accum',          label: 'Accum (M)',      width: '9%',  align: 'right' as const },
+  { id: 'balance',        label: 'Balance (M)',    width: '9%',  align: 'right' as const },
+  { id: 'budget_balance', label: 'Budget bal (M)', width: '11%', align: 'right' as const },
 ] as const;
 
 /**
  * Compute the running balance for each entry. Sorts a defensive copy by date
- * ascending, then folds. Returns an array aligned with the input order so the
- * caller can map row.id → balance without re-sorting.
+ * ascending, then folds. Returns a map keyed by row.id so the caller can
+ * lookup without re-sorting.
  *
  * Caller-supplied opening_balance defaults to 0.
  */
@@ -98,6 +106,69 @@ export function computeRunningBalances(
     balances.set(e.id, running);
   }
   return balances;
+}
+
+/**
+ * Running ACCUM column — cumulative sum of DEBITS only, in date order.
+ * Tracks "how much have we spent total so far" — separate from running
+ * Balance (which is the bank-account-style net position).
+ *
+ * Mirrors the ACCUM column in the printed SADP-II cashbook template.
+ */
+export function computeRunningAccum(entries: M1CashbookEntry[]): Map<string, number> {
+  const indexed = entries.map((e, i) => ({ e, i }));
+  indexed.sort((a, b) => {
+    const da = a.e.date ?? '';
+    const db = b.e.date ?? '';
+    if (da !== db) return da < db ? -1 : 1;
+    return a.i - b.i;
+  });
+  const accum = new Map<string, number>();
+  let running = 0;
+  for (const { e } of indexed) {
+    running += Number(e.debit) || 0;
+    accum.set(e.id, running);
+  }
+  return accum;
+}
+
+/**
+ * Optional BUDGET BALANCE column — remaining budget per row's budget_code.
+ * If a per-code planned amount is supplied (e.g. derived from the Financial
+ * Report's Total Planned), this returns Planned − cumulative debits for
+ * that code, computed in date order. Returns NaN-valued entries for rows
+ * whose budget_code has no planned amount on file, so callers can render
+ * a blank cell.
+ *
+ * The printed paper form leaves this column empty by default; we compute
+ * it only when the Financial Report has data to anchor against.
+ */
+export function computeBudgetBalances(
+  entries: M1CashbookEntry[],
+  plannedByCode: Map<string, number>,
+): Map<string, number> {
+  const indexed = entries.map((e, i) => ({ e, i }));
+  indexed.sort((a, b) => {
+    const da = a.e.date ?? '';
+    const db = b.e.date ?? '';
+    if (da !== db) return da < db ? -1 : 1;
+    return a.i - b.i;
+  });
+  const spentByCode = new Map<string, number>();
+  const out = new Map<string, number>();
+  for (const { e } of indexed) {
+    const code = (e.budget_code || '').trim();
+    const planned = plannedByCode.get(code);
+    if (planned === undefined) {
+      out.set(e.id, NaN);
+      continue;
+    }
+    const prevSpent = spentByCode.get(code) ?? 0;
+    const nextSpent = prevSpent + (Number(e.debit) || 0);
+    spentByCode.set(code, nextSpent);
+    out.set(e.id, planned - nextSpent);
+  }
+  return out;
 }
 
 /** Totals for the footer row. */
