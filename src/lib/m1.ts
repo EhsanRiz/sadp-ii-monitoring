@@ -305,6 +305,62 @@ export function useRemoveM1SourcePdf(enterpriseId: string) {
   });
 }
 
+/**
+ * Wipe the M1 submission's form data back to empty so the user can start
+ * over after a bad auto-extraction. Refuses to touch approved submissions.
+ *
+ * What's CLEARED:
+ *   - narrative, cashbook, financial_report, bank_reconciliation
+ *   - imported_from_pdf_path, imported_at, import_notes (no more "auto-
+ *     imported" banner)
+ *   - status reset to 'draft' (covers the rare case where a submitted form
+ *     needs reset before approval bounces it back)
+ *
+ * What's KEPT:
+ *   - uploaded_pdf_path + uploaded_pdf_uploaded_at (the source file is still
+ *     on file; user can re-extract immediately if they want)
+ *   - m1_period_start / m1_period_end / report_date (project metadata is
+ *     usually correct even when the form data isn't)
+ *   - submitted_at / approved_at / approved_by (historical record stays —
+ *     if a previously-approved M1 was reopened then reset, that audit
+ *     trail survives)
+ */
+export function useDiscardM1Draft(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const existing = await supabase
+        .from('m1_submissions')
+        .select('id, status')
+        .eq('enterprise_id', enterpriseId)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      if (!existing.data) throw new Error('No M1 submission to discard.');
+      if (existing.data.status === 'approved') {
+        throw new Error('Cannot discard an approved M1. Reopen it for editing first.');
+      }
+      const { error } = await supabase
+        .from('m1_submissions')
+        .update({
+          narrative: {} as Json,
+          cashbook: {} as Json,
+          financial_report: {} as Json,
+          bank_reconciliation: {} as Json,
+          imported_from_pdf_path: null,
+          imported_at: null,
+          import_notes: null,
+          status: 'draft',
+        })
+        .eq('id', existing.data.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-m1-status', enterpriseId] });
+    },
+  });
+}
+
 /** Notes object surfaced from Claude via the extract-m1-pdf edge function. */
 export interface M1ImportNote {
   field?: string;

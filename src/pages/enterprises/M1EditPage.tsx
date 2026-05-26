@@ -20,6 +20,7 @@ import {
   canApproveM1Submission,
   canReopenM1,
   canSubmitM1,
+  useDiscardM1Draft,
   useM1Submission,
   useSaveM1Draft,
   useTransitionM1,
@@ -35,7 +36,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Save, Send, Check, Printer, Unlock, History, Construction, Sparkles, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Send, Check, Printer, Unlock, History, Construction, Sparkles, AlertTriangle, RotateCcw } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 import type { M1NarrativeResponses } from '@/forms/m1NarrativeSchema';
 
@@ -46,6 +47,7 @@ export function M1EditPage() {
   const m1 = useM1Submission(enterpriseId);
   const save = useSaveM1Draft(enterpriseId!);
   const transition = useTransitionM1(enterpriseId!);
+  const discard = useDiscardM1Draft(enterpriseId!);
 
   const [narrative, setNarrative] = useState<M1NarrativeResponses>({});
   const [cashbook, setCashbook] = useState<M1CashbookResponses>({});
@@ -72,6 +74,37 @@ export function M1EditPage() {
   const canApproveAction = canApproveM1Submission(role, user?.id ?? null, m1.data);
   const canReopenAction = isApproved && canReopenM1(role);
   const hasSubmission = !!m1.data;
+  // Discard is allowed for anyone who can write drafts, as long as the
+  // submission isn't approved. Mirrors the canSubmit semantics from ESMP.
+  const canDiscardAction = hasSubmission && !isApproved && canSubmitM1(role);
+
+  const handleDiscard = () => {
+    setError(null);
+    if (
+      !window.confirm(
+        'Discard the M1 draft?\n\n' +
+          'This will wipe the narrative, cashbook, financial report, and bank ' +
+          'reconciliation back to empty. The source PDF stays on file (you can ' +
+          're-extract or fill manually). Submitted/approved timestamps are kept ' +
+          'as historical record. This action cannot be undone.',
+      )
+    ) return;
+    discard.mutate(undefined, {
+      onSuccess: () => {
+        // Local state mirrors the cleared remote data so the UI updates
+        // immediately without waiting for the refetch.
+        setNarrative({});
+        setCashbook({});
+        setFinancialReport({});
+        setBankReconciliation({});
+        toast.success('M1 draft discarded — start fresh');
+      },
+      onError: (e: Error) => {
+        setError(e.message);
+        toast.error('Could not discard', { description: e.message });
+      },
+    });
+  };
 
   const handleReopen = () => {
     setError(null);
@@ -259,6 +292,18 @@ export function M1EditPage() {
             >
               <Unlock className="mr-2 h-4 w-4" />
               {transition.isPending ? 'Reopening…' : 'Reopen for editing'}
+            </Button>
+          )}
+          {canDiscardAction && (
+            <Button
+              onClick={handleDiscard}
+              disabled={discard.isPending || save.isPending || transition.isPending}
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              title="Wipe all four M1 forms back to empty so you can start over"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              {discard.isPending ? 'Discarding…' : 'Discard draft'}
             </Button>
           )}
           {hasSubmission && (
