@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-05-25 (Cashbook + Cover-page refactor) · HEAD: `5290c81`
+Last updated: 2026-05-26 (M1 Phases 1/2/3a complete · DD/MM/YYYY) · HEAD: `74b499f`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -38,7 +38,8 @@ is here or one link away.
 - Enterprise list / detail / new pages with district + RC + type filters.
 - Cover-page PDF (Annex V/A "I. PROJECT SUMMERY FORM") via
   `@react-pdf/renderer` at `/enterprises/:id/cover-page.pdf` — gated by
-  `isCoverPageReady()`. Now also reused as page 1 of `m1.pdf`.
+  `isCoverPageReady()`. Reused as page 1 of `m1.pdf` via
+  `CoverPagePdfPage` export.
   **Refactored 2026-05-25** to match the canonical paper-form layout
   (single bordered table, 4-column nested rows for District/Location
   and Total Grant/Current Grant Payment, inline italic hints in value
@@ -48,186 +49,170 @@ is here or one link away.
   (cover-page, ESMP, business plan, M1 report, drilling).
 
 ### Phase 2 — ESMP digital forms ✅
-- 3-table architecture (not a unified model — explicit user decision):
-  `essf_submissions`, `emmp_templates` + `emmp_submissions`,
-  `inspection_visits`. ESSF + Inspection schemas in TypeScript;
-  EMMP schemas in DB (12 templates seeded).
+- 3-table architecture (`essf_submissions`, `emmp_templates` + `emmp_submissions`,
+  `inspection_visits`). ESSF + Inspection schemas in TypeScript; EMMP schemas in
+  DB (12 templates seeded — including **3.4 Climate Change** added 2026-05-25 via
+  migration `161`).
 - React Query hooks in `src/lib/esmp.ts` with `canSubmit` / `canApprove` /
-  `canApproveSubmission` / `canReopen` (no-self-approval enforced;
-  super admin exempt).
+  `canApproveSubmission` / `canReopen` (no-self-approval enforced; super admin
+  exempt).
 - Form renderers in `src/components/forms/`: `EssfFormRenderer`,
-  `EmmpFormRenderer`, `InspectionFormRenderer`. Colored `StatusPill` primitive.
-- Edit pages: `EssfEditPage`, `EmmpEditPage`, `InspectionEditPage` with
-  Save / Submit / Approve / **Reopen-for-editing** gated by role.
+  `EmmpFormRenderer`, `InspectionFormRenderer`.
+- Edit pages with Save / Submit / Approve / **Reopen-for-editing** gated by role.
 - `enterprise_esmp_status` view → status pill on the ESMP tab.
-- `enterprise_m1_ready` view rolls up cover-page + ESSF + EMMP for M1
-  readiness.
-- ESSF and EMMP edit pages have **Print / PDF** buttons (open `esmp.pdf`)
-  and **Reopen-for-editing** action when status='approved'. Trail card
-  shows "Reopened for editing — previously approved on …" when
-  `status=='draft' && approved_at != null`.
+- ESSF/EMMP edit pages have **Print / PDF** buttons (open `esmp.pdf`) and
+  **Reopen-for-editing**. Trail card shows "Reopened — previously approved on …"
+  when `status=='draft' && approved_at != null`.
 
-### ESMP report PDF ✅ (with checkbox-style EMMP)
+### ESMP report PDF ✅ (checkbox-style EMMP)
 - Route: `/enterprises/:id/esmp.pdf` (gated on ESSF existing).
-- Renderer: `src/pdf/EsmpPdf.tsx` using `@react-pdf/renderer`.
-- Format matches the Thaba Lifika sample
-  (`reference_documents/ESMP_MAQALIKA_AGRIFARM_sample.pdf`):
-  - Cover page (district, round, date, sub-project rep, name + address,
-    extension team rep + address).
-  - ESSF section 1 (site sensitivity, with selected descriptor highlighted).
-  - ESSF section 2 (completeness, Y/N/NA ticks — rendered as SVG `<Check />`
-    because the default Helvetica font in `@react-pdf/renderer` doesn't
-    include U+2713).
-  - ESSF section 3 (24-q checklist + ESMF Guidance column).
-  - **Certification block** at end of section 3.0: body text + SIGNATURES
-    with two signature lines (Extension Team Rep + Sub-project Rep, each
-    with a Date column). Populates names/dates from `essf.signed.*` when
-    captured; otherwise blank lines for physical sign-off.
-  - EMMP landscape page with repeating header strip.
-  - **EMMP items render as checkboxes** (☑ when ticked, ☐ when not) via
-    a small `<CheckBox />` SVG component — printed-form style.
-  - **NOT APPLICABLE auto-fill** on empty trailing-3-column cells
-    (Person to Implement / Person to Monitor / Time Frame). Per-cell
-    check: shows italic muted "NOT APPLICABLE" when the cell is blank.
-    Item-list columns (impacts/mitigations/monitoring) ALWAYS render so
-    the printed PDF stays self-documenting.
-  - **EMMP signature block** at end (matches reference page 10): 2×2 grid
-    — Beneficiary + Extension Agent on top row; PFO + Service Provider
-    on bottom row. Beneficiary line pre-fills the applicant org name.
+- Renderer: `src/pdf/EsmpPdf.tsx`.
+- Cover · ESSF Sec 1 (highlighted descriptor) · ESSF Sec 2 (Y/N/NA, SVG `<Check />`
+  because Helvetica lacks U+2713) · ESSF Sec 3 (24-q + ESMF Guidance) ·
+  **Certification block** (signatures + dates) · EMMP landscape with checkbox-
+  style items, **NOT APPLICABLE** per-cell fallback in the trailing 3 columns,
+  and 2×2 **signature block** at the end.
 
-### PDF auto-extraction (ESSF + EMMP from a scanned PDF) ✅
-- New module: lets a field supervisor drop a scanned ESMP PDF into the
-  Legacy PDF section, click **Extract responses**, and get pre-filled
-  draft ESSF + EMMP submissions to review.
-- Edge function: `extract-esmp-pdf-v4` (deployed; older slugs `-v1/-v2/-v3`
-  exist but only `-v4` is current; see §6 for the "stuck-slug" deploy
-  bug). Sends the PDF to Claude Sonnet 4.5 with the ESSF schema + the
-  EMMP template for the enterprise type and asks for strict JSON.
-  Returns:
-    - `essf.header / site_sensitivity / completeness / checklist`
-    - `emmp.checks` array of **item ids verbatim from the schema**
-      (e.g. `1.1.r5.m2`) plus `<row.id>.person_implement /
-      person_monitor / timeframe` text fields
-    - `notes[]` with confidence flags per field
-- Writes draft `essf_submissions` + `emmp_submissions` rows stamped with
+### PDF auto-extraction (ESSF + EMMP) ✅
+- Field supervisor drops a scanned ESMP PDF into the Legacy section, clicks
+  **Extract responses**, gets a draft to review.
+- Edge function: **`extract-esmp-pdf-v4`** (active; older `-v1/-v2/-v3` stale —
+  see §6 stuck-slug pattern). Sends PDF to Claude Sonnet 4.5 with ESSF schema +
+  EMMP template, expects strict JSON.
+- Writes draft `essf_submissions` + `emmp_submissions` stamped with
   `imported_from_pdf_path` / `imported_at` / `import_notes`. Refuses to
-  overwrite an approved submission (409 → UI shows "Reopen first"
-  with deep links).
-- UI:
-  - "Extract responses" button on the Legacy PDF section, disabled when
-    EITHER ESSF or EMMP is approved (with an inline reopen guide).
-  - On `EssfEditPage` / `EmmpEditPage`: amber **"Auto-imported from PDF —
-    please review before submitting"** banner when
-    `imported_from_pdf_path` is set; lists Claude's confidence notes.
-- **Anthropic API key** is stored as a Supabase secret named
-  `ANTHROPIC_API_KEY`. Set already as of 2026-05-25; rotate if needed.
+  overwrite an approved submission (409 → UI shows "Reopen first").
+- ESSF/EMMP edit pages show an amber **"Auto-imported from PDF — please review
+  before submitting"** banner with Claude's confidence notes.
+- **Anthropic API key** is stored as a Supabase secret named `ANTHROPIC_API_KEY`.
+
+### Phase 3 — Milestone 1 module 🟡 (Phases 1, 2.1, 2.2, 2.3, 3a ✅ · Phase 3b ⏳)
+
+The full M1 schema was designed up-front in migration `180` so subsequent
+phases add UI only — no further table migrations needed (except migration
+`190` for the source-PDF columns, which was always anticipated for Phase 3a).
+
+**Live tables / view (migration 180):**
+- `m1_submissions` — one per enterprise. Four jsonb columns
+  (`narrative` / `cashbook` / `financial_report` / `bank_reconciliation`)
+  + status workflow + import tracking + source-PDF columns
+  (`uploaded_pdf_path` / `uploaded_pdf_uploaded_at` from migration `190`).
+- `m1_supporting_documents` — many per submission (kind enum:
+  `bank_statement`, `transaction_history`, `invoice`, `receipt`,
+  `audit_trail`, `contract`, `other`). Schema ready; uploader UI ships in
+  Phase 3b.
+- `m1-supporting-docs` storage bucket (100 MB cap after migration `200`).
+- `enterprise_m1_status` view for dashboard roll-ups.
+
+**Phase 1 ✅ — Narrative + scaffold**
+- `M1EditPage` at `/enterprises/:id/m1` with tabs Narrative / Cashbook /
+  Financial Report / Bank Reconciliation / Supporting Docs.
+- 7-section narrative form (`m1NarrativeSchema.ts`) with progress strip.
+- Hooks in `src/lib/m1.ts` mirror `lib/esmp` exactly (canSubmit/canApprove/
+  canApproveSubmission/canReopen helpers).
+- M1 PDF at `/enterprises/:id/m1.pdf`: Cover page (reused via
+  `CoverPagePdfPage`) + Narrative pages.
+
+**Phase 2.1 ✅ — Cashbook**
+- Repeating spreadsheet-style ledger with **10 columns** matching the canonical
+  paper template: Date / Item / Budget / Supplier / Description / Credit /
+  Debit / Accum / Balance / Budget Balance. Item holds the budget CODE (`I-A`,
+  `OTHERS`); Budget holds the budget TYPE (`MATERIAL`, `OTHERS`).
+- Pure helpers shared by form + PDF: `computeRunningBalances`,
+  `computeRunningAccum` (Σ debits), `computeBudgetBalances` (Planned − cumulative
+  spend per budget code, blank when no Financial Report anchor), 
+  `computeCashbookTotals`, `computeBudgetCodeSpend`.
+- **DD/MM/YYYY date input** (`DmyDateInput` component in
+  `M1CashbookFormRenderer`) replaces native `<input type="date">` so dates
+  display in Lesotho format on all browsers regardless of OS locale. Underlying
+  storage is still ISO yyyy-mm-dd.
+- Negative running balance → destructive red. "Both credit + debit > 0"
+  warning per row (likely typo flag).
+- Footer Σ Credits / Σ Debits / Σ Debits (Accum total) / Closing balance.
+- Per-budget-code spend breakdown card.
+
+**Phase 2.2 ✅ — Financial Report**
+- 8 fixed categories (I-A through I-F, II, III); user adds line items under
+  any category.
+- Per row: `total_planned`, `incurred`, `date_of_receipts`, `notes`.
+- Auto-computed: Beneficiary 20% / IFAD 20% / Grant-IDA 60% (via
+  `computeFinancialSplit`); Difference = Planned − Incurred (via
+  `computeFinancialDifference`); footer totals (`computeFinancialTotals`).
+- Negative differences highlighted destructive.
+- `M1_FR_COLUMNS` shared as single source of truth between form + PDF.
+
+**Phase 2.3 ✅ — Bank Reconciliation**
+- Fixed-field form with three bordered sections + computed bottom callout.
+- `computeBRAll` returns subtotal / netSurplus / difference / totalExplained /
+  unexplained / reconciled (|unexplained| < 0.005).
+- Bottom callout flips green/check ↔ red/alert as unexplained-differences
+  approaches 0.
+
+**Phase 3a ✅ — Source PDF + auto-extraction**
+- File-card UI on the M1 tab in EnterpriseDetailPage: upload, replace, or
+  **Remove** the source M1 PDF. Same Remove pattern exists for ESMP source
+  PDFs (deletes file + clears `enterprises.esmp_uploaded_pdf_url`).
+- Edge function: **`extract-m1-pdf-v3`** (active; `-v1` over-pulled from bank
+  statements; `-v2` scoped to cashbook page only; `-v3` adds explicit
+  column-to-field mapping — see §4 Architecture decisions for the mapping
+  table).
+- Writes draft `m1_submissions` stamped with `imported_from_pdf_path` /
+  `imported_at` / `import_notes`. Refuses approved (409).
+- **Discard draft** button on M1EditPage (destructive style) wipes all four
+  jsonb form columns + clears `imported_from_pdf_path` / `imported_at` /
+  `import_notes`, sets status='draft'. Source PDF, period dates, and
+  submitted/approved timestamps are KEPT for context.
+- M1EditPage shows the amber "Auto-imported from PDF — please review" banner
+  matching ESSF/EMMP treatment.
+
+**Phase 3b ⏳ — pending build:**
+- Supporting documents uploader: multi-file, kind-tagged (bank_statement /
+  transaction_history / invoice / receipt / audit_trail / contract / other).
+  Schema + bucket already in place.
+- (Optional) `extract-m1-pdf-v4` that also extracts Financial Report + Bank
+  Reconciliation. Schema is in place; just needs prompt updates.
+- Embed supporting docs at the back of `m1.pdf` + compendium of ESSF / EMMP
+  / most-recent Inspection at the end.
+
+**Business plan**: deferred. M1 works standalone without a separate BP module.
 
 ### UX polish pass ✅
-- Semantic color tokens: `success` / `warning` / `info` + tint backgrounds.
-- Sonner toaster wired at app root for save / submit / approve feedback.
+- Semantic color tokens: `success` / `warning` / `info` + tints.
+- Sonner toaster wired for save / submit / approve feedback.
 - Recharts for dashboard.
-- Primitives: `Skeleton`, `EmptyState`, `StatusPill`, plus
-  `src/lib/enterprise-icons.ts` (21 enterprise types → lucide icon + tint).
-- Dashboard rebuilt: stat cards, donut chart of enterprises by type,
-  horizontal "M1 readiness pipeline" bar, stacked district-readiness chart.
-- Enterprise list: card-grid / table view toggle (persisted), per-enterprise
-  type icon, **5 colored dots** showing progress across 5 dimensions.
-- Enterprise detail: type icon in header, "Progress at a glance" card.
-- **Legacy PDF section cleaned up**: dropdown for "Update legacy status"
-  removed (was a Phase-1 holdover that contradicted the computed view).
-  File card now shows constructed display name + size + upload date.
-- **Back-to-ESMP navigation**: "Back to enterprise" links on ESSF / EMMP
-  / M1 edit pages return to the ESMP tab via `?tab=esmp` query param.
-- New row on Vegetable Production EMMP template: **3.4 Climate Change**
-  with sensible Lesotho-highlands defaults (migration `161`).
-
-### Phase 3 (in-flight) — Milestone 1 module 🚧
-**Phase 1 of M1 is live** (commit `1640494`). The full M1 module is
-phased into three commits, all designed against the same schema:
-
-- **Migration `180`** (applied 2026-05-25) creates `m1_submissions` (one
-  per enterprise, 4 jsonb columns: `narrative` / `cashbook` /
-  `financial_report` / `bank_reconciliation`), `m1_supporting_documents`
-  (many per submission, kind enum), `m1-supporting-docs` storage bucket,
-  and `enterprise_m1_status` view. RLS + audit triggers wired same as
-  ESSF/EMMP. Schema is **complete** — Phase 2 and Phase 3 add UI only,
-  no further migrations.
-
-**Phase 1 ✅ — Narrative + scaffold:**
-- `M1EditPage` at `/enterprises/:id/m1` with tabs: **Narrative** (active),
-  **Cashbook / Financial Report / Bank Reconciliation / Supporting Docs**
-  (placeholders).
-- 7-section narrative form (`src/forms/m1NarrativeSchema.ts` — sections
-  identical across every sampled OneDrive M1 report). Progress strip
-  shows "N / 7 sections filled".
-- React Query hooks in `src/lib/m1.ts` mirror `lib/esmp` exactly:
-  `useM1Submission`, `useSaveM1Draft`, `useTransitionM1`, plus
-  `canSubmitM1` / `canApproveM1` / `canApproveM1Submission` / `canReopenM1`.
-- M1 PDF at `/enterprises/:id/m1.pdf`: Cover page (reuses
-  `CoverPagePdfPage` — no duplication) + Narrative pages.
-- Status card on the enterprise ESMP tab between Inspection visits and
-  Legacy PDF — shows badge + dates + Open M1 / Start M1 + M1 report
-  PDF link.
-- Save / Submit / Approve / Reopen-for-editing flow + Print/PDF button.
-
-**Phase 2 — in progress:**
-
-**Phase 2.1 ✅ Cashbook (live, commit `5290c81`):**
-- `src/forms/m1CashbookSchema.ts` — entry shape (id, date, item,
-  budget_code, supplier, description, credit, debit), `CASHBOOK_COLUMNS`
-  single source of truth for column order/widths, pure helpers
-  `computeRunningBalances` / `computeCashbookTotals` /
-  `computeBudgetCodeSpend` used in both UI and PDF so they can't drift.
-- `M1CashbookFormRenderer` — spreadsheet-style editor with opening
-  balance card, add/remove rows, computed Balance column, footer totals,
-  per-budget-code spend breakdown, both-credit-and-debit-> 0 warning,
-  negative balance highlighted destructive, readOnly aware.
-- `M1Pdf.tsx` — new landscape Cashbook page (only renders when entries
-  exist). Repeating column header on every page break, zebra rows,
-  brand-green totals row, per-budget-code spend footer.
-- **Open spec questions** to confirm on first user test:
-  - Is a per-row "Accumulated" column (separate from "Balance") expected?
-    Some Lesotho cashbooks include it.
-  - Should cashbook have its own approve state, or piggyback the overall
-    M1 submission status? Currently the latter (one M1 status across all
-    four sub-forms) since `m1_submissions.status` covers everything.
-
-**Phase 2.2 ⏳ Financial Report — pending:**
-- Categorised line items (A. Project Implementation Costs / B. Inputs /
-  C. Labour / D. Transportation / E. Travel / F. Other / II. Technical
-  Assistance / III. Technology Transfer).
-- Auto 20% / 20% / 60% Beneficiary / IFAD / Grant-IDA source-of-funds
-  split per line item.
-- Extend `M1Pdf.tsx`.
-
-**Phase 2.3 ⏳ Bank Reconciliation — pending:**
-- Fixed-field form. Net Surplus / Difference / Unexplained Differences
-  auto-computed — last one must reach 0 before submission is allowed.
-- Extend `M1Pdf.tsx`.
-
-**Phase 3 ⏳ — pending build:**
-- Supporting documents uploader: multi-file, kind-tagged (bank_statement
-  / transaction_history / invoice / receipt / audit_trail / contract /
-  other). Storage bucket and `m1_supporting_documents` table are
-  already in place.
-- `extract-m1-pdf` edge function: same pattern as `extract-esmp-pdf-v4`.
-  Reads uploaded scanned M1 PDF, sends to Claude, writes draft for the 4
-  M1 forms. Supporting docs themselves aren't extracted — they stay as
-  PDF attachments tagged by kind.
-- Embed supporting docs by reference at the back of `m1.pdf`, then a
-  compendium of ESSF + EMMP + most-recent Inspection.
-
-**Business plan**: deferred (per current decision). M1 works standalone
-without a separate BP module.
+- Primitives: `Skeleton`, `EmptyState`, `StatusPill`.
+- Dashboard: stat cards, donut chart by type, horizontal M1 readiness
+  pipeline, stacked district-readiness chart.
+- Enterprise list: card-grid / table toggle (persisted), per-type icon,
+  5-dot progress strip.
+- **Legacy PDF section cleaned up**: status dropdown removed; file card
+  with name + size + upload date.
+- **M1 is a top-level tab** parallel to ESMP (was nested inside ESMP
+  briefly). Tab strip: Details · Progress · ESMP · Milestone 1 · History.
+- **Active tab persists across refresh** via `?tab=…` URL search param +
+  controlled Tabs primitive. `replace: true` so browser back goes to the
+  previous *page* not the previous tab.
+- Back-from-sub-form navigation: ESSF / EMMP / Inspection → ESMP tab;
+  M1 edit + M1 PDF → M1 tab.
 
 ---
 
 ## 3. Recent commits (most recent first)
 
 ```
+74b499f  fix(cashbook): explicit column mapping in extraction + DD/MM/YYYY date inputs
+7673419  fix(m1-extract): cashbook = supervisor's consolidated record, not bank statements
+e3fe758  feat(cashbook): add Accum + Budget Balance columns to match printed template
+1602730  feat(m1): Discard draft button — reset M1 back to empty after a bad extraction
+7d0fd65  feat(m1): Phase 2.2 + 2.3 — Financial Report + Bank Reconciliation forms
+76bda91  feat: Remove source PDF buttons (M1 + ESMP) + bump bucket size limit + better upload errors
+366b5a7  feat(m1): Phase 3a — upload source PDF + auto-extract narrative & cashbook
+3a3d2ba  ux: promote Milestone 1 to top-level tab + persist active tab on refresh
+1640494  feat(m1): Phase 1 — Narrative form + M1 page scaffold + M1 PDF
+a216142  docs: refresh PROGRESS.md for cashbook + cover-page-refactor
 5290c81  feat(m1): Phase 2.1 — Cashbook form + PDF page
 d3aed02  feat(pdf): refactor cover page to match canonical paper-form layout
-1640494  feat(m1): Phase 1 — Narrative form + M1 page scaffold + M1 PDF
+7161534  docs: refresh PROGRESS.md for end-of-session handoff
 41c5b0e  ux: simplify Legacy PDF section + return to ESMP tab from sub-form pages
 0bc8070  fix: align EMMP key scheme across form, PDF, edge function (+ broken review links)
 4992d7a  fix(extract): surface real edge function errors + guard against approved 409
@@ -238,10 +223,6 @@ d3aed02  feat(pdf): refactor cover page to match canonical paper-form layout
 a1a5d18  feat(esmp): 3.4 Climate Change row, NOT APPLICABLE fallback, checkbox items, EMMP page Print/Reopen + EMMP signatures
 637a5c9  feat(essf): Print/PDF button + Reopen-for-editing on approved ESSFs
 ade22a4  fix(pdf): ✓ ticks in ESSF sections 2 + 3 + add Certification block
-259e92f  docs: add SETUP.md — new-machine bootstrap walkthrough
-b3aa447  docs: add PROGRESS.md handoff snapshot
-8f2aec7  feat: full ESMP report PDF + dots-style progress on list
-77d12ef  ux: colorful, interactive polish across the app
 ```
 
 ---
@@ -250,17 +231,21 @@ b3aa447  docs: add PROGRESS.md handoff snapshot
 
 | | |
 |---|---|
-| **3 separate ESMP tables** | NOT a unified table with a `kind` discriminator. `essf_submissions`, `emmp_*`, `inspection_visits`. Each form's queries stay simple. |
-| **ESSF + Inspection in code, EMMP in DB** | ESSF + Inspection schemas are universal — TypeScript. EMMP varies per enterprise type (12 templates) — jsonb in `emmp_templates`. |
-| **No self-approval** | Same set for ESSF/EMMP/Inspection/M1: super_admin can self-approve, others can't. Reopen-for-editing has the same role set as approve. |
-| **Computed status, not stored** | `enterprise_esmp_status` + `enterprise_m1_status` views reflect underlying submissions. Manual status dropdowns were removed. |
+| **3 separate ESMP tables** | NOT a unified `kind` table. `essf_submissions`, `emmp_*`, `inspection_visits`. |
+| **4 jsonb columns on m1_submissions** | One per logical M1 form (narrative / cashbook / financial_report / bank_reconciliation). All on the same row so workflow stays atomic. |
+| **No self-approval** | Same role set for ESSF/EMMP/Inspection/M1: super_admin self-approves; others can't. Reopen-for-editing = same role set as approve. |
+| **Computed status, not stored** | `enterprise_esmp_status` + `enterprise_m1_status` views reflect underlying submissions. Manual status dropdowns removed. |
 | **Security-invoker views** | All views use `security_invoker = on` to respect RLS. |
-| **Field supervisors fill compliance** | Service Providers do NOT interact with the app. Field Supervisors fill the inspection checklist on visits. |
-| **Hybrid annex strategy for M1** | Originally: BP-uploaded vs BP-in-app for Annex I/II. Current: BP module **deferred** since the M1 samples we have don't embed Annex I/II inline. |
-| **EMMP item.id is the canonical response key** | Form, PDF, and edge function all read/write `responses[item.id]` (e.g. `1.1.r5.m2`). Earlier versions used positional `${rowId}.${prefix}${i}` and drifted out of sync with the schema's 1-indexed ids. **Don't reintroduce positional keys.** |
-| **PDF auto-extraction is review-only** | The extract edge function ALWAYS writes `status='draft'` and stamps `imported_from_pdf_path`. The UI shows a mandatory review banner. Never bypass human review of extracted data. |
-| **Edge function "stuck slug" workaround** | The Supabase deploy API has a bug where re-deploys to a slug whose first version was partial/broken get internal-server-error forever. Workaround: deploy under a fresh `-vN` slug and update the frontend hook to invoke the new slug. See §6. |
-| **Original filename not preserved for ESMP PDFs** | `esmp-pdfs/{enterprise_id}.pdf` for stable URLs. The file card constructs a display name from the beneficiary. For M1 supporting docs, original filename IS preserved on `m1_supporting_documents.original_filename`. |
+| **EMMP item.id is the canonical response key** | Form, PDF, and edge function all use `responses[item.id]` verbatim (`1.1.r5.m2` style). NOT positional `${rowId}.${prefix}${i}` — that drifted off-by-one. |
+| **PDF auto-extraction is review-only** | The extract edge function ALWAYS writes `status='draft'` and stamps `imported_from_pdf_path`. The UI shows a mandatory review banner. Never bypass human review. |
+| **Cashbook column mapping (M1)** | **PDF column → app field** — `DATE → date`, `ITEM → item (code: I-A/OTHERS)`, `BUDGET → budget_code (type: MATERIAL/OTHERS)`, `SUPPLIER → supplier (full name)`, `DESCRIPTION → description`, `CREDIT → credit`, `DEBIT → debit`. ACCUM / BALANCE / BUDGET BALANCE always recomputed downstream from helpers in `m1CashbookSchema.ts`. |
+| **Cashbook = consolidated, not bank-statement granular** | The cashbook is the supervisor's consolidated record. Bank statements + receipts are SUPPORTING DOCUMENTS (Phase 3b). They must not contribute cashbook entries. Encoded explicitly in the v2/v3 extract prompt. |
+| **20/20/60 source-of-funds split** | Financial Report's per-row Beneficiary/IFAD/Grant-IDA columns are computed from Incurred via `computeFinancialSplit` — never stored, never editable. |
+| **Bank Reconciliation: Unexplained must reach 0** | `computeBRAll` reports `reconciled = |unexplained| < 0.005`. Form + PDF flip a green/red callout based on this. |
+| **DD/MM/YYYY everywhere (Lesotho format)** | Custom `DmyDateInput` component in cashbook; ISO yyyy-mm-dd stays as the storage format. Read-only displays use `formatDateDMY`. |
+| **Edge function "stuck slug" workaround** | The Supabase deploy API rejects re-deploys to a slug whose first deploy was partial/broken. Always deploy under a fresh `-vN` suffix; update the frontend hook. Current active slugs: `extract-esmp-pdf-v4`, `extract-m1-pdf-v3`. |
+| **Source PDF storage paths** | ESMP: `esmp-pdfs/<enterprise_id>.pdf` (overwrites on re-upload). M1: `m1-supporting-docs/<enterprise_id>/_source.pdf`. Both private buckets, 100 MB cap. Original filenames not preserved for ESMP; preserved per-doc on M1 supporting docs. |
+| **Remove source PDF ≠ wipe draft** | Removing the source PDF just deletes the file + clears the path column. The draft data extracted from it survives — that's a separate "Discard draft" action. |
 
 ---
 
@@ -269,76 +254,75 @@ b3aa447  docs: add PROGRESS.md handoff snapshot
 - **"Quithing"** spelling locked (not "Quthing").
 - **Districts**: 4D → Maseru, Berea, Thaba Tseka. RSDA → Mafeteng, Mohale's Hoek, Quithing, Qacha's Nek.
 - **iCloud**, not Google Drive. Repo lives at `~/Documents/Claude/Projects/SADP II/`.
-  **`.git` workaround**: iCloud Drive holds the `.git` index.lock open and
-  blocks git ops. On this machine the working copy of `.git` lives at
-  `/tmp/sadp-icloud/`; source files are mirrored back into the iCloud
-  folder via rsync. See §7 for the bootstrap.
-- **Auto-execute via MCP** when possible — Supabase MCP for
-  `execute_sql` / `apply_migration` / `deploy_edge_function` / `get_logs` /
-  `get_advisors`.
-- **Brand palette**: primary `#006838` (dark green), accent `#8DC63F`
-  (lime), plus semantic `success` / `warning` / `info` / `destructive`.
-- **Render uses `tsc -b`** (project mode), NOT `tsc --noEmit`. Always
-  run `npx tsc -b` locally before pushing or the deploy will fail.
+  **`.git` workaround**: iCloud locks `.git/index.lock`. On this machine the
+  working git tree lives at `/tmp/sadp-icloud/`; source files mirror back into
+  the iCloud folder via rsync. See §7 for the bootstrap.
+- **Auto-execute via MCP** when possible — Supabase MCP for `execute_sql` /
+  `apply_migration` / `deploy_edge_function` / `get_logs` / `get_advisors`.
+- **Brand palette**: primary `#006838`, accent `#8DC63F`, semantic `success` /
+  `warning` / `info` / `destructive`.
+- **Render uses `tsc -b`** (project mode), NOT `tsc --noEmit`. Always run
+  `npx tsc -b` before pushing.
+- **LSL currency format**: `LSL 500 000.00` (space thousands, two decimals)
+  in cover page; `M{:,.2f}` in cashbook + reconciliation totals.
 
 ---
 
 ## 6. Edge function deploy quirk — important
 
-Supabase's MCP `deploy_edge_function` has a bug: once a function slug
-has any version that failed mid-deploy (or even sometimes for unclear
-reasons after the first successful version), **every subsequent deploy
-to that slug fails with "Function deploy failed due to an internal
-error"** indefinitely. The Supabase API treats the slot as poisoned.
+Supabase's MCP `deploy_edge_function` has a bug: once a slug has any version
+that failed mid-deploy (or sometimes after a successful first deploy too),
+**every subsequent deploy to that slug fails with "Function deploy failed due
+to an internal error"** indefinitely. The slot is poisoned.
 
-**Workaround**: deploy under a fresh slug suffix (`-v2`, `-v3`, `-v4`…)
-and update the frontend hook to invoke the new slug. Earlier slugs stay
-deployed (and may still work — they just can't be updated). This is why
-the active extraction function is `extract-esmp-pdf-v4` and not the
-plainer `extract-esmp-pdf`.
+**Workaround**: deploy under a fresh slug suffix (`-v2`, `-v3`, `-v4` …) and
+update the frontend hook. Earlier slugs stay deployed (they still work — they
+just can't be updated).
 
-When you add Phase 3's `extract-m1-pdf`:
-1. Try `extract-m1-pdf` first.
-2. If/when re-deploys start failing, bump to `extract-m1-pdf-v2` and
-   update `useExtractM1Pdf` in `src/lib/m1.ts`.
+**Active slugs as of HEAD `74b499f`:**
+- `invite-user` — Phase 1, never re-deployed.
+- `extract-esmp-pdf-v4` — current ESSF/EMMP extractor. `-v1/-v2/-v3` stale.
+- `extract-m1-pdf-v3` — current M1 extractor. `-v1` (over-pulled supporting
+  docs) and `-v2` (scope fixed, column mapping unclear) stale.
+
+When you add Phase 3b's supporting-docs extraction (or a future v4 for M1
+that also covers Financial Report + Bank Reconciliation), assume the next
+deploy needs a fresh suffix.
 
 ---
 
 ## 7. Continuing from another machine
 
 ```bash
-# 1. clone (DO NOT clone inside ~/Documents/Claude/Projects/ — iCloud
-#    blocks .git operations. Use ~/Code/ or similar local path, OR mirror
-#    via /tmp/ as below.)
+# 1. Clone OUTSIDE iCloud (iCloud locks .git/index.lock). Use ~/Code/ or similar.
 git clone https://github.com/EhsanRiz/sadp-ii-monitoring.git ~/Code/sadp-ii-monitoring
 cd ~/Code/sadp-ii-monitoring
 
-# 2. env (copy .env.example then fill in the Supabase URL + anon key from
-#    https://supabase.com/dashboard/project/urvecgqgxjwlznltjeap/settings/api )
+# 2. .env.local — anon key from Supabase Dashboard → Settings → API
 cp .env.example .env.local
 # VITE_SUPABASE_URL=https://urvecgqgxjwlznltjeap.supabase.co
 # VITE_SUPABASE_ANON_KEY=<anon key>
 
 # 3. install + run
 npm install
-npm run dev       # local dev at http://localhost:5173
+npm run dev       # http://localhost:5173
 
-# 4. verify before pushing
-npx tsc -b        # type check (matches Render)
-npm run build     # full prod build (vite + workbox)
+# 4. verify before pushing (Render uses tsc -b)
+npx tsc -b
+npm run build
 
 # 5. push — Render auto-deploys
 git push origin main
 ```
 
-For Supabase migrations: the Supabase MCP is the primary path. From a
-Claude session, use `apply_migration` for DDL and `execute_sql` for
-SELECT/DML. Project ref: `urvecgqgxjwlznltjeap`.
+**For Supabase migrations**: use the Supabase MCP from a Claude session —
+`apply_migration` for DDL, `execute_sql` for SELECT/DML. Project ref
+`urvecgqgxjwlznltjeap`.
 
-For auth: install `gh` and run `gh auth login` rather than pasting a PAT.
-A PAT pasted in chat has appeared 12+ times in the recent session and
-**should be rotated** at https://github.com/settings/tokens. The
-existing `github_pat_11BTS6POQ0Donc6AHGZVF3_…` token is considered
+**For GitHub auth**: install `gh` and `gh auth login` — DO NOT paste a PAT
+in chat. The `github_pat_11BTS6POQ0Donc6AHGZVF3_…` token used in 22+ commits
+this session **must be rotated** at https://github.com/settings/tokens. The
+token has appeared in many bash command outputs and should be considered
 compromised.
 
 ---
@@ -351,11 +335,11 @@ src/
     DashboardPage.tsx
     enterprises/
       EnterprisesListPage.tsx
-      EnterpriseDetailPage.tsx               # ESMP tab + M1 card + Legacy PDF + Progress + History
+      EnterpriseDetailPage.tsx               # Top-level tabs + M1 + ESMP + Legacy PDF + Source M1 PDF
       EssfEditPage.tsx                       # + import banner, Print/PDF, Reopen
       EmmpEditPage.tsx                       # + import banner, Print/PDF, Reopen
       InspectionEditPage.tsx
-      M1EditPage.tsx                         # Phase 1 active; Phase 2/3 tabs scaffolded
+      M1EditPage.tsx                         # Narrative / Cashbook / Financial / Reconciliation / (Supporting Docs ⏳)
       CoverPagePdfRoute.tsx                  # /cover-page.pdf
       EsmpPdfRoute.tsx                       # /esmp.pdf
       M1PdfRoute.tsx                         # /m1.pdf
@@ -365,39 +349,46 @@ src/
     forms/EmmpFormRenderer.tsx
     forms/InspectionFormRenderer.tsx
     forms/M1NarrativeFormRenderer.tsx
-    forms/M1CashbookFormRenderer.tsx
+    forms/M1CashbookFormRenderer.tsx         # + DmyDateInput component
+    forms/M1FinancialReportFormRenderer.tsx
+    forms/M1BankReconciliationFormRenderer.tsx
     StatusBadge.tsx
-    ui/status-pill.tsx
-    ui/skeleton.tsx
-    ui/empty-state.tsx
+    ui/status-pill.tsx · skeleton.tsx · empty-state.tsx
   lib/
     auth.ts
-    enterprises.ts                            # + useUploadedEsmpPdfMeta + formatBytes
+    enterprises.ts                            # + useUploadedEsmpPdfMeta, formatBytes
     esmp.ts                                   # ESSF/EMMP hooks + extract + role helpers
-    m1.ts                                     # M1 hooks + role helpers
+    m1.ts                                     # M1 hooks: useM1Submission, useSaveM1Draft, useTransitionM1,
+                                              # useUploadM1SourcePdf, useUploadedM1PdfMeta, useRemoveM1SourcePdf,
+                                              # useExtractM1Pdf, useDiscardM1Draft + role helpers
     enterprise-icons.ts
     catalogs.ts
   forms/
     essfSchema.ts
     inspectionSchema.ts
     m1NarrativeSchema.ts                      # 7 sections
-    m1CashbookSchema.ts                       # entry shape + pure compute helpers
+    m1CashbookSchema.ts                       # 10 columns + computeRunning* helpers
+    m1FinancialReportSchema.ts                # 8 categories + 20/20/60 split helpers
+    m1BankReconciliationSchema.ts             # fixed-field + computeBRAll
   pdf/
     CoverPagePdf.tsx                          # exports CoverPagePdfDocument + CoverPagePdfPage
-    EsmpPdf.tsx                               # + Check / CheckBox SVG components + NOT APPLICABLE + EMMP signatures
-    M1Pdf.tsx                                 # cover + narrative (Phase 1)
+    EsmpPdf.tsx                               # + Check / CheckBox SVG + NOT APPLICABLE + EMMP signatures
+    M1Pdf.tsx                                 # Cover · Narrative · Cashbook · Financial · Bank Reconciliation
 
 supabase/
-  migrations/                                 # 010 … 180
+  migrations/                                 # 010 … 200
     161_emmp_vegetable_shednets_add_climate_change.sql
     170_esmp_pdf_import_tracking.sql          # imported_* columns on essf + emmp
     180_m1_milestone_one_module.sql           # m1_submissions, m1_supporting_documents, bucket, view
+    190_m1_source_pdf_columns.sql             # uploaded_pdf_path + uploaded_pdf_uploaded_at on m1_submissions
+    200_bump_pdf_bucket_size_limit.sql        # 50 → 100 MB on esmp-pdfs + m1-supporting-docs
   seeds/
     140_seed_rsda_districts.sql
     160_emmp_templates.sql
   functions/
     invite-user/                              # deployed
-    extract-esmp-pdf-v4/                      # deployed; v1/v2/v3 also deployed but stale (stuck-slug)
+    extract-esmp-pdf-v4/                      # deployed (current); -v1/-v2/-v3 also deployed but stale
+    extract-m1-pdf-v3/                        # deployed (current); -v1/-v2 also deployed but stale
 
 reference_documents/
   ESMP_MAQALIKA_AGRIFARM_sample.pdf
@@ -416,53 +407,54 @@ SETUP.md                                      # new-machine bootstrap
 
 ## 9. Open follow-ups when resuming
 
-**Security / hygiene (do first):**
+**Security / hygiene (do FIRST):**
 - **Rotate the GitHub PAT** at https://github.com/settings/tokens. The
-  `github_pat_11BTS6POQ0Donc6AHGZVF3_…` token was used in 12+ commits via
-  inline-URL push in chat. Replace future-machine setup with
-  `gh auth login`.
+  `github_pat_11BTS6POQ0Donc6AHGZVF3_…` token was used in 22+ commits via
+  inline-URL push and has appeared in many bash command outputs. Replace
+  with `gh auth login` for future pushes.
 
-**M1 Phase 2 — remaining (next sprint):**
-- ~~`M1CashbookFormRenderer`~~ ✅ shipped `5290c81`
-- `M1FinancialReportFormRenderer` — categorised line items with 20/20/60 source-of-funds split
-- `M1BankReconciliationFormRenderer` — fixed-field form, Unexplained-Differences must reach 0
-- Extend `M1Pdf.tsx` with Financial Report + Bank Rec sections
-- Confirm cashbook spec open questions (Accumulated column? separate approve state?)
+**M1 Phase 3b — pending build:**
+- Supporting documents uploader (multi-file, kind-tagged — schema +
+  `m1-supporting-docs` bucket already exist). Per-doc original_filename is
+  preserved (unlike the ESMP single-PDF flow).
+- Embed supporting docs at the back of `m1.pdf` (by reference / thumbnails)
+  + compendium of ESSF / EMMP / most-recent Inspection.
 
-**M1 Phase 3 — pending build:**
-- Supporting documents uploader (multi-file, kind-tagged) — schema + bucket already exist
-- `extract-m1-pdf` edge function — same pattern as `extract-esmp-pdf-v4`
-- Embed supporting docs at the back of `m1.pdf` + compendium of ESSF/EMMP/Inspection
+**Optional M1 follow-up:**
+- `extract-m1-pdf-v4` with prompt to also extract Financial Report +
+  Bank Reconciliation. Currently only narrative + cashbook are auto-imported.
+- Wire `computeBudgetBalances` to the Financial Report's `total_planned` per
+  budget code so the Budget Balance column in cashbook actually populates
+  (currently blank by design — matches paper template).
 
-**Testing leftovers from this session:**
+**Testing leftovers from earlier sessions:**
 - Verify the 5-dot progress strip on the enterprise list reads cleanly
-  across all 164 enterprises (deferred from the last test pass).
+  across all 164 enterprises.
 - Spot-check ESSF/EMMP/Inspection Save/Submit/Approve gating per role.
-- Walk through Lekhoakhoa or Maqalika end-to-end with v4 extraction to
-  confirm the checkbox-tick reading is now reliable (last partial test
-  showed person/timeframe text extracted perfectly, item ticks worked
-  for most rows after the gutter-prompt fix).
 
 **Architectural follow-ups:**
 - Dashboard "ESMP completed" count still references the legacy
-  `esmp_status` column on `enterprises`. If you want it to reflect the
-  computed view, rewrite the dashboard query against
-  `enterprise_esmp_status`.
-- Consider clearing `imported_from_pdf_path` cleanup so re-extracting an
-  approved-then-reopened submission doesn't carry stale extraction notes
-  forward.
+  `esmp_status` column on `enterprises`. If you want it computed from
+  `enterprise_esmp_status` view, rewrite the dashboard query.
+- "Discard draft" pattern is M1-only right now. If the user asks for the
+  same on ESSF/EMMP, mirror `useDiscardM1Draft` against essf/emmp tables.
+- Hansen Farming (9.9 MB PDF) upload required bucket bump to 100 MB AND
+  may require bumping the project-level "Upload file size limit" in the
+  Supabase dashboard (Settings → Storage). Confirm with the user.
 
 ---
 
 ## 10. How to onboard a fresh Claude session
 
-> "Read PROGRESS.md in this repo top-to-bottom and continue from where
-> the last session left off. We're in M1 Phase 1 — schema and narrative
-> form are live as of commit `1640494`. Phase 2 (cashbook, financial
-> report, bank reconciliation forms) is next. The PAT used in earlier
-> commits is compromised — use `gh auth login` for any pushes from this
-> machine."
+> "Read PROGRESS.md top-to-bottom and continue from where the last session
+> left off. As of commit `74b499f`, M1 Phase 1 / 2.1 / 2.2 / 2.3 / 3a are all
+> live; Phase 3b (supporting documents uploader) is next. The current edge
+> function slugs are `extract-esmp-pdf-v4` and `extract-m1-pdf-v3` — any
+> new extractor or re-deploy needs a fresh suffix per the §6 stuck-slug
+> pattern. The PAT used in earlier commits is compromised — use
+> `gh auth login` for pushes from this machine."
 
-Claude will absorb the architecture decisions (3-table ESMP, item.id
-key scheme, no-self-approval, computed status, stuck-slug edge function
-workaround) and the Phase 2 plan without needing them re-explained.
+Claude will absorb the architecture decisions (3-table ESMP, item.id key
+scheme, no-self-approval, computed-status views, cashbook column mapping,
+DD/MM/YYYY date inputs, stuck-slug edge function workaround) without
+needing them re-explained.
