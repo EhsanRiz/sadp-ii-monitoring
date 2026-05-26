@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-05-25 (end of session) · HEAD: `1640494`
+Last updated: 2026-05-25 (Cashbook + Cover-page refactor) · HEAD: `5290c81`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -39,6 +39,10 @@ is here or one link away.
 - Cover-page PDF (Annex V/A "I. PROJECT SUMMERY FORM") via
   `@react-pdf/renderer` at `/enterprises/:id/cover-page.pdf` — gated by
   `isCoverPageReady()`. Now also reused as page 1 of `m1.pdf`.
+  **Refactored 2026-05-25** to match the canonical paper-form layout
+  (single bordered table, 4-column nested rows for District/Location
+  and Total Grant/Current Grant Payment, inline italic hints in value
+  cells, `LSL 500 000.00` currency format, italic signature stand-ins).
 - Audit-log trigger on `enterprises` (server-recorded, read-only from client).
 - 164 4D enterprises imported with progress on 5 dimensions
   (cover-page, ESMP, business plan, M1 report, drilling).
@@ -166,17 +170,40 @@ phased into three commits, all designed against the same schema:
   PDF link.
 - Save / Submit / Approve / Reopen-for-editing flow + Print/PDF button.
 
-**Phase 2 ⏳ — pending build:**
-- Cashbook form (line-item editor): Date / Item / Budget code / Supplier
-  / Description / Credit / Debit. Accum + Balance + Budget Balance
-  **auto-computed** (user decision).
-- Financial Report form: categorised line items (A. Project Implementation
-  Costs / B. Inputs / C. Labour / D. Transportation / E. Travel / F. Other
-  / II. Technical Assistance / III. Technology Transfer) with auto
-  20% / 20% / 60% Beneficiary / IFAD / Grant-IDA source-of-funds split.
-- Bank Reconciliation form: fixed-field. Net Surplus / Difference /
-  Unexplained Differences auto-computed — last one must reach 0.
-- Extend `M1Pdf.tsx` to include those three sections after the narrative.
+**Phase 2 — in progress:**
+
+**Phase 2.1 ✅ Cashbook (live, commit `5290c81`):**
+- `src/forms/m1CashbookSchema.ts` — entry shape (id, date, item,
+  budget_code, supplier, description, credit, debit), `CASHBOOK_COLUMNS`
+  single source of truth for column order/widths, pure helpers
+  `computeRunningBalances` / `computeCashbookTotals` /
+  `computeBudgetCodeSpend` used in both UI and PDF so they can't drift.
+- `M1CashbookFormRenderer` — spreadsheet-style editor with opening
+  balance card, add/remove rows, computed Balance column, footer totals,
+  per-budget-code spend breakdown, both-credit-and-debit-> 0 warning,
+  negative balance highlighted destructive, readOnly aware.
+- `M1Pdf.tsx` — new landscape Cashbook page (only renders when entries
+  exist). Repeating column header on every page break, zebra rows,
+  brand-green totals row, per-budget-code spend footer.
+- **Open spec questions** to confirm on first user test:
+  - Is a per-row "Accumulated" column (separate from "Balance") expected?
+    Some Lesotho cashbooks include it.
+  - Should cashbook have its own approve state, or piggyback the overall
+    M1 submission status? Currently the latter (one M1 status across all
+    four sub-forms) since `m1_submissions.status` covers everything.
+
+**Phase 2.2 ⏳ Financial Report — pending:**
+- Categorised line items (A. Project Implementation Costs / B. Inputs /
+  C. Labour / D. Transportation / E. Travel / F. Other / II. Technical
+  Assistance / III. Technology Transfer).
+- Auto 20% / 20% / 60% Beneficiary / IFAD / Grant-IDA source-of-funds
+  split per line item.
+- Extend `M1Pdf.tsx`.
+
+**Phase 2.3 ⏳ Bank Reconciliation — pending:**
+- Fixed-field form. Net Surplus / Difference / Unexplained Differences
+  auto-computed — last one must reach 0 before submission is allowed.
+- Extend `M1Pdf.tsx`.
 
 **Phase 3 ⏳ — pending build:**
 - Supporting documents uploader: multi-file, kind-tagged (bank_statement
@@ -198,6 +225,8 @@ without a separate BP module.
 ## 3. Recent commits (most recent first)
 
 ```
+5290c81  feat(m1): Phase 2.1 — Cashbook form + PDF page
+d3aed02  feat(pdf): refactor cover page to match canonical paper-form layout
 1640494  feat(m1): Phase 1 — Narrative form + M1 page scaffold + M1 PDF
 41c5b0e  ux: simplify Legacy PDF section + return to ESMP tab from sub-form pages
 0bc8070  fix: align EMMP key scheme across form, PDF, edge function (+ broken review links)
@@ -336,6 +365,7 @@ src/
     forms/EmmpFormRenderer.tsx
     forms/InspectionFormRenderer.tsx
     forms/M1NarrativeFormRenderer.tsx
+    forms/M1CashbookFormRenderer.tsx
     StatusBadge.tsx
     ui/status-pill.tsx
     ui/skeleton.tsx
@@ -351,6 +381,7 @@ src/
     essfSchema.ts
     inspectionSchema.ts
     m1NarrativeSchema.ts                      # 7 sections
+    m1CashbookSchema.ts                       # entry shape + pure compute helpers
   pdf/
     CoverPagePdf.tsx                          # exports CoverPagePdfDocument + CoverPagePdfPage
     EsmpPdf.tsx                               # + Check / CheckBox SVG components + NOT APPLICABLE + EMMP signatures
@@ -391,11 +422,12 @@ SETUP.md                                      # new-machine bootstrap
   inline-URL push in chat. Replace future-machine setup with
   `gh auth login`.
 
-**M1 Phase 2 — pending build (next sprint):**
-- `M1CashbookFormRenderer` — line-item editor with auto-computed running totals
+**M1 Phase 2 — remaining (next sprint):**
+- ~~`M1CashbookFormRenderer`~~ ✅ shipped `5290c81`
 - `M1FinancialReportFormRenderer` — categorised line items with 20/20/60 source-of-funds split
 - `M1BankReconciliationFormRenderer` — fixed-field form, Unexplained-Differences must reach 0
-- Extend `M1Pdf.tsx` to include those three sections
+- Extend `M1Pdf.tsx` with Financial Report + Bank Rec sections
+- Confirm cashbook spec open questions (Accumulated column? separate approve state?)
 
 **M1 Phase 3 — pending build:**
 - Supporting documents uploader (multi-file, kind-tagged) — schema + bucket already exist
