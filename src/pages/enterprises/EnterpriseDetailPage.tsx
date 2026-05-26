@@ -88,11 +88,26 @@ export function EnterpriseDetailPage() {
   const [lastExtract, setLastExtract] = useState<ExtractPdfResult | null>(null);
   const extract = useExtractEsmpPdf(id ?? '');
   const pdfMeta = useUploadedEsmpPdfMeta(id, !!enterprise?.esmp_uploaded_pdf_url);
-  // Allow direct links to land on a specific tab — used by the
-  // "Back to enterprise" buttons on EssfEditPage / EmmpEditPage which
-  // pass ?tab=esmp so the user returns to where they were.
-  const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') ?? 'details';
+  // Tab state is driven by the URL ?tab= search param so:
+  //   1. Back-to-enterprise links from sub-form pages can target a tab
+  //      (e.g. EssfEditPage uses ?tab=esmp).
+  //   2. A page refresh keeps the user on the same tab — without this,
+  //      Tabs falls back to defaultValue and dumps everyone on Details.
+  // `replace: true` keeps tab switches out of browser history so the back
+  // button still returns to the previous *page*, not the previous tab.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const allowedTabs = ['details', 'progress', 'esmp', 'm1', 'history'] as const;
+  type TabId = (typeof allowedTabs)[number];
+  const tabFromUrl = searchParams.get('tab');
+  const currentTab: TabId = (allowedTabs as readonly string[]).includes(tabFromUrl ?? '')
+    ? (tabFromUrl as TabId)
+    : 'details';
+  const handleTabChange = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'details') params.delete('tab');
+    else params.set('tab', next);
+    setSearchParams(params, { replace: true });
+  };
 
   useEffect(() => {
     if (enterprise) setDraft(enterprise);
@@ -199,11 +214,12 @@ export function EnterpriseDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue={initialTab}>
+      <Tabs value={currentTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="progress">Progress</TabsTrigger>
           <TabsTrigger value="esmp">ESMP</TabsTrigger>
+          <TabsTrigger value="m1">Milestone 1</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
 
@@ -731,52 +747,9 @@ export function EnterpriseDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Milestone 1 progress report (Phase 1 scope: narrative only;
-              cashbook / financial / reconciliation / supporting-docs land in
-              Phase 2 & 3 inside the same m1_submissions row). */}
-          <Card className={statusBorder(m1.data?.status)}>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <FileCheck2 className="h-4 w-4" />
-                    Milestone 1 progress report
-                  </CardTitle>
-                  <CardDescription>
-                    Cover page · Narrative · Cashbook · Financial Report · Bank Reconciliation ·
-                    Supporting documents. Phase 1 currently wires up the narrative form; the
-                    other sections are placeholders in the M1 page.
-                  </CardDescription>
-                </div>
-                <StatusBadge status={m1.data?.status ?? null} />
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-center gap-2 text-sm">
-              {m1.data ? (
-                <span className="text-muted-foreground">
-                  {m1.data.submitted_at && <>Submitted {formatDateDMY(m1.data.submitted_at)} · </>}
-                  {m1.data.approved_at && <>Approved {formatDateDMY(m1.data.approved_at)}</>}
-                  {!m1.data.submitted_at && !m1.data.approved_at && <>Draft in progress</>}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">Not started.</span>
-              )}
-              <div className="ml-auto flex gap-2">
-                <Button asChild size="sm" variant={m1.data ? 'outline' : 'default'}>
-                  <Link to={`/enterprises/${id}/m1`}>
-                    {m1.data ? 'Open M1' : 'Start M1'}
-                  </Link>
-                </Button>
-                {m1.data && (
-                  <Button asChild size="sm" variant="outline">
-                    <Link to={`/enterprises/${id}/m1.pdf`} target="_blank" rel="noopener">
-                      <FileText className="mr-1.5 h-3.5 w-3.5" /> M1 report PDF
-                    </Link>
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          {/* Milestone 1 lived here briefly; promoted to its own top-level
+              tab so it sits parallel to ESMP — see the <TabsContent value="m1">
+              block below. */}
 
           {/* Legacy: scanned-PDF upload (collapsed by default) */}
           <Card>
@@ -1068,6 +1041,58 @@ export function EnterpriseDetailPage() {
                 </div>
               </CardContent>
             )}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="m1" className="space-y-4">
+          {/* Milestone 1 progress report — promoted from the ESMP tab to its
+              own top-level tab so it sits parallel to ESMP. Phase 1 wires up
+              the narrative form; Cashbook (Phase 2.1) is also live. Financial
+              Report, Bank Reconciliation, and Supporting Documents are in
+              the M1 page as separate tabs and will ship in Phase 2.2/2.3 +
+              Phase 3 — all on the same m1_submissions row. */}
+          <Card className={statusBorder(m1.data?.status)}>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileCheck2 className="h-4 w-4" />
+                    Milestone 1 progress report
+                  </CardTitle>
+                  <CardDescription>
+                    Cover page · Narrative · Cashbook · Financial Report · Bank Reconciliation ·
+                    Supporting documents. Narrative + Cashbook are live; the remaining sections
+                    are scaffolded inside the M1 page and ship in upcoming phases.
+                  </CardDescription>
+                </div>
+                <StatusBadge status={m1.data?.status ?? null} />
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center gap-2 text-sm">
+              {m1.data ? (
+                <span className="text-muted-foreground">
+                  {m1.data.submitted_at && <>Submitted {formatDateDMY(m1.data.submitted_at)} · </>}
+                  {m1.data.approved_at && <>Approved {formatDateDMY(m1.data.approved_at)}</>}
+                  {!m1.data.submitted_at && !m1.data.approved_at && <>Draft in progress</>}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Not started.</span>
+              )}
+              <div className="ml-auto flex gap-2">
+                <Button asChild size="sm" variant={m1.data ? 'outline' : 'default'}>
+                  <Link to={`/enterprises/${id}/m1`}>
+                    {m1.data ? 'Open M1' : 'Start M1'}
+                  </Link>
+                </Button>
+                {m1.data && (
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/enterprises/${id}/m1.pdf`} target="_blank" rel="noopener">
+                      <FileText className="mr-1.5 h-3.5 w-3.5" /> M1 report PDF
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </CardContent>
           </Card>
         </TabsContent>
 

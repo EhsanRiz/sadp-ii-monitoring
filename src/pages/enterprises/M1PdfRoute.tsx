@@ -53,8 +53,8 @@ export function M1PdfRoute() {
             </p>
             <div className="flex gap-2">
               <Button asChild variant="outline" size="sm">
-                <Link to={`/enterprises/${enterprise.id}?tab=esmp`}>
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Back to enterprise
+                <Link to={`/enterprises/${enterprise.id}?tab=m1`}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back to M1
                 </Link>
               </Button>
               <Button asChild size="sm" onClick={() => navigate(`/enterprises/${enterprise.id}/m1`)}>
