@@ -225,7 +225,16 @@ export function useUploadM1SourcePdf(enterpriseId: string) {
       const up = await supabase.storage
         .from(M1_SOURCE_BUCKET)
         .upload(path, file, { upsert: true, contentType: 'application/pdf' });
-      if (up.error) throw up.error;
+      if (up.error) {
+        // Surface a more helpful message when the upload silently hits a size
+        // limit. Supabase storage returns generic-ish errors here; we annotate
+        // with the file size + a pointer to the project-level setting that
+        // commonly overrides the bucket limit.
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        throw new Error(
+          `${up.error.message}. File size: ${sizeMb} MB. If the file is large, also check the project-level "Upload file size limit" at Supabase Dashboard → Settings → Storage.`,
+        );
+      }
 
       // Stamp the path on the m1_submissions row (create draft if missing).
       const existing = await supabase
@@ -258,6 +267,40 @@ export function useUploadM1SourcePdf(enterpriseId: string) {
       qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });
       qc.invalidateQueries({ queryKey: ['m1-source-pdf-meta', enterpriseId] });
       qc.invalidateQueries({ queryKey: ['enterprise-m1-status', enterpriseId] });
+    },
+  });
+}
+
+/**
+ * Delete the uploaded source M1 PDF from storage AND clear the
+ * uploaded_pdf_path / uploaded_pdf_uploaded_at columns on the m1_submissions
+ * row. Used when the wrong file was uploaded — gives the user an explicit
+ * "undo upload" affordance rather than just overwriting on re-upload.
+ *
+ * Leaves narrative + cashbook + status alone — an already-imported draft
+ * keeps its contents even if the source file is removed, so the field
+ * supervisor can finish editing manually. Clearing the draft is a separate
+ * action (form-level "Discard" if needed).
+ */
+export function useRemoveM1SourcePdf(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const path = m1SourcePdfPath(enterpriseId);
+      // Storage delete — ignore "not found" so the action is idempotent.
+      const rm = await supabase.storage.from(M1_SOURCE_BUCKET).remove([path]);
+      if (rm.error && !/not.found/i.test(rm.error.message)) throw rm.error;
+      // Clear the columns. RLS allows non-admins to update their org's draft
+      // submissions, so this works for field supervisors too.
+      const { error } = await supabase
+        .from('m1_submissions')
+        .update({ uploaded_pdf_path: null, uploaded_pdf_uploaded_at: null })
+        .eq('enterprise_id', enterpriseId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['m1-source-pdf-meta', enterpriseId] });
     },
   });
 }

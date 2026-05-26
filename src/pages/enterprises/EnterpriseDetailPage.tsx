@@ -24,6 +24,7 @@ import {
   useM1Submission,
   useUploadM1SourcePdf,
   useUploadedM1PdfMeta,
+  useRemoveM1SourcePdf,
   useExtractM1Pdf,
   ExtractM1Error,
   formatBytes as formatBytesM1,
@@ -40,7 +41,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/StatusBadge';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
-import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
+import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X } from 'lucide-react';
 import { formatDateDMY, formatLSL, cn } from '@/lib/utils';
 
 /** Colored left-edge border that matches a submission's status. */
@@ -91,6 +92,7 @@ export function EnterpriseDetailPage() {
   const m1 = useM1Submission(id);
   const m1PdfMeta = useUploadedM1PdfMeta(id, !!m1.data?.uploaded_pdf_path);
   const uploadM1Pdf = useUploadM1SourcePdf(id ?? '');
+  const removeM1Pdf = useRemoveM1SourcePdf(id ?? '');
   const extractM1 = useExtractM1Pdf(id ?? '');
   const [lastM1Extract, setLastM1Extract] = useState<ExtractM1Result | null>(null);
 
@@ -154,7 +156,12 @@ export function EnterpriseDetailPage() {
       const up = await supabase.storage
         .from('esmp-pdfs')
         .upload(path, file, { upsert: true, contentType: 'application/pdf' });
-      if (up.error) throw up.error;
+      if (up.error) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        throw new Error(
+          `${up.error.message}. File size: ${sizeMb} MB. If the file is large, also check the project-level "Upload file size limit" at Supabase Dashboard → Settings → Storage.`,
+        );
+      }
       const { data: signed } = await supabase.storage
         .from('esmp-pdfs')
         .createSignedUrl(path, 60 * 60 * 24 * 30);
@@ -169,6 +176,30 @@ export function EnterpriseDetailPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['enterprise', id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-history', id] });
+    },
+  });
+
+  /**
+   * Delete the uploaded legacy ESMP PDF + clear esmp_uploaded_pdf_url.
+   * Mirrors useRemoveM1SourcePdf on the M1 side. Used when the wrong file
+   * was uploaded by mistake.
+   */
+  const removeEsmpPdf = useMutation({
+    mutationFn: async () => {
+      if (!enterprise) throw new Error('No enterprise');
+      const path = `${enterprise.id}.pdf`;
+      const rm = await supabase.storage.from('esmp-pdfs').remove([path]);
+      if (rm.error && !/not.found/i.test(rm.error.message)) throw rm.error;
+      const { error: err } = await supabase
+        .from('enterprises')
+        .update({ esmp_uploaded_pdf_url: null, esmp_status: 'not_started' })
+        .eq('id', enterprise.id);
+      if (err) throw err;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['enterprise', id] });
+      qc.invalidateQueries({ queryKey: ['esmp-pdf-meta', id] });
       qc.invalidateQueries({ queryKey: ['enterprise-history', id] });
     },
   });
@@ -800,34 +831,59 @@ export function EnterpriseDetailPage() {
                     show storage metadata (size + last-updated) to make it
                     obvious what's actually on file.                          */}
                 {enterprise.esmp_uploaded_pdf_url && (
-                  <a
-                    href={enterprise.esmp_uploaded_pdf_url}
-                    target="_blank"
-                    rel="noopener"
-                    className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="rounded-md bg-primary/10 p-2 shrink-0">
-                      <FileText className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">
-                        ESMP — {enterprise.beneficiary_short_name}.pdf
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={enterprise.esmp_uploaded_pdf_url}
+                      target="_blank"
+                      rel="noopener"
+                      className="flex flex-1 items-center gap-3 rounded-md border p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="rounded-md bg-primary/10 p-2 shrink-0">
+                        <FileText className="h-5 w-5 text-primary" />
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {pdfMeta.isLoading ? (
-                          'Loading file info…'
-                        ) : pdfMeta.data ? (
-                          <>
-                            {formatBytes(pdfMeta.data.size)} · Uploaded{' '}
-                            {formatDateDMY(pdfMeta.data.uploaded_at)}
-                          </>
-                        ) : (
-                          'PDF on file'
-                        )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          ESMP — {enterprise.beneficiary_short_name}.pdf
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {pdfMeta.isLoading ? (
+                            'Loading file info…'
+                          ) : pdfMeta.data ? (
+                            <>
+                              {formatBytes(pdfMeta.data.size)} · Uploaded{' '}
+                              {formatDateDMY(pdfMeta.data.uploaded_at)}
+                            </>
+                          ) : (
+                            'PDF on file'
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-xs text-primary shrink-0">Open ↗</span>
-                  </a>
+                      <span className="text-xs text-primary shrink-0">Open ↗</span>
+                    </a>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                      disabled={removeEsmpPdf.isPending}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            'Remove the uploaded ESMP PDF?\n\n' +
+                              'The file will be deleted from storage and the link cleared. ' +
+                              'Any draft ESSF/EMMP submissions that were auto-extracted from this file are left in place — clear those separately from the ESSF/EMMP edit pages if needed.',
+                          )
+                        ) return;
+                        removeEsmpPdf.mutate(undefined, {
+                          onSuccess: () => toast.success('ESMP PDF removed'),
+                          onError: (e: Error) =>
+                            toast.error('Could not remove PDF', { description: e.message }),
+                        });
+                      }}
+                    >
+                      <X className="mr-1 h-3.5 w-3.5" />
+                      {removeEsmpPdf.isPending ? 'Removing…' : 'Remove'}
+                    </Button>
+                  </div>
                 )}
 
                 {/* ---------- Auto-extract ESMP responses from the PDF ----------
@@ -1123,27 +1179,52 @@ export function EnterpriseDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {m1.data?.uploaded_pdf_path ? (
-                <div className="flex items-center gap-3 rounded-md border p-3">
-                  <div className="rounded-md bg-primary/10 p-2 shrink-0">
-                    <FileText className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      M1 source — {enterprise.beneficiary_short_name}.pdf
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-3 rounded-md border p-3">
+                    <div className="rounded-md bg-primary/10 p-2 shrink-0">
+                      <FileText className="h-5 w-5 text-primary" />
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {m1PdfMeta.isLoading ? (
-                        'Loading file info…'
-                      ) : m1PdfMeta.data ? (
-                        <>
-                          {formatBytesM1(m1PdfMeta.data.size)} · Uploaded{' '}
-                          {formatDateDMY(m1PdfMeta.data.uploaded_at)}
-                        </>
-                      ) : (
-                        'PDF on file'
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        M1 source — {enterprise.beneficiary_short_name}.pdf
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {m1PdfMeta.isLoading ? (
+                          'Loading file info…'
+                        ) : m1PdfMeta.data ? (
+                          <>
+                            {formatBytesM1(m1PdfMeta.data.size)} · Uploaded{' '}
+                            {formatDateDMY(m1PdfMeta.data.uploaded_at)}
+                          </>
+                        ) : (
+                          'PDF on file'
+                        )}
+                      </div>
                     </div>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                    disabled={removeM1Pdf.isPending || extractM1.isPending}
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          'Remove the uploaded M1 source PDF?\n\n' +
+                            'The file will be deleted from storage and the link cleared. ' +
+                            'Any draft narrative / cashbook that was auto-extracted from this file stays on the M1 form — clear those manually from the M1 page if needed.',
+                        )
+                      ) return;
+                      removeM1Pdf.mutate(undefined, {
+                        onSuccess: () => toast.success('M1 source PDF removed'),
+                        onError: (e: Error) =>
+                          toast.error('Could not remove PDF', { description: e.message }),
+                      });
+                    }}
+                  >
+                    <X className="mr-1 h-3.5 w-3.5" />
+                    {removeM1Pdf.isPending ? 'Removing…' : 'Remove'}
+                  </Button>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No source PDF uploaded yet.</p>
