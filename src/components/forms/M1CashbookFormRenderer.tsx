@@ -13,7 +13,7 @@
  * user can submit a row with both zero (a memo row) but a per-row warning
  * lights up if both are > 0, which is almost always a typo.
  */
-import { useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,74 @@ interface Props {
   responses: M1CashbookResponses;
   onChange: (next: M1CashbookResponses) => void;
   readOnly?: boolean;
+}
+
+/**
+ * DD/MM/YYYY text date input. Native <input type="date"> follows the browser
+ * locale (MM/DD/YYYY in US, DD/MM/YYYY in GB, etc.) and there's no portable
+ * way to force a single format. Lesotho uses DD/MM/YYYY everywhere on paper,
+ * so we render a plain text input that:
+ *   - displays the date as DD/MM/YYYY
+ *   - accepts DD/MM/YYYY as typed input
+ *   - stores ISO yyyy-mm-dd in the underlying data via onChange
+ *   - commits on blur (so half-typed values don't churn the running balance)
+ */
+function isoToDmy(iso: string | undefined | null): string {
+  if (!iso) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+function dmyToIso(dmy: string): string | null {
+  // Accept dd/mm/yyyy, d/m/yyyy, dd-mm-yyyy, etc.
+  const m = /^\s*(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\s*$/.exec(dmy);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  const day = Number(dd);
+  const mon = Number(mm);
+  if (day < 1 || day > 31 || mon < 1 || mon > 12) return null;
+  return `${yyyy}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+interface DmyDateInputProps {
+  value: string;   // ISO yyyy-mm-dd
+  onChange: (iso: string) => void;
+  disabled?: boolean;
+  className?: string;
+}
+function DmyDateInput({ value, onChange, disabled, className }: DmyDateInputProps) {
+  const [draft, setDraft] = useState(() => isoToDmy(value));
+  // Sync from outside (e.g. after extraction populates the row).
+  useEffect(() => { setDraft(isoToDmy(value)); }, [value]);
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed === '') { onChange(''); return; }
+    const iso = dmyToIso(trimmed);
+    if (iso) { onChange(iso); setDraft(isoToDmy(iso)); }
+    else {
+      // Invalid input — revert display to last good value but don't change
+      // stored data. The user can re-type.
+      setDraft(isoToDmy(value));
+    }
+  };
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      placeholder="dd/mm/yyyy"
+      pattern="\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}"
+      value={draft}
+      disabled={disabled}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      className={className}
+    />
+  );
 }
 
 /** Stable-enough id without pulling in uuid: 16 hex chars from crypto.getRandomValues. */
@@ -95,12 +163,10 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
         <CardContent className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor={`${reactId}-open-date`}>Opening balance date</Label>
-            <Input
-              id={`${reactId}-open-date`}
-              type="date"
+            <DmyDateInput
               value={openingDate}
               disabled={readOnly}
-              onChange={(e) => patch({ opening_balance_date: e.target.value || undefined })}
+              onChange={(iso) => patch({ opening_balance_date: iso || undefined })}
             />
           </div>
           <div className="space-y-1.5">
@@ -172,11 +238,10 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                     return (
                       <tr key={e.id} className="border-b align-top hover:bg-muted/40">
                         <td className="py-1.5 pr-2">
-                          <Input
-                            type="date"
+                          <DmyDateInput
                             value={e.date}
                             disabled={readOnly}
-                            onChange={(ev) => patchEntry(e.id, { date: ev.target.value })}
+                            onChange={(iso) => patchEntry(e.id, { date: iso })}
                             className="h-7 text-xs px-2"
                           />
                         </td>
@@ -186,7 +251,7 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                             disabled={readOnly}
                             onChange={(ev) => patchEntry(e.id, { item: ev.target.value })}
                             className="h-7 text-xs px-2"
-                            placeholder="Activity"
+                            placeholder="e.g. I-A"
                           />
                         </td>
                         <td className="py-1.5 pr-2">
@@ -195,7 +260,7 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                             disabled={readOnly}
                             onChange={(ev) => patchEntry(e.id, { budget_code: ev.target.value })}
                             className="h-7 text-xs px-2"
-                            placeholder="A.1"
+                            placeholder="e.g. MATERIAL"
                           />
                         </td>
                         <td className="py-1.5 pr-2">

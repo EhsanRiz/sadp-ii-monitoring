@@ -396,15 +396,15 @@ export function useExtractM1Pdf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<ExtractM1Result> => {
-      // NOTE: deployed under "-v2" slug. -v1 worked but its prompt let
-      // Claude pull entries from bank statements + supplier receipts
-      // pages — which over-counted cashbook rows ~2-3x because the
-      // cashbook is the SUPERVISOR'S CONSOLIDATED view, not the raw
-      // bank-recorded transactions. v2's prompt scopes extraction to
-      // the cashbook page only and explicitly lists supporting docs
-      // to ignore. -v1 stays deployed for reference; future re-deploys
-      // bump the suffix per PROGRESS.md §6 stuck-slug pattern.
-      const { data, error } = await supabase.functions.invoke('extract-m1-pdf-v2', {
+      // NOTE: deployed under "-v3" slug.
+      //   -v1 pulled from supporting docs (bank statements / receipts) too,
+      //        over-counting cashbook rows.
+      //   -v2 scoped extraction to the cashbook page only.
+      //   -v3 adds explicit column-to-field mapping (PDF ITEM = code → item;
+      //        PDF BUDGET = type → budget_code; full supplier names not
+      //        truncated). Fixes the supplier-in-item-field bug.
+      // Future re-deploys bump the suffix per PROGRESS.md §6.
+      const { data, error } = await supabase.functions.invoke('extract-m1-pdf-v3', {
         body: { enterpriseId },
       });
       if (error) {
