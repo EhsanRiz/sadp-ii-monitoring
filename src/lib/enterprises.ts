@@ -159,7 +159,7 @@ export function isCoverPageReady(e: EnterpriseRow): boolean {
 }
 
 // =================================================================
-// Lifecycle (RSDA-style 11-milestone matrix). Joins essf/emmp/m1 in
+// Lifecycle (11-milestone matrix). Joins essf/emmp/m1 in
 // a server-side view; we just read it.
 // =================================================================
 export function useEnterpriseLifecycle() {

@@ -765,11 +765,11 @@ export interface Database {
           district_id: string;
           beneficiary_short_name: string;
           enterprise_type_id: number;
-          contracts_signed: 'yes' | 'no';
+          contracts_signed: 'yes' | 'no' | 'n_a' | null;
           contract_available: 'yes' | 'no' | 'n_a' | null;
           beneficiary_contributed: 'yes' | 'no' | 'n_a' | null;
-          sadp_contributed: 'yes' | 'no';
-          business_plan: 'yes' | 'no';
+          sadp_contributed: 'yes' | 'no' | 'n_a' | null;
+          business_plan: 'yes' | 'no' | 'n_a' | null;
           esmp: 'yes' | 'no';
           verified_borehole_site: 'yes' | 'no' | 'n_a' | null;
           budget_transfer: 'yes' | 'no' | 'n_a' | null;

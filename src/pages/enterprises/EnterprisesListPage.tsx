@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEnterprises, useEnterpriseLifecycle, type EnterpriseListFilters } from '@/lib/enterprises';
-import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleValue } from '@/lib/lifecycle';
+import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleMilestoneId, type LifecycleValue } from '@/lib/lifecycle';
 import type { DrillingStatus, EnterpriseRow, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
-import { useDistricts, useEnterpriseTypes, useResourceCenters } from '@/lib/catalogs';
+import { useDistricts, useEnterpriseTypes, useOrganizations, useResourceCenters } from '@/lib/catalogs';
+import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -117,6 +118,9 @@ export function EnterprisesListPage() {
     [],
   );
   const [filters, setFilters] = useState<EnterpriseListFilters>(initialFilters);
+  // Activity filter is client-side — operates on the lifecycle map.
+  const [activityId, setActivityId] = useState<LifecycleMilestoneId | '__all'>('__all');
+  const [activityValue, setActivityValue] = useState<'yes' | 'no' | 'n_a' | 'not_tracked' | '__any'>('__any');
   const [view, setView] = useState<'table' | 'cards'>(() => {
     return (localStorage.getItem('enterprises-view') as 'table' | 'cards') ?? 'cards';
   });
@@ -125,11 +129,25 @@ export function EnterprisesListPage() {
     localStorage.setItem('enterprises-view', v);
   };
 
+  const { isSuperAdmin } = useAuth();
+  const { data: organizations } = useOrganizations();
   const { data: districts } = useDistricts();
   const { data: types } = useEnterpriseTypes();
   const { data: rcs } = useResourceCenters(filters.districtId ?? null);
   const { data: enterprises, isLoading, error } = useEnterprises(filters);
   const { data: lifecycle } = useEnterpriseLifecycle();
+
+  // Client-side activity/status filter applied on top of the server-filtered list.
+  const filteredEnterprises = useMemo(() => {
+    if (!enterprises || activityId === '__all') return enterprises ?? [];
+    return enterprises.filter((e) => {
+      const row = lifecycle?.get(e.id);
+      const cell = row ? (row[activityId] as LifecycleValue | null | undefined) : null;
+      if (activityValue === '__any') return cell != null; // any tracked value matches
+      if (activityValue === 'not_tracked') return cell == null;
+      return cell === activityValue;
+    });
+  }, [enterprises, lifecycle, activityId, activityValue]);
 
   return (
     <div className="space-y-6">
@@ -137,7 +155,7 @@ export function EnterprisesListPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Enterprises</h1>
           <p className="text-sm text-muted-foreground">
-            {enterprises ? `${enterprises.length} shown` : 'Loading…'}
+            {enterprises ? `${filteredEnterprises.length} of ${enterprises.length} shown` : 'Loading…'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -177,9 +195,10 @@ export function EnterprisesListPage() {
         <CardHeader>
           <CardTitle className="text-base">Filter</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <div className="space-y-1.5 lg:col-span-2">
+        <CardContent className="space-y-3">
+          {/* Row 1: Search spans wider; Org (super-admin only) + District + RC */}
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
               <Label htmlFor="search">Search</Label>
               <Input
                 id="search"
@@ -188,6 +207,33 @@ export function EnterprisesListPage() {
                 onChange={(e) => setFilters({ ...filters, search: e.target.value })}
               />
             </div>
+            {isSuperAdmin && (
+              <div className="space-y-1.5">
+                <Label>Organisation</Label>
+                <Select
+                  value={filters.organizationCode ?? '__all'}
+                  onValueChange={(v) =>
+                    setFilters({
+                      ...filters,
+                      organizationCode: v === '__all' ? null : v,
+                      // clear downstream filters when org changes — they may not apply
+                      districtId: null,
+                      resourceCenterId: null,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">All organisations</SelectItem>
+                    {organizations?.map((o) => (
+                      <SelectItem key={o.id} value={o.code}>
+                        {o.code} — {o.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>District</Label>
               <Select
@@ -200,15 +246,11 @@ export function EnterprisesListPage() {
                   })
                 }
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all">All districts</SelectItem>
                   {districts?.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -222,58 +264,69 @@ export function EnterprisesListPage() {
                 }
                 disabled={!filters.districtId}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all">All RCs</SelectItem>
                   {rcs?.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name}
-                    </SelectItem>
+                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          {/* Row 2: Type + Activity + Status (Activity = milestone column from the matrix) */}
+          <div className="grid gap-3 md:grid-cols-3">
             <div className="space-y-1.5">
-              <Label>Type</Label>
+              <Label>Enterprise type</Label>
               <Select
                 value={filters.enterpriseTypeId ? String(filters.enterpriseTypeId) : '__all'}
                 onValueChange={(v) =>
                   setFilters({ ...filters, enterpriseTypeId: v === '__all' ? null : Number(v) })
                 }
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all">All types</SelectItem>
                   {types?.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.name}
-                    </SelectItem>
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>ESMP status</Label>
+              <Label>Activity (milestone)</Label>
               <Select
-                value={filters.esmpStatus ?? '__all'}
-                onValueChange={(v) =>
-                  setFilters({ ...filters, esmpStatus: v === '__all' ? null : (v as EsmpStatus) })
-                }
+                value={activityId}
+                onValueChange={(v) => {
+                  setActivityId(v as LifecycleMilestoneId | '__all');
+                  // reset value when switching activity so the result set is meaningful
+                  if (v === '__all') setActivityValue('__any');
+                  else if (activityValue === '__any') setActivityValue('yes');
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Any activity" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all">All</SelectItem>
-                  {Object.entries(ESMP_LABEL).map(([k, label]) => (
-                    <SelectItem key={k} value={k}>
-                      {label}
-                    </SelectItem>
+                  <SelectItem value="__all">Any activity</SelectItem>
+                  {LIFECYCLE_MILESTONES.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select
+                value={activityValue}
+                onValueChange={(v) => setActivityValue(v as typeof activityValue)}
+                disabled={activityId === '__all'}
+              >
+                <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__any">Any status</SelectItem>
+                  <SelectItem value="yes">✓ Yes</SelectItem>
+                  <SelectItem value="no">✗ No</SelectItem>
+                  <SelectItem value="n_a">N/A</SelectItem>
+                  <SelectItem value="not_tracked">– Not yet tracked</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -295,7 +348,7 @@ export function EnterprisesListPage() {
             <Skeleton key={i} className={view === 'cards' ? 'h-32 w-full' : 'h-10 w-full mb-2'} />
           ))}
         </div>
-      ) : enterprises && enterprises.length === 0 ? (
+      ) : enterprises && filteredEnterprises.length === 0 ? (
         <EmptyState
           icon={Sprout}
           title="No enterprises match these filters"
@@ -310,7 +363,7 @@ export function EnterprisesListPage() {
         />
       ) : view === 'cards' ? (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {enterprises?.map((e) => {
+          {filteredEnterprises?.map((e) => {
             const t = types?.find((x) => x.id === e.enterprise_type_id);
             const v = getEnterpriseVisual(t?.name, t?.category as EnterpriseCategory);
             const Icon = v.icon;
@@ -383,7 +436,7 @@ export function EnterprisesListPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {enterprises?.map((e) => {
+                  {filteredEnterprises?.map((e) => {
                     const t = types?.find((x) => x.id === e.enterprise_type_id);
                     const v = getEnterpriseVisual(t?.name, t?.category as EnterpriseCategory);
                     const Icon = v.icon;

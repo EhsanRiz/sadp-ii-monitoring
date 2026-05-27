@@ -1,5 +1,5 @@
 /**
- * RSDA-style 11-milestone tracker for enterprises.
+ * 11-milestone enterprise lifecycle tracker.
  *
  * Mirrors the columns on RSDA's Master Sheet so 4D + RSDA share one tracking
  * vocabulary. Six milestones are MANUAL (stored in `enterprises.lifecycle_status`
@@ -56,8 +56,7 @@ export const LIFECYCLE_MILESTONES: LifecycleMilestone[] = [
     id: 'contracts_signed',
     label: 'Contracts signed',
     short: 'Contract',
-    source: 'derived',
-    derived_from: 'Both Principal Applicant and Service Provider signed dates are set.',
+    source: 'manual',
   },
   {
     id: 'contract_available',
@@ -75,15 +74,13 @@ export const LIFECYCLE_MILESTONES: LifecycleMilestone[] = [
     id: 'sadp_contributed',
     label: 'SADP contributed',
     short: 'SADP $',
-    source: 'derived',
-    derived_from: 'Current grant payment > 0.',
+    source: 'manual',
   },
   {
     id: 'business_plan',
     label: 'Business plan',
     short: 'BP',
-    source: 'derived',
-    derived_from: 'Business plan status is "Done & validated" or "Validated & submitted".',
+    source: 'manual',
   },
   {
     id: 'esmp',
@@ -148,11 +145,11 @@ export interface EnterpriseLifecycleRow {
   district_id: string;
   beneficiary_short_name: string;
   enterprise_type_id: number;
-  contracts_signed:         LifecycleValue;
+  contracts_signed:         LifecycleValue | null;
   contract_available:       LifecycleValue | null;
   beneficiary_contributed:  LifecycleValue | null;
-  sadp_contributed:         LifecycleValue;
-  business_plan:            LifecycleValue;
+  sadp_contributed:         LifecycleValue | null;
+  business_plan:            LifecycleValue | null;
   esmp:                     LifecycleValue;
   verified_borehole_site:   LifecycleValue | null;
   budget_transfer:          LifecycleValue | null;

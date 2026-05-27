@@ -118,10 +118,11 @@ export function EnterpriseDetailPage() {
   const tabFromUrl = searchParams.get('tab');
   const currentTab: TabId = (allowedTabs as readonly string[]).includes(tabFromUrl ?? '')
     ? (tabFromUrl as TabId)
-    : 'details';
+    : 'progress';
   const handleTabChange = (next: string) => {
     const params = new URLSearchParams(searchParams);
-    if (next === 'details') params.delete('tab');
+    // Progress is the default landing tab; omit ?tab=progress to keep URLs clean.
+    if (next === 'progress') params.delete('tab');
     else params.set('tab', next);
     setSearchParams(params, { replace: true });
   };

@@ -1,5 +1,5 @@
 /**
- * 11-row editor for the RSDA-style enterprise lifecycle tracker.
+ * 11-row editor for the enterprise lifecycle tracker.
  *
  * Manual milestones (6): editable ✓/×/N/A pill triplet.
  * Derived milestones (5): read-only badge showing the current computed value,
@@ -81,7 +81,7 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-base">Enterprise lifecycle (RSDA-style)</CardTitle>
+            <CardTitle className="text-base">Enterprise lifecycle</CardTitle>
             <CardDescription>
               11 milestones tracked across both partners. Six are edited here; five
               are <span className="font-medium">auto-derived</span> from existing data

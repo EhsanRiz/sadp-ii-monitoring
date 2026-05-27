@@ -221,7 +221,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         </Card>
       )}
 
-      {/* RSDA-style district × milestone matrix */}
+      {/* District × milestone matrix */}
       <LifecycleMatrix
         scopeOrgId={orgId}
         lifecycleMap={lifecycleMap}
