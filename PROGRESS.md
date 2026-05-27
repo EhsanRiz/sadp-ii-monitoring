@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-05-26 (M1 Phases 1/2/3a complete · DD/MM/YYYY) · HEAD: `74b499f`
+Last updated: 2026-05-27 (Enterprise lifecycle tracker live) · HEAD: `e2e1fb4`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -176,6 +176,65 @@ phases add UI only — no further table migrations needed (except migration
 
 **Business plan**: deferred. M1 works standalone without a separate BP module.
 
+### Enterprise lifecycle tracker (11 milestones) ✅ — added 2026-05-27
+Adopts the column structure RSDA uses on their Master Sheet so 4D + RSDA share
+one tracking vocabulary. Replaces the old 5-dot progress strip + 4 stat cards.
+
+**Schema** (migrations `210` + `211`, applied):
+- `enterprises.lifecycle_status jsonb DEFAULT '{}'::jsonb` — stores only the
+  9 manual values; server-side view fills in the 2 derived ones.
+- `enterprise_lifecycle` view (security_invoker = on) joins
+  essf/emmp/m1 submissions and returns one row per enterprise with all 11
+  columns hydrated. Migration 211 moved 3 milestones (contracts_signed,
+  sadp_contributed, business_plan) from DERIVED to MANUAL after they proved
+  too nuanced for automatic rules.
+
+**The 11 milestones (in column order):**
+
+| # | Id | Source | Notes |
+|---|---|---|---|
+| 1 | `contracts_signed` | manual | was derived from signed dates; too coarse |
+| 2 | `contract_available` | manual | did the SP file the signed contract PDF |
+| 3 | `beneficiary_contributed` | manual | cash contribution received |
+| 4 | `sadp_contributed` | manual | was derived from `current_grant_payment_lsl > 0`; too coarse |
+| 5 | `business_plan` | manual | was derived from BP status enum; too coarse |
+| 6 | `esmp` | **derived** | both ESSF + EMMP submissions are `approved` |
+| 7 | `verified_borehole_site` | manual | pre-drilling site verification done |
+| 8 | `budget_transfer` | manual | M1 budget approved + funds transferred |
+| 9 | `supervision` | manual | drilling + site clearing supervised |
+| 10 | `procurement` | manual | equipment + materials procured |
+| 11 | `m1_submitted` | **derived** | `m1_submissions.status` is submitted or approved |
+
+Values: `'yes'` / `'no'` / `'n_a'`; **NULL** means "not yet tracked"
+(only valid for the 9 manual milestones — derived ones always return yes/no).
+
+**UI surfaces** all driven off `enterprise_lifecycle` + `useEnterpriseLifecycle`:
+
+- **Enterprise list → Table view** (toggle in top-right): 11-column matrix.
+  Sticky beneficiary column for horizontal scroll. ✓ (green) / ✗ (red) /
+  N/A (grey) / – (faint dash for not-tracked) with a legend strip. Card
+  view still available for the icon+name visual scan.
+- **Enterprise detail → Progress tab** (now the default tab — was Details):
+  `EnterpriseLifecycleEditor` at the top. 9 manual rows with StatusPill
+  ✓/×/N/A triplets (click an active pill to deselect). 2 derived rows
+  shown read-only with ✨ "auto" badge + tooltip. Explicit "Save lifecycle"
+  button to avoid 11 round-trips during editing.
+- **Dashboard**: `LifecycleMatrix` replaces the old 4 stat cards.
+  District-by-milestone aggregation table: rows per district + grand total,
+  columns per milestone, cell value `count_yes / total` with green
+  saturation scaling to completion ratio. Mirrors the "Analysed beneficiary"
+  sheet RSDA showed us.
+
+**Filter card on Enterprise list** rebuilt in two rows (commit `e2e1fb4`):
+- Row 1: Search · Organisation (super-admin only) · District · Resource Center
+- Row 2: Enterprise type · **Activity** (milestone) · **Status** (Yes / No /
+  N/A / Not tracked / Any)
+- Activity filter is client-side over the lifecycle map.
+- Header count reads "X of Y shown" so filter effect is visible.
+
+**Default tab change**: `/enterprises/:id` now lands on **Progress**, not
+Details. `?tab=` URL param omits when on Progress (clean default URL).
+
 ### UX polish pass ✅
 - Semantic color tokens: `success` / `warning` / `info` + tints.
 - Sonner toaster wired for save / submit / approve feedback.
@@ -200,6 +259,9 @@ phases add UI only — no further table migrations needed (except migration
 ## 3. Recent commits (most recent first)
 
 ```
+e2e1fb4  fix(lifecycle): drop RSDA-style label, switch 3 milestones to manual, rebuild filters, default tab → Progress
+b35b470  feat(lifecycle): RSDA-style 11-milestone tracker
+ab9f13c  docs: refresh PROGRESS.md for M1 Phases 1/2/3a + cashbook column-mapping fixes
 74b499f  fix(cashbook): explicit column mapping in extraction + DD/MM/YYYY date inputs
 7673419  fix(m1-extract): cashbook = supervisor's consolidated record, not bank statements
 e3fe758  feat(cashbook): add Accum + Budget Balance columns to match printed template
@@ -352,6 +414,7 @@ src/
     forms/M1CashbookFormRenderer.tsx         # + DmyDateInput component
     forms/M1FinancialReportFormRenderer.tsx
     forms/M1BankReconciliationFormRenderer.tsx
+    enterprise/EnterpriseLifecycleEditor.tsx  # 11-milestone Progress-tab editor
     StatusBadge.tsx
     ui/status-pill.tsx · skeleton.tsx · empty-state.tsx
   lib/
@@ -363,6 +426,7 @@ src/
                                               # useExtractM1Pdf, useDiscardM1Draft + role helpers
     enterprise-icons.ts
     catalogs.ts
+    lifecycle.ts                              # 11-milestone definitions + aggregateLifecycle
   forms/
     essfSchema.ts
     inspectionSchema.ts
@@ -376,12 +440,14 @@ src/
     M1Pdf.tsx                                 # Cover · Narrative · Cashbook · Financial · Bank Reconciliation
 
 supabase/
-  migrations/                                 # 010 … 200
+  migrations/                                 # 010 … 211
     161_emmp_vegetable_shednets_add_climate_change.sql
     170_esmp_pdf_import_tracking.sql          # imported_* columns on essf + emmp
     180_m1_milestone_one_module.sql           # m1_submissions, m1_supporting_documents, bucket, view
     190_m1_source_pdf_columns.sql             # uploaded_pdf_path + uploaded_pdf_uploaded_at on m1_submissions
     200_bump_pdf_bucket_size_limit.sql        # 50 → 100 MB on esmp-pdfs + m1-supporting-docs
+    210_enterprise_lifecycle.sql              # lifecycle_status jsonb + enterprise_lifecycle view
+    211_lifecycle_make_three_manual.sql       # contracts_signed/sadp_contributed/business_plan → manual
   seeds/
     140_seed_rsda_districts.sql
     160_emmp_templates.sql
