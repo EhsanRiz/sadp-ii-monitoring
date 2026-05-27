@@ -39,6 +39,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/StatusBadge';
+import { EnterpriseLifecycleEditor } from '@/components/enterprise/EnterpriseLifecycleEditor';
+import { useEnterpriseLifecycle } from '@/lib/enterprises';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
 import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X } from 'lucide-react';
@@ -89,6 +91,7 @@ export function EnterpriseDetailPage() {
   const emmp = useEmmpSubmission(id);
   const inspections = useInspectionVisits(id);
   const esmpStatus = useEnterpriseEsmpStatus(id);
+  const lifecycleMap = useEnterpriseLifecycle();
   const m1 = useM1Submission(id);
   const m1PdfMeta = useUploadedM1PdfMeta(id, !!m1.data?.uploaded_pdf_path);
   const uploadM1Pdf = useUploadM1SourcePdf(id ?? '');
@@ -450,6 +453,10 @@ export function EnterpriseDetailPage() {
         </TabsContent>
 
         <TabsContent value="progress" className="space-y-4">
+          <EnterpriseLifecycleEditor
+            enterpriseId={enterprise.id}
+            lifecycle={lifecycleMap.data?.get(enterprise.id) ?? null}
+          />
           <Card className="bg-gradient-to-br from-tint-success/40 to-background">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Progress at a glance</CardTitle>

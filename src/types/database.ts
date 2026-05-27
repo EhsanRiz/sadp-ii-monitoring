@@ -311,6 +311,7 @@ export interface Database {
           procurement_plan_status: ProcurementPlanStatus;
           business_plan_status: BusinessPlanStatus;
           milestone1_report_status: Milestone1ReportStatus;
+          lifecycle_status: Json;
           drilling_status: DrillingStatus;
           budget_lsl: number | null;
           created_by: string | null;
@@ -353,6 +354,7 @@ export interface Database {
           procurement_plan_status?: ProcurementPlanStatus;
           business_plan_status?: BusinessPlanStatus;
           milestone1_report_status?: Milestone1ReportStatus;
+          lifecycle_status?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;
           created_by?: string | null;
@@ -394,6 +396,7 @@ export interface Database {
           procurement_plan_status?: ProcurementPlanStatus;
           business_plan_status?: BusinessPlanStatus;
           milestone1_report_status?: Milestone1ReportStatus;
+          lifecycle_status?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;
           created_by?: string | null;
@@ -755,6 +758,27 @@ export interface Database {
       };
     };
     Views: {
+      enterprise_lifecycle: {
+        Row: {
+          enterprise_id: string;
+          organization_id: string;
+          district_id: string;
+          beneficiary_short_name: string;
+          enterprise_type_id: number;
+          contracts_signed: 'yes' | 'no';
+          contract_available: 'yes' | 'no' | 'n_a' | null;
+          beneficiary_contributed: 'yes' | 'no' | 'n_a' | null;
+          sadp_contributed: 'yes' | 'no';
+          business_plan: 'yes' | 'no';
+          esmp: 'yes' | 'no';
+          verified_borehole_site: 'yes' | 'no' | 'n_a' | null;
+          budget_transfer: 'yes' | 'no' | 'n_a' | null;
+          supervision: 'yes' | 'no' | 'n_a' | null;
+          procurement: 'yes' | 'no' | 'n_a' | null;
+          m1_submitted: 'yes' | 'no';
+        };
+        Relationships: [];
+      };
       enterprise_esmp_status: {
         Row: {
           enterprise_id: string;
@@ -824,3 +848,4 @@ export type M1SubmissionRow = Database['public']['Tables']['m1_submissions']['Ro
 export type M1SupportingDocumentRow = Database['public']['Tables']['m1_supporting_documents']['Row'];
 export type EnterpriseM1StatusRow = Database['public']['Views']['enterprise_m1_status']['Row'];
 export type EnterpriseM1ReadyRow = Database['public']['Views']['enterprise_m1_ready']['Row'];
+export type EnterpriseLifecycleRow = Database['public']['Views']['enterprise_lifecycle']['Row'];

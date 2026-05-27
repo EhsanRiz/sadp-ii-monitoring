@@ -3,7 +3,14 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useEnterpriseTypes, useOrganizations, useDistricts } from '@/lib/catalogs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEnterpriseLifecycle } from '@/lib/enterprises';
+import {
+  LIFECYCLE_MILESTONES,
+  aggregateLifecycle,
+  type EnterpriseLifecycleRow,
+  type LifecycleMilestoneId,
+} from '@/lib/lifecycle';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -11,12 +18,7 @@ import {
   ArrowRight,
   Sprout,
   AlertCircle,
-  Building2,
-  ClipboardCheck,
-  FileCheck2,
-  Droplets,
   Layers,
-  type LucideIcon,
 } from 'lucide-react';
 import {
   PieChart,
@@ -98,6 +100,7 @@ interface OrgCounts {
 function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
   const { data: types } = useEnterpriseTypes();
   const { data: districts } = useDistricts();
+  const { data: lifecycleMap } = useEnterpriseLifecycle();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard-counts-v2', orgId ?? 'my-scope'],
@@ -146,10 +149,6 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
       };
     },
   });
-
-  const orgFilter = orgId ? `orgCode=${orgCode}` : '';
-  const link = (extra: string) =>
-    extra ? `/enterprises?${[orgFilter, extra].filter(Boolean).join('&')}` : `/enterprises?${orgFilter}`;
 
   // Build donut data: top 6 types + "Other".
   const typeChartData = (() => {
@@ -222,45 +221,12 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         </Card>
       )}
 
-      {/* 4 stat cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          icon={Building2}
-          label="Enterprises"
-          count={isLoading ? null : data?.total ?? 0}
-          to={link('')}
-          hint="All enterprises in scope"
-          tone="primary"
-          fillPct={null}
-        />
-        <StatCard
-          icon={ClipboardCheck}
-          label="Cover-page ready"
-          count={isLoading ? null : data?.coverPageReady ?? 0}
-          to={link('completeness=cover_page_ready')}
-          hint="Minimum data on file for the M1 cover page"
-          tone="info"
-          fillPct={data?.total ? (data.coverPageReady / data.total) * 100 : null}
-        />
-        <StatCard
-          icon={FileCheck2}
-          label="ESMP completed"
-          count={isLoading ? null : data?.esmpDone ?? 0}
-          to={link('esmp=completed_in_app')}
-          hint="In-app forms approved or legacy PDF on file"
-          tone="warning"
-          fillPct={data?.total ? (data.esmpDone / data.total) * 100 : null}
-        />
-        <StatCard
-          icon={Droplets}
-          label="Drilling resolved"
-          count={isLoading ? null : data?.drillingResolved ?? 0}
-          to={link('drilling=drilled')}
-          hint="Drilled, pre-existing, or not needed"
-          tone="success"
-          fillPct={data?.total ? (data.drillingResolved / data.total) * 100 : null}
-        />
-      </div>
+      {/* RSDA-style district × milestone matrix */}
+      <LifecycleMatrix
+        scopeOrgId={orgId}
+        lifecycleMap={lifecycleMap}
+        districts={districts ?? []}
+      />
 
       {/* Charts row */}
       <div className="grid gap-4 lg:grid-cols-3">
@@ -420,64 +386,129 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
   );
 }
 
-interface StatCardProps {
-  icon: LucideIcon;
-  label: string;
-  count: number | null;
-  to: string;
-  hint: string;
-  tone: 'primary' | 'info' | 'warning' | 'success';
-  fillPct: number | null;
-}
 
-const TONE_STYLES = {
-  primary: { tile: 'bg-primary/10 text-primary', bar: 'bg-primary', border: 'hover:border-primary/40' },
-  info:    { tile: 'bg-info/10 text-info',       bar: 'bg-info',    border: 'hover:border-info/40' },
-  warning: { tile: 'bg-warning/15 text-warning', bar: 'bg-warning', border: 'hover:border-warning/50' },
-  success: { tile: 'bg-success/15 text-success', bar: 'bg-success', border: 'hover:border-success/40' },
-} as const;
-
-function StatCard({ icon: Icon, label, count, to, hint, tone, fillPct }: StatCardProps) {
-  const { tile, bar, border } = TONE_STYLES[tone];
-  return (
-    <Link
-      to={to}
-      className="group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
-    >
-      <Card
-        className={cn(
-          'h-full transition-all cursor-pointer group-hover:shadow-md group-hover:-translate-y-0.5',
-          border,
-        )}
-      >
-        <CardContent className="pt-5 pb-4 space-y-3">
-          <div className="flex items-start justify-between">
-            <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', tile)}>
-              <Icon className="h-5 w-5" />
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-          <div>
-            <div className="text-3xl font-semibold tabular-nums">
-              {count === null ? <Skeleton className="h-8 w-16" /> : count}
-            </div>
-            <div className="text-sm font-medium mt-0.5">{label}</div>
-          </div>
-          {fillPct !== null && count !== null ? (
-            <div className="space-y-1">
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className={cn('h-full rounded-full transition-all', bar)}
-                  style={{ width: `${Math.min(100, Math.max(0, fillPct))}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">{Math.round(fillPct)}% · {hint}</p>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">{hint}</p>
-          )}
+// ---------------------------------------------------------------------------
+// LifecycleMatrix — district × milestone aggregation table.
+// Mirrors RSDA's "Analysed beneficiary" sheet: one row per district plus a
+// grand-total row; one column per milestone; cell shows "count_yes / total".
+// Cells colored by completion ratio.
+// ---------------------------------------------------------------------------
+function LifecycleMatrix({
+  scopeOrgId,
+  lifecycleMap,
+  districts,
+}: {
+  scopeOrgId: string | null;
+  lifecycleMap: Map<string, EnterpriseLifecycleRow> | undefined;
+  districts: Array<{ id: string; name: string }>;
+}) {
+  if (!lifecycleMap) {
+    return <Skeleton className="h-40 w-full" />;
+  }
+  // Filter rows to this org's scope (or all if super-admin scope).
+  const rows = Array.from(lifecycleMap.values()).filter((r) =>
+    scopeOrgId ? r.organization_id === scopeOrgId : true,
+  );
+  if (rows.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-6 text-sm text-muted-foreground">
+          No enterprises in scope.
         </CardContent>
       </Card>
-    </Link>
+    );
+  }
+
+  const byDistrict = aggregateLifecycle(rows, (r) => r.district_id);
+  const districtNameById = new Map(districts.map((d) => [d.id, d.name]));
+
+  // Sort district rows by name; grand total appended last.
+  const districtRows = Array.from(byDistrict.entries())
+    .map(([id, agg]) => ({ id, name: districtNameById.get(id) ?? id.slice(0, 6), ...agg }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Grand total across all districts.
+  const grandTotal = {
+    total: rows.length,
+    counts: Object.fromEntries(
+      LIFECYCLE_MILESTONES.map((m) => [m.id, rows.filter((r) => r[m.id] === 'yes').length]),
+    ) as Record<LifecycleMilestoneId, number>,
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Milestone tracker — district × milestone</CardTitle>
+        <CardDescription className="text-xs">
+          Each cell shows the count of enterprises with the milestone marked Yes,
+          out of the district total. Cell shading scales with completion ratio.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2 pr-3 sticky left-0 bg-background z-10">District</th>
+                <th className="text-right py-2 pr-3">Total</th>
+                {LIFECYCLE_MILESTONES.map((m) => (
+                  <th
+                    key={m.id}
+                    className="text-center py-2 px-1 align-bottom font-medium"
+                    style={{ minWidth: 64 }}
+                    title={m.label + (m.source === 'derived' ? ' (auto-derived)' : '')}
+                  >
+                    <div className="text-[10px] leading-tight">{m.short}</div>
+                    {m.source === 'derived' && (
+                      <div className="text-muted-foreground/60 text-[9px]">auto</div>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {districtRows.map((d) => (
+                <tr key={d.id} className="border-b hover:bg-muted/30">
+                  <td className="py-1.5 pr-3 font-medium sticky left-0 bg-background z-10">{d.name}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{d.total}</td>
+                  {LIFECYCLE_MILESTONES.map((m) => {
+                    const c = d.counts[m.id];
+                    return <MatrixCell key={m.id} count={c} total={d.total} />;
+                  })}
+                </tr>
+              ))}
+              {/* Grand total row */}
+              <tr className="bg-muted/40 font-semibold">
+                <td className="py-2 pr-3 sticky left-0 bg-muted/40 z-10">All districts</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{grandTotal.total}</td>
+                {LIFECYCLE_MILESTONES.map((m) => (
+                  <MatrixCell key={m.id} count={grandTotal.counts[m.id]} total={grandTotal.total} />
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MatrixCell({ count, total }: { count: number; total: number }) {
+  const ratio = total > 0 ? count / total : 0;
+  // green saturation scales with ratio. 0 → muted, 1 → solid success.
+  const bg =
+    ratio === 0 ? 'bg-muted/40 text-muted-foreground' :
+    ratio < 0.34 ? 'bg-success/15 text-success' :
+    ratio < 0.67 ? 'bg-success/30 text-success' :
+                   'bg-success/60 text-success-foreground';
+  return (
+    <td className="py-1 px-1 text-center">
+      <span className={cn(
+        'inline-flex items-center justify-center min-w-[44px] px-1 py-0.5 rounded text-[11px] tabular-nums',
+        bg,
+      )}>
+        {count} / {total}
+      </span>
+    </td>
   );
 }

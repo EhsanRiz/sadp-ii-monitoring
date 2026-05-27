@@ -2,13 +2,15 @@
  * React Query hooks + helpers for enterprises.
  * RLS scopes results to the caller's organization (Super Admin sees all).
  */
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type {
   AuditLogRow,
   DrillingStatus,
+  EnterpriseLifecycleRow,
   EnterpriseRow,
   EsmpStatus,
+  Json,
   Milestone1ReportStatus,
 } from '@/types/database';
 
@@ -154,4 +156,43 @@ export function isCoverPageReady(e: EnterpriseRow): boolean {
       e.community_council_id &&
       e.resource_center_id,
   );
+}
+
+// =================================================================
+// Lifecycle (RSDA-style 11-milestone matrix). Joins essf/emmp/m1 in
+// a server-side view; we just read it.
+// =================================================================
+export function useEnterpriseLifecycle() {
+  return useQuery({
+    queryKey: ['enterprise-lifecycle'],
+    queryFn: async (): Promise<Map<string, EnterpriseLifecycleRow>> => {
+      const { data, error } = await supabase
+        .from('enterprise_lifecycle')
+        .select('*');
+      if (error) throw error;
+      const map = new Map<string, EnterpriseLifecycleRow>();
+      for (const r of (data ?? []) as EnterpriseLifecycleRow[]) {
+        map.set(r.enterprise_id, r);
+      }
+      return map;
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function useSaveEnterpriseLifecycle(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (next: Record<string, 'yes' | 'no' | 'n_a'>) => {
+      const { error } = await supabase
+        .from('enterprises')
+        .update({ lifecycle_status: next as unknown as Json })
+        .eq('id', enterpriseId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
+      qc.invalidateQueries({ queryKey: ['enterprise', enterpriseId] });
+    },
+  });
 }

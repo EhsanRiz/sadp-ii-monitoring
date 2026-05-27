@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useEnterprises, type EnterpriseListFilters } from '@/lib/enterprises';
+import { useEnterprises, useEnterpriseLifecycle, type EnterpriseListFilters } from '@/lib/enterprises';
+import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleValue } from '@/lib/lifecycle';
 import type { DrillingStatus, EnterpriseRow, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
 import { useDistricts, useEnterpriseTypes, useResourceCenters } from '@/lib/catalogs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -128,6 +129,7 @@ export function EnterprisesListPage() {
   const { data: types } = useEnterpriseTypes();
   const { data: rcs } = useResourceCenters(filters.districtId ?? null);
   const { data: enterprises, isLoading, error } = useEnterprises(filters);
+  const { data: lifecycle } = useEnterpriseLifecycle();
 
   return (
     <div className="space-y-6">
@@ -355,17 +357,29 @@ export function EnterprisesListPage() {
         </div>
       ) : (
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-4">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-muted-foreground">
-                  <tr>
-                    <th className="py-2 pr-4">Beneficiary</th>
-                    <th className="py-2 pr-4">District</th>
-                    <th className="py-2 pr-4">Round</th>
-                    <th className="py-2 pr-4">Progress</th>
-                    <th className="py-2 pr-4">ESMP</th>
-                    <th className="py-2"></th>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-2 pl-2 pr-3 sticky left-0 bg-background z-10 min-w-[180px]">Beneficiary</th>
+                    <th className="py-2 pr-3 min-w-[90px]">District</th>
+                    {LIFECYCLE_MILESTONES.map((m) => (
+                      <th
+                        key={m.id}
+                        className="py-2 px-1 text-center font-medium align-bottom"
+                        style={{ minWidth: 64, maxWidth: 90 }}
+                        title={m.label + (m.source === 'derived' ? ' (auto-derived)' : '')}
+                      >
+                        <div className="text-[10px] leading-tight">
+                          {m.short}
+                          {m.source === 'derived' && (
+                            <span className="block text-muted-foreground/60 text-[9px]">auto</span>
+                          )}
+                        </div>
+                      </th>
+                    ))}
+                    <th className="py-2 px-2"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -373,35 +387,44 @@ export function EnterprisesListPage() {
                     const t = types?.find((x) => x.id === e.enterprise_type_id);
                     const v = getEnterpriseVisual(t?.name, t?.category as EnterpriseCategory);
                     const Icon = v.icon;
+                    const lc = lifecycle?.get(e.id);
                     return (
-                      <tr key={e.id} className="border-t hover:bg-muted/40">
-                        <td className="py-2 pr-4 font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className={cn('flex h-7 w-7 items-center justify-center rounded shrink-0', v.tileBg)}>
-                              <Icon className={cn('h-3.5 w-3.5', v.iconColor)} />
+                      <tr key={e.id} className="border-b hover:bg-muted/40">
+                        <td className="py-1.5 pl-2 pr-3 font-medium sticky left-0 bg-background z-10">
+                          <Link to={`/enterprises/${e.id}`} className="flex items-center gap-2 hover:text-primary">
+                            <div className={cn('flex h-6 w-6 items-center justify-center rounded shrink-0', v.tileBg)}>
+                              <Icon className={cn('h-3 w-3', v.iconColor)} />
                             </div>
                             <div className="min-w-0">
                               <div className="truncate">{e.beneficiary_short_name}</div>
-                              <div className="text-xs text-muted-foreground truncate">{t?.name ?? '—'}</div>
+                              <div className="text-[10px] text-muted-foreground truncate">{t?.name ?? '—'}</div>
                             </div>
-                          </div>
+                          </Link>
                         </td>
-                        <td className="py-2 pr-4 text-muted-foreground">
+                        <td className="py-1.5 pr-3 text-muted-foreground">
                           {districts?.find((d) => d.id === e.district_id)?.name ?? '—'}
                         </td>
-                        <td className="py-2 pr-4 text-muted-foreground">R{e.round_id}</td>
-                        <td className="py-2 pr-4 w-[180px]">
-                          <ProgressDots e={e} />
-                        </td>
-                        <td className="py-2 pr-4">
-                          <Badge variant={ESMP_VARIANT[e.esmp_status] ?? 'outline'} className="text-[10px]">
-                            {ESMP_LABEL[e.esmp_status] ?? e.esmp_status}
-                          </Badge>
-                        </td>
-                        <td className="py-2">
-                          <Button asChild variant="ghost" size="sm">
+                        {LIFECYCLE_MILESTONES.map((m) => {
+                          const value: LifecycleValue | null = (lc?.[m.id] as LifecycleValue | null) ?? null;
+                          const { glyph, tone } = lifecycleGlyph(value);
+                          return (
+                            <td key={m.id} className="py-1.5 px-1 text-center">
+                              <span className={cn(
+                                'inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded text-[11px] font-bold',
+                                tone === 'success' && 'bg-success/15 text-success',
+                                tone === 'destructive' && 'bg-destructive/10 text-destructive',
+                                tone === 'muted' && 'bg-muted text-muted-foreground text-[9px]',
+                                tone === 'empty' && 'text-muted-foreground/40',
+                              )}>
+                                {glyph}
+                              </span>
+                            </td>
+                          );
+                        })}
+                        <td className="py-1.5 px-2 text-right">
+                          <Button asChild variant="ghost" size="sm" className="h-7 px-2">
                             <Link to={`/enterprises/${e.id}`}>
-                              <FileText className="mr-2 h-4 w-4" /> Open
+                              <FileText className="h-3 w-3" />
                             </Link>
                           </Button>
                         </td>
@@ -410,6 +433,13 @@ export function EnterprisesListPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+            <div className="flex items-center gap-3 mt-3 px-2 text-[10px] text-muted-foreground">
+              <span><span className="inline-block h-2 w-2 rounded-sm bg-success mr-1"></span>Yes</span>
+              <span><span className="inline-block h-2 w-2 rounded-sm bg-destructive mr-1"></span>No</span>
+              <span><span className="inline-block h-2 w-2 rounded-sm bg-muted mr-1"></span>N/A</span>
+              <span><span className="text-muted-foreground/40 mr-1">–</span>Not yet tracked</span>
+              <span className="ml-auto italic">"auto" columns are derived from existing data</span>
             </div>
           </CardContent>
         </Card>
