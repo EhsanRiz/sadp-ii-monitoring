@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-05-27 (Enterprise lifecycle tracker live) · HEAD: `e2e1fb4`
+Last updated: 2026-05-27 (RSDA data loaded · 273 enterprises) · HEAD: `f458c86`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -45,8 +45,10 @@ is here or one link away.
   and Total Grant/Current Grant Payment, inline italic hints in value
   cells, `LSL 500 000.00` currency format, italic signature stand-ins).
 - Audit-log trigger on `enterprises` (server-recorded, read-only from client).
-- 164 4D enterprises imported with progress on 5 dimensions
-  (cover-page, ESMP, business plan, M1 report, drilling).
+- **273 enterprises** in the DB: **164 4D** (Maseru / Berea / Thaba Tseka)
+  imported May 2026 + **109 RSDA** (Mafeteng / Mohale's Hoek / Quthing /
+  Qacha's Nek) imported 2026-05-27 from RSDA's Master Sheet with all 9
+  manual lifecycle milestones pre-populated. See §2.5 for the RSDA load notes.
 
 ### Phase 2 — ESMP digital forms ✅
 - 3-table architecture (`essf_submissions`, `emmp_templates` + `emmp_submissions`,
@@ -234,6 +236,47 @@ Values: `'yes'` / `'no'` / `'n_a'`; **NULL** means "not yet tracked"
 
 **Default tab change**: `/enterprises/:id` now lands on **Progress**, not
 Details. `?tab=` URL param omits when on Progress (clean default URL).
+
+### RSDA data load (2026-05-27) ✅
+Loaded from `27.01.2026 SOUTH REGION Beneficiary status.xlsx` (Master Sheet
+tab, 109 enterprises). All went directly into Supabase via the MCP — no
+migration; just three INSERT batches.
+
+**What landed:**
+- **11 resource centers** (Mafeteng × 8, Qacha's Nek × 3). Mohale's Hoek
+  and Quthing rows in the source sheet have NO resource center column
+  filled, so those 44 enterprises have `resource_center_id = NULL` — the
+  user can edit each in-app or send RSDA an RC list later.
+- **109 enterprises**: Mafeteng 55 · Mohale's Hoek 28 · Quthing 16 ·
+  Qacha's Nek 10. Round=3, org=RSDA.
+- All 9 manual lifecycle milestones populated from the ✓/× columns.
+- Service Provider name forward-filled per ISP block (numeric phone
+  values in the ISP column stayed NULL — those weren't names).
+
+**Decisions baked in:**
+- **ESMP + M1 columns from the RSDA sheet were NOT imported.** Those two
+  are derived in `enterprise_lifecycle` from in-app submissions, not
+  jsonb-stored. The 109 RSDA rows show `no` for both until someone
+  approves real ESSF/EMMP/M1 submissions in the app. If the user wants
+  the RSDA self-reported values preserved as a fallback, a follow-up
+  migration could add a COALESCE in the view (stored value overrides
+  derived). Currently NOT done — they wanted these auto-derived only.
+- **2 of 111 source rows were skipped** — they had a blank Enterprise
+  Type cell in the source xlsx. To bring them in, the user fills the
+  Enterprise column and re-runs the import.
+- **Approximate enterprise-type mappings** (worth sanity-checking with
+  RSDA): Dairy cows → Dairy Production · Dairy Goats Production →
+  Livestock Production · butchery → Meat Processing · orchard → Fruit
+  Drying · Rose hip → Fruit & Vegetable Processing · Livestock
+  Production (Indigenous Chicken) → Broiler Production.
+
+**Count cross-check against RSDA's "Analysed beneficiary" sheet:**
+- Per-district totals match exactly (55 / 28 / 16 / 10 = 109).
+- Most milestone counts match. Notable discrepancies are in the
+  "Analysed beneficiary" tab itself — Mafeteng supervision says 17 there
+  but the Master Sheet has 31; Mafeteng procurement says 24 but Master
+  Sheet has 39. Our DB matches the Master Sheet cells. The Analysed tab
+  appears to have been hand-counted with some misses.
 
 ### UX polish pass ✅
 - Semantic color tokens: `success` / `warning` / `info` + tints.
@@ -497,6 +540,20 @@ SETUP.md                                      # new-machine bootstrap
 - Verify the 5-dot progress strip on the enterprise list reads cleanly
   across all 164 enterprises.
 - Spot-check ESSF/EMMP/Inspection Save/Submit/Approve gating per role.
+
+**RSDA load follow-ups (2026-05-27):**
+- Confirm 6 approximate enterprise-type mappings with RSDA (Dairy cows /
+  Dairy Goats / butchery / orchard / Rose hip / Indigenous Chicken).
+- RSDA to provide resource centers for Mohale's Hoek (28 enterprises)
+  and Quthing (16 enterprises) — currently NULL.
+- 2 skipped rows in the source xlsx have blank Enterprise Type cells —
+  RSDA fills + we re-import.
+- Decide whether to preserve RSDA's self-reported ESMP + M1 values as
+  a fallback (would require a COALESCE migration on the
+  `enterprise_lifecycle` view). Currently those two columns are
+  app-state-only.
+- Reconcile Mafeteng supervision (Master Sheet 31 vs Analysed sheet 17)
+  and procurement (39 vs 24) with RSDA.
 
 **Architectural follow-ups:**
 - Dashboard "ESMP completed" count still references the legacy
