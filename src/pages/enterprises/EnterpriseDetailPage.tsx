@@ -5,9 +5,12 @@ import { toast } from 'sonner';
 import {
   useEnterprise,
   useEnterpriseHistory,
+  useEnterpriseTimeline,
+  useUserDisplayNames,
   isCoverPageReady,
   useUploadedEsmpPdfMeta,
   formatBytes,
+  type EnterpriseTimelineRow,
 } from '@/lib/enterprises';
 import { useCommunityCouncils, useDistricts, useEnterpriseTypes, useResourceCenters, useVillages } from '@/lib/catalogs';
 import {
@@ -44,7 +47,7 @@ import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBind
 import { useEnterpriseLifecycle } from '@/lib/enterprises';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
-import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X } from 'lucide-react';
+import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2 } from 'lucide-react';
 import { formatDateDMY, formatLSL, cn } from '@/lib/utils';
 
 /** Colored left-edge border that matches a submission's status. */
@@ -84,6 +87,9 @@ export function EnterpriseDetailPage() {
   const { data: rcs } = useResourceCenters(enterprise?.district_id ?? null);
   const { data: villages } = useVillages(enterprise?.district_id ?? null);
   const { data: history } = useEnterpriseHistory(id);
+  const timeline = useEnterpriseTimeline(id);
+  const actorIds = (timeline.data ?? []).map((r) => r.actor_id);
+  const actorNames = useUserDisplayNames(actorIds);
   const qc = useQueryClient();
 
   // Phase-2 ESMP reads
@@ -1425,39 +1431,146 @@ export function EnterpriseDetailPage() {
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Audit trail</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <HistoryIcon className="h-4 w-4 text-primary" />
+                Activity timeline
+              </CardTitle>
               <CardDescription>
-                Server-recorded via the <code>audit_trigger</code> on the enterprises table.
-                Read-only — no one (not even Super Admin) can edit it from the client.
+                Every captured event for this enterprise — uploads, auto-extractions,
+                submissions, approvals — pulled from the <code>enterprise_timeline</code> view.
+                Most recent first. Read-only.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {history && history.length === 0 && (
-                <p className="text-sm text-muted-foreground">No history yet.</p>
+              {timeline.isLoading && (
+                <p className="text-sm text-muted-foreground">Loading timeline…</p>
+              )}
+              {timeline.isError && (
+                <p className="text-sm text-destructive">
+                  Could not load timeline: {(timeline.error as Error).message}
+                </p>
+              )}
+              {timeline.data && timeline.data.length === 0 && (
+                <p className="text-sm text-muted-foreground">No events yet.</p>
               )}
               <ul className="space-y-3">
-                {history?.map((row) => (
-                  <li key={row.id} className="border-l-2 pl-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline">{row.action}</Badge>
-                      <span className="text-muted-foreground">
-                        {formatDateDMY(row.changed_at)} ·{' '}
-                        {new Date(row.changed_at).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    {row.action === 'UPDATE' && row.diff && (
-                      <pre className="mt-2 text-xs bg-muted rounded p-2 overflow-x-auto">
-                        {JSON.stringify(row.diff, null, 2)}
-                      </pre>
-                    )}
-                  </li>
+                {(timeline.data ?? []).map((row) => (
+                  <TimelineEventRow
+                    key={row.id}
+                    row={row}
+                    actorName={row.actor_id ? actorNames.data?.get(row.actor_id) ?? null : null}
+                  />
                 ))}
               </ul>
             </CardContent>
           </Card>
+
+          {history && history.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Raw audit log (enterprise fields)</CardTitle>
+                <CardDescription>
+                  Field-by-field changes recorded by the <code>audit_trigger</code> on the
+                  enterprises table. Use this to see exactly what changed and when, beyond the
+                  named events above.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3">
+                  {history.map((row) => (
+                    <li key={row.id} className="border-l-2 pl-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Badge variant="outline">{row.action}</Badge>
+                        <span className="text-muted-foreground">
+                          {formatDateDMY(row.changed_at)} ·{' '}
+                          {new Date(row.changed_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      {row.action === 'UPDATE' && row.diff && (
+                        <pre className="mt-2 text-xs bg-muted rounded p-2 overflow-x-auto">
+                          {JSON.stringify(row.diff, null, 2)}
+                        </pre>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Timeline / History helpers
+// ---------------------------------------------------------------------------
+
+/** Icon + tint for each timeline category. */
+const TIMELINE_CATEGORY_VISUALS: Record<
+  EnterpriseTimelineRow['category'],
+  { Icon: typeof Building2; label: string; bg: string; fg: string }
+> = {
+  enterprise: { Icon: Building2,       label: 'Enterprise',   bg: 'bg-muted',          fg: 'text-foreground' },
+  essf:       { Icon: ShieldCheck,     label: 'ESSF',         bg: 'bg-info/10',        fg: 'text-info' },
+  emmp:       { Icon: Leaf,            label: 'EMMP',         bg: 'bg-success/10',     fg: 'text-success' },
+  inspection: { Icon: ClipboardCheck,  label: 'Inspection',   bg: 'bg-warning/10',     fg: 'text-warning' },
+  m1:         { Icon: ClipboardList,   label: 'Milestone 1',  bg: 'bg-primary/10',     fg: 'text-primary' },
+  m1_doc:     { Icon: Paperclip,       label: 'Supporting',   bg: 'bg-muted',          fg: 'text-muted-foreground' },
+};
+
+/** Badge text + icon for each event_type. */
+const TIMELINE_EVENT_VISUALS: Record<
+  EnterpriseTimelineRow['event_type'],
+  { Icon: typeof Plus; label: string; toneClass: string }
+> = {
+  created:      { Icon: Plus,        label: 'Created',      toneClass: 'border-muted-foreground/40 text-muted-foreground' },
+  submitted:    { Icon: Send,        label: 'Submitted',    toneClass: 'border-info/40 text-info' },
+  approved:     { Icon: Check,       label: 'Approved',     toneClass: 'border-success/40 text-success' },
+  pdf_uploaded: { Icon: FileUp,      label: 'PDF uploaded', toneClass: 'border-info/40 text-info' },
+  uploaded:     { Icon: FilePlus2,   label: 'Uploaded',     toneClass: 'border-info/40 text-info' },
+};
+
+function TimelineEventRow({
+  row,
+  actorName,
+}: {
+  row: EnterpriseTimelineRow;
+  actorName: string | null;
+}) {
+  const catViz = TIMELINE_CATEGORY_VISUALS[row.category];
+  const evtViz = TIMELINE_EVENT_VISUALS[row.event_type];
+  const CatIcon = catViz.Icon;
+  const EvtIcon = evtViz.Icon;
+  const date = new Date(row.occurred_at);
+  return (
+    <li className="flex items-start gap-3 rounded-md border bg-background p-3">
+      <div className={cn('rounded-md p-2 shrink-0', catViz.bg)}>
+        <CatIcon className={cn('h-4 w-4', catViz.fg)} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium">{catViz.label}</span>
+          <Badge variant="outline" className={cn('text-[10px] uppercase tracking-wide', evtViz.toneClass)}>
+            <EvtIcon className="mr-1 h-3 w-3" />
+            {evtViz.label}
+          </Badge>
+        </div>
+        <p className="mt-1 text-sm text-foreground">{row.description}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <span>
+            {formatDateDMY(row.occurred_at)} ·{' '}
+            {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          {actorName && <span>by {actorName}</span>}
+          {!actorName && row.actor_id && <span>by {row.actor_id.slice(0, 8)}…</span>}
+          {row.source_pdf_path && (
+            <span className="font-mono text-[10px]">{row.source_pdf_path}</span>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }
 

@@ -97,6 +97,81 @@ export function useEnterpriseHistory(id: string | undefined) {
   });
 }
 
+/**
+ * Single row from the enterprise_timeline view (migration 240). Each row is a
+ * named event — created / submitted / approved / imported / pdf_uploaded —
+ * across all enterprise-scoped tables.
+ */
+export interface EnterpriseTimelineRow {
+  id: string;
+  enterprise_id: string;
+  occurred_at: string;
+  category: 'enterprise' | 'essf' | 'emmp' | 'inspection' | 'm1' | 'm1_doc';
+  event_type: 'created' | 'submitted' | 'approved' | 'pdf_uploaded' | 'uploaded';
+  actor_id: string | null;
+  source_pdf_path: string | null;
+  description: string;
+}
+
+/**
+ * Pull the named-event timeline for one enterprise. Backed by the
+ * `enterprise_timeline` SQL view (security_invoker = on, so RLS on the
+ * underlying tables decides what each user sees).
+ */
+export function useEnterpriseTimeline(id: string | undefined) {
+  return useQuery({
+    queryKey: ['enterprise-timeline', id],
+    queryFn: async (): Promise<EnterpriseTimelineRow[]> => {
+      if (!id) return [];
+      const { data, error } = await (supabase as unknown as {
+        from: (table: string) => {
+          select: (cols: string) => {
+            eq: (col: string, val: string) => {
+              order: (
+                col: string,
+                opts: { ascending: boolean; nullsFirst?: boolean },
+              ) => Promise<{ data: EnterpriseTimelineRow[] | null; error: { message: string } | null }>;
+            };
+          };
+        };
+      })
+        .from('enterprise_timeline')
+        .select('*')
+        .eq('enterprise_id', id)
+        .order('occurred_at', { ascending: false, nullsFirst: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!id,
+  });
+}
+
+/**
+ * Resolve user UUIDs → `user_profiles.full_name` for display in History.
+ * Returns a Map keyed by uuid. Silently drops ids RLS blocks.
+ */
+export function useUserDisplayNames(userIds: Array<string | null | undefined>) {
+  const cleaned = Array.from(new Set(userIds.filter((u): u is string => !!u))).sort();
+  return useQuery({
+    queryKey: ['user-display-names', cleaned.join(',')],
+    queryFn: async (): Promise<Map<string, string>> => {
+      if (cleaned.length === 0) return new Map();
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, full_name')
+        .in('id', cleaned);
+      if (error) throw error;
+      const out = new Map<string, string>();
+      for (const row of (data ?? []) as Array<{ id: string; full_name: string }>) {
+        out.set(row.id, row.full_name);
+      }
+      return out;
+    },
+    enabled: cleaned.length > 0,
+    staleTime: 5 * 60_000,
+  });
+}
+
 // ============================================================================
 // Storage metadata for the legacy ESMP PDF upload (bucket: esmp-pdfs)
 // ============================================================================
