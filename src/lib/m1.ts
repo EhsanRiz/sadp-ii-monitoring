@@ -14,7 +14,9 @@ import type { AppRole } from '@/lib/auth';
 import type {
   Database,
   Json,
+  M1DocKind,
   M1SubmissionRow,
+  M1SupportingDocumentRow,
   SubmissionStatus,
 } from '@/types/database';
 
@@ -440,4 +442,227 @@ export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// ============================================================================
+// Supporting documents (Phase 3b)
+// ----------------------------------------------------------------------------
+// Many-to-one with m1_submissions. Each doc is tagged with a `kind` enum
+// (bank_statement / transaction_history / invoice / receipt / audit_trail /
+// contract / other) plus an optional notes string. Original filename is
+// preserved per-doc (unlike the single-PDF source flow).
+//
+// Storage path scheme:   m1-supporting-docs/<enterprise_id>/<doc_id>__<safe_filename>
+// (doc_id prefix guarantees no collision with the source PDF at
+//  `<enterprise_id>/_source.pdf`.)
+// ============================================================================
+
+/** Map a kind enum value to its human label. */
+export const M1_DOC_KIND_LABELS: Record<M1DocKind, string> = {
+  bank_statement: 'Bank statement',
+  transaction_history: 'Transaction history',
+  invoice: 'Invoice',
+  receipt: 'Receipt',
+  audit_trail: 'Audit trail',
+  contract: 'Contract',
+  other: 'Other',
+};
+
+/** Display order on the Supporting Docs tab (groups + dropdown). */
+export const M1_DOC_KIND_ORDER: M1DocKind[] = [
+  'bank_statement',
+  'transaction_history',
+  'invoice',
+  'receipt',
+  'audit_trail',
+  'contract',
+  'other',
+];
+
+const SAFE_FILENAME = /[^a-zA-Z0-9._-]+/g;
+function sanitizeFilename(name: string): string {
+  const trimmed = name.trim().slice(-120); // keep filenames short for storage
+  return trimmed.replace(SAFE_FILENAME, '_').replace(/^_+|_+$/g, '') || 'file';
+}
+
+/** Build the storage path for a supporting doc. */
+export function m1SupportingDocPath(
+  enterpriseId: string,
+  docId: string,
+  filename: string,
+): string {
+  return `${enterpriseId}/${docId}__${sanitizeFilename(filename)}`;
+}
+
+/** Generate a signed URL good for `expiresInSeconds` seconds (default 60). */
+async function signedUrlFor(path: string, expiresInSeconds = 60): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(M1_SOURCE_BUCKET)
+    .createSignedUrl(path, expiresInSeconds);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+/** List supporting documents for an enterprise, newest-first. */
+export function useM1SupportingDocs(enterpriseId: string | undefined) {
+  return useQuery({
+    queryKey: ['m1-supporting-docs', enterpriseId],
+    queryFn: async (): Promise<M1SupportingDocumentRow[]> => {
+      if (!enterpriseId) return [];
+      const { data, error } = await supabase
+        .from('m1_supporting_documents')
+        .select('*')
+        .eq('enterprise_id', enterpriseId)
+        .order('uploaded_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as M1SupportingDocumentRow[];
+    },
+    enabled: !!enterpriseId,
+  });
+}
+
+export interface UploadSupportingDocInput {
+  file: File;
+  kind: M1DocKind;
+  notes?: string;
+}
+
+/**
+ * Upload a single supporting document and record it on m1_supporting_documents.
+ * If the enterprise has no m1_submissions row yet, a draft one is created on
+ * the fly (matches useUploadM1SourcePdf behaviour).
+ *
+ * The `m1_docs_set_org` BEFORE INSERT trigger fills organization_id from the
+ * enterprise, so we don't pass it from the client.
+ */
+export function useUploadM1SupportingDoc(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ file, kind, notes }: UploadSupportingDocInput) => {
+      if (!file) throw new Error('No file provided');
+      const allowed = /^(application\/pdf|image\/(png|jpe?g))$/i;
+      if (!allowed.test(file.type)) {
+        throw new Error(
+          `Unsupported file type: ${file.type || 'unknown'}. Allowed: PDF, PNG, JPEG.`,
+        );
+      }
+
+      // Ensure an m1_submissions row exists; create a draft if missing.
+      const existing = await supabase
+        .from('m1_submissions')
+        .select('id')
+        .eq('enterprise_id', enterpriseId)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+
+      let submissionId = existing.data?.id;
+      if (!submissionId) {
+        const ins = await supabase
+          .from('m1_submissions')
+          .insert({ enterprise_id: enterpriseId, status: 'draft' })
+          .select('id')
+          .single();
+        if (ins.error) throw ins.error;
+        submissionId = ins.data.id;
+      }
+
+      // Generate a doc id client-side so we can build the storage path before
+      // inserting the metadata row.
+      const docId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const path = m1SupportingDocPath(enterpriseId, docId, file.name);
+
+      // Upload to storage (no upsert: each doc has a unique uuid-prefixed path).
+      const up = await supabase.storage
+        .from(M1_SOURCE_BUCKET)
+        .upload(path, file, { contentType: file.type || 'application/pdf' });
+      if (up.error) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        throw new Error(
+          `${up.error.message}. File size: ${sizeMb} MB. Bucket cap is 100 MB; the project-level Storage upload limit (Supabase Dashboard → Settings → Storage) may be lower.`,
+        );
+      }
+
+      // Record the metadata row. id, organization_id are filled by defaults/trigger.
+      const { data, error } = await supabase
+        .from('m1_supporting_documents')
+        .insert({
+          submission_id: submissionId,
+          enterprise_id: enterpriseId,
+          kind,
+          storage_path: path,
+          original_filename: file.name,
+          size_bytes: file.size,
+          notes: notes && notes.trim() ? notes.trim() : null,
+        })
+        .select('*')
+        .single();
+      if (error) {
+        // Best-effort rollback of the storage upload so we don't orphan blobs.
+        await supabase.storage.from(M1_SOURCE_BUCKET).remove([path]).catch(() => {});
+        throw error;
+      }
+
+      return data as M1SupportingDocumentRow;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m1-supporting-docs', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });
+    },
+  });
+}
+
+export interface UpdateSupportingDocInput {
+  id: string;
+  kind?: M1DocKind;
+  notes?: string | null;
+}
+
+/** Re-tag a supporting doc's kind or edit its notes. */
+export function useUpdateM1SupportingDoc(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, kind, notes }: UpdateSupportingDocInput) => {
+      const patch: { kind?: M1DocKind; notes?: string | null } = {};
+      if (kind !== undefined) patch.kind = kind;
+      if (notes !== undefined) patch.notes = notes && notes.trim() ? notes.trim() : null;
+      if (Object.keys(patch).length === 0) return;
+      const { error } = await supabase
+        .from('m1_supporting_documents')
+        .update(patch)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m1-supporting-docs', enterpriseId] });
+    },
+  });
+}
+
+/** Delete a supporting doc: removes the storage object AND the metadata row. */
+export function useRemoveM1SupportingDoc(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (doc: { id: string; storage_path: string }) => {
+      // Storage delete first — idempotent (ignore not-found).
+      const rm = await supabase.storage.from(M1_SOURCE_BUCKET).remove([doc.storage_path]);
+      if (rm.error && !/not.found/i.test(rm.error.message)) throw rm.error;
+      const { error } = await supabase
+        .from('m1_supporting_documents')
+        .delete()
+        .eq('id', doc.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m1-supporting-docs', enterpriseId] });
+    },
+  });
+}
+
+/** Open a supporting doc in a new tab via a short-lived signed URL. */
+export async function openM1SupportingDoc(storagePath: string): Promise<void> {
+  const url = await signedUrlFor(storagePath, 120);
+  window.open(url, '_blank', 'noopener,noreferrer');
 }

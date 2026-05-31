@@ -2,14 +2,14 @@
  * Milestone 1 (M1) editor page.
  *
  * Tabbed layout mirrors the M1 report structure:
- *   - Narrative          (Phase 1: built)
- *   - Cashbook           (Phase 2: scaffold + "coming soon")
- *   - Financial Report   (Phase 2: scaffold + "coming soon")
- *   - Bank Reconciliation(Phase 2: scaffold + "coming soon")
- *   - Supporting Docs    (Phase 3: scaffold + "coming soon")
+ *   - Narrative           (Phase 1)
+ *   - Cashbook            (Phase 2.1)
+ *   - Financial Report    (Phase 2.2)
+ *   - Bank Reconciliation (Phase 2.3)
+ *   - Supporting Docs     (Phase 3b)
  *
- * The Phase 1 cut writes only to m1_submissions.narrative. The other jsonb
- * columns are already in the schema; the UI for them lands in Phase 2/3.
+ * All five forms write to m1_submissions (4 jsonb columns) + the
+ * m1_supporting_documents table for attached evidence files.
  */
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -29,6 +29,7 @@ import { M1NarrativeFormRenderer } from '@/components/forms/M1NarrativeFormRende
 import { M1CashbookFormRenderer } from '@/components/forms/M1CashbookFormRenderer';
 import { M1FinancialReportFormRenderer } from '@/components/forms/M1FinancialReportFormRenderer';
 import { M1BankReconciliationFormRenderer } from '@/components/forms/M1BankReconciliationFormRenderer';
+import { M1SupportingDocsTab } from '@/components/forms/M1SupportingDocsTab';
 import type { M1FinancialReportResponses } from '@/forms/m1FinancialReportSchema';
 import type { M1BankReconciliationResponses } from '@/forms/m1BankReconciliationSchema';
 import type { M1CashbookResponses } from '@/forms/m1CashbookSchema';
@@ -36,7 +37,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Save, Send, Check, Printer, Unlock, History, Construction, Sparkles, AlertTriangle, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Save, Send, Check, Printer, Unlock, History, Sparkles, AlertTriangle, RotateCcw } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 import type { M1NarrativeResponses } from '@/forms/m1NarrativeSchema';
 
@@ -263,10 +264,7 @@ export function M1EditPage() {
           />
         </TabsContent>
         <TabsContent value="supporting" className="mt-4">
-          <ComingSoon
-            label="Supporting Documents"
-            description="Multi-file upload tagged by kind (bank statement, invoice, receipt, audit trail). Files are stored in the m1-supporting-docs bucket and embedded by reference in the printed M1 PDF."
-          />
+          <M1SupportingDocsTab enterpriseId={enterpriseId} readOnly={isApproved} />
         </TabsContent>
       </Tabs>
 
@@ -396,20 +394,6 @@ export function M1EditPage() {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function ComingSoon({ label, description }: { label: string; description: string }) {
-  return (
-    <Card className="border-dashed">
-      <CardContent className="pt-6 pb-6 flex items-start gap-3 text-sm">
-        <Construction className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-        <div>
-          <p className="font-medium">{label} — coming in Phase 2</p>
-          <p className="text-muted-foreground mt-1">{description}</p>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
