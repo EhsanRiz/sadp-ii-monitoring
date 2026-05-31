@@ -453,6 +453,92 @@ export function formatBytes(n: number): string {
 }
 
 // ============================================================================
+// Backfill from M1 binder (Option B) — one upload, many sections
+// ----------------------------------------------------------------------------
+// For enterprises that have already completed Milestone 1, the M1 binder
+// contains cover page + ESSF + EMMP + (optional) Inspection + M1 sections.
+// This calls extract-m1-binder-v1 to extract everything in one pass.
+// ============================================================================
+
+export interface BackfillBinderResult {
+  ok: boolean;
+  enterprise_id: string;
+  cover_fields_filled: number;
+  cover_fields_conflict: number;
+  essf_written: boolean;
+  emmp_written: boolean;
+  inspection_written: boolean;
+  narrative_sections_filled: number;
+  cashbook_entry_count: number;
+  financial_report_item_count: number;
+  bank_reconciliation_filled: boolean;
+  notes: M1ImportNote[];
+}
+
+/** Surfaced as a typed error so the UI can handle 409 (approved-section) specially. */
+export class BackfillBinderError extends Error {
+  status: number;
+  /** Which section blocked: 'essf' | 'emmp' | 'm1' | undefined. */
+  section?: string;
+  constructor(message: string, status: number, section?: string) {
+    super(message);
+    this.name = 'BackfillBinderError';
+    this.status = status;
+    this.section = section;
+  }
+}
+
+/**
+ * Backfill ALL forms from a single M1 binder PDF. The source PDF must already
+ * be uploaded via `useUploadM1SourcePdf` (same bucket + path as the M1 extract).
+ * Approved sections block the entire operation — reopen them first.
+ */
+export function useBackfillM1Binder(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<BackfillBinderResult> => {
+      const { data, error } = await supabase.functions.invoke('extract-m1-binder-v1', {
+        body: { enterpriseId },
+      });
+      if (error) {
+        const ctx = (error as { context?: Response }).context;
+        let serverMsg = error.message ?? 'Backfill failed';
+        let section: string | undefined;
+        const status = ctx?.status ?? 0;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const body = await ctx.json();
+            if (body && typeof body === 'object') {
+              if (typeof body.error === 'string') serverMsg = body.error;
+              if (typeof body.section === 'string') section = body.section;
+            }
+          } catch {
+            /* ignore non-JSON body */
+          }
+        }
+        throw new BackfillBinderError(serverMsg, status, section);
+      }
+      if (!data?.ok) {
+        throw new BackfillBinderError((data as { error?: string })?.error ?? 'Backfill failed', 0);
+      }
+      return data as BackfillBinderResult;
+    },
+    onSuccess: () => {
+      // Invalidate everything that the binder might have touched.
+      qc.invalidateQueries({ queryKey: ['enterprise', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['essf', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['emmp', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['inspection-visits', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-esmp-status', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-m1-status', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-lifecycle', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-history', enterpriseId] });
+    },
+  });
+}
+
+// ============================================================================
 // Supporting documents (Phase 3b)
 // ----------------------------------------------------------------------------
 // Many-to-one with m1_submissions. Each doc is tagged with a `kind` enum

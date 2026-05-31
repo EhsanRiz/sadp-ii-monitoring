@@ -40,6 +40,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/StatusBadge';
 import { EnterpriseLifecycleEditor } from '@/components/enterprise/EnterpriseLifecycleEditor';
+import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
 import { useEnterpriseLifecycle } from '@/lib/enterprises';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
@@ -459,6 +460,10 @@ export function EnterpriseDetailPage() {
           <EnterpriseLifecycleEditor
             enterpriseId={enterprise.id}
             lifecycle={lifecycleMap.data?.get(enterprise.id) ?? null}
+          />
+          <BackfillFromBinderCard
+            enterpriseId={enterprise.id}
+            beneficiaryShortName={enterprise.beneficiary_short_name}
           />
           <Card className="bg-gradient-to-br from-tint-success/40 to-background">
             <CardHeader className="pb-3">
