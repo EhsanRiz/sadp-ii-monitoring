@@ -1,6 +1,8 @@
 /**
  * Inline PDF preview at /enterprises/:id/m1.pdf — assembled Milestone 1
- * report. Phase 1: cover page + narrative.
+ * report. Cover page + 4 form pages (narrative / cashbook / financial
+ * report / bank reconciliation) + Phase 3b compendium (supporting docs
+ * index + ESSF / EMMP / Inspection summaries).
  *
  * Pre-condition: an m1_submissions row must exist for the enterprise; if
  * not, we show a "not ready" card with a link to start the M1 form.
@@ -10,7 +12,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PDFViewer } from '@react-pdf/renderer';
 import { useEnterprise } from '@/lib/enterprises';
 import { useDistricts, useResourceCenters } from '@/lib/catalogs';
-import { useM1Submission } from '@/lib/m1';
+import { useM1Submission, useM1SupportingDocs } from '@/lib/m1';
+import {
+  useEmmpSubmission,
+  useEmmpTemplateForType,
+  useEssfSubmission,
+  useInspectionVisits,
+} from '@/lib/esmp';
 import { M1PdfDocument } from '@/pdf/M1Pdf';
 import type { M1NarrativeResponses } from '@/forms/m1NarrativeSchema';
 import type { M1CashbookResponses } from '@/forms/m1CashbookSchema';
@@ -27,6 +35,12 @@ export function M1PdfRoute() {
   const { data: districts } = useDistricts();
   const { data: rcs } = useResourceCenters(enterprise?.district_id ?? null);
   const m1 = useM1Submission(id);
+  // Phase 3b compendium inputs — fire all in parallel.
+  const supportingDocs = useM1SupportingDocs(id);
+  const essf = useEssfSubmission(id);
+  const emmp = useEmmpSubmission(id);
+  const emmpTemplate = useEmmpTemplateForType(enterprise?.enterprise_type_id ?? undefined);
+  const inspectionVisits = useInspectionVisits(id);
 
   useEffect(() => {
     if (enterprise) document.title = `M1 Report — ${enterprise.beneficiary_short_name}.pdf`;
@@ -73,6 +87,14 @@ export function M1PdfRoute() {
   const resourceCenterName =
     rcs?.find((r) => r.id === enterprise.resource_center_id)?.name ?? '';
 
+  // The compendium pages render only if the underlying data is available;
+  // missing pieces (no docs, no approved ESSF, etc.) just skip the page.
+  const latestInspection = (inspectionVisits.data ?? []).find(
+    (v) => v.status === 'approved' || v.status === 'submitted',
+  ) ?? null;
+  const emmpTemplateName = emmpTemplate.data?.title ?? null;
+  const emmpTemplateVersion = emmpTemplate.data?.version ?? null;
+
   return (
     <div className="h-screen w-screen">
       <PDFViewer style={{ width: '100%', height: '100%', border: 'none' }}>
@@ -87,6 +109,12 @@ export function M1PdfRoute() {
           reportDate={m1.data.report_date}
           m1PeriodStart={m1.data.m1_period_start}
           m1PeriodEnd={m1.data.m1_period_end}
+          supportingDocs={supportingDocs.data ?? null}
+          essf={essf.data ?? null}
+          emmp={emmp.data ?? null}
+          emmpTemplateName={emmpTemplateName}
+          emmpTemplateVersion={emmpTemplateVersion}
+          latestInspection={latestInspection}
         />
       </PDFViewer>
     </div>

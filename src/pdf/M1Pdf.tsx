@@ -35,7 +35,25 @@ import {
   computeBRAll,
   type M1BankReconciliationResponses,
 } from '@/forms/m1BankReconciliationSchema';
-import type { EnterpriseRow } from '@/types/database';
+import {
+  ESSF_CHECKLIST,
+  ESSF_COMPLETENESS,
+  ESSF_SITE_SENSITIVITY,
+  type EssfResponses,
+} from '@/forms/essfSchema';
+import {
+  INSPECTION_PHASES,
+  INSPECTION_STATUS_LABELS,
+  type InspectionResponses,
+} from '@/forms/inspectionSchema';
+import { M1_DOC_KIND_LABELS, M1_DOC_KIND_ORDER, formatBytes } from '@/lib/m1';
+import type {
+  EmmpSubmissionRow,
+  EnterpriseRow,
+  EssfSubmissionRow,
+  InspectionVisitRow,
+  M1SupportingDocumentRow,
+} from '@/types/database';
 import { formatDateDMY } from '@/lib/utils';
 
 const styles = StyleSheet.create({
@@ -289,6 +307,90 @@ const styles = StyleSheet.create({
   brSigBox: { width: '48%' },
   brSigLine: { borderBottom: '0.7pt solid #222', height: 18, marginBottom: 2 },
   brSigLabel: { fontSize: 8, fontWeight: 'bold', textTransform: 'uppercase' },
+
+  // -----------------------------------------------------------------
+  // Phase 3b — Supporting Docs index + ESSF / EMMP / Inspection summaries
+  // -----------------------------------------------------------------
+  compKv: {
+    flexDirection: 'row',
+    fontSize: 9.5,
+    marginBottom: 3,
+  },
+  compKvLabel: { width: 140, fontWeight: 'bold', color: '#444' },
+  compKvValue: { flex: 1 },
+  compSubTitle: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginTop: 14,
+    marginBottom: 6,
+    borderBottom: '0.5pt solid #999',
+    paddingBottom: 2,
+  },
+  docTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#006838',
+    color: '#fff',
+    fontSize: 8.5,
+    fontWeight: 'bold',
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  docTableRow: {
+    flexDirection: 'row',
+    borderBottom: '0.5pt solid #ddd',
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+    fontSize: 9,
+  },
+  docCol_file: { flex: 3 },
+  docCol_size: { width: 60, textAlign: 'right' },
+  docCol_date: { width: 70 },
+  docCol_notes: { flex: 2 },
+  docKindHeader: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginTop: 10,
+    marginBottom: 3,
+    backgroundColor: '#eaeaea',
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+  },
+  compTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#eaeaea',
+    fontWeight: 'bold',
+    fontSize: 9,
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+    borderTop: '0.5pt solid #999',
+    borderBottom: '0.5pt solid #999',
+  },
+  compTableRow: {
+    flexDirection: 'row',
+    fontSize: 9,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    borderBottom: '0.3pt solid #ddd',
+  },
+  countPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: '#eaeaea',
+    borderRadius: 3,
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  countRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginVertical: 6,
+  },
+  refNote: {
+    marginTop: 10,
+    fontSize: 8.5,
+    fontStyle: 'italic',
+    color: '#666',
+  },
 });
 
 interface M1PdfDocumentProps {
@@ -302,10 +404,35 @@ interface M1PdfDocumentProps {
   reportDate: string | null;
   m1PeriodStart: string | null;
   m1PeriodEnd: string | null;
+  /** Phase 3b — supporting docs index page. */
+  supportingDocs?: M1SupportingDocumentRow[] | null;
+  /** Phase 3b — ESSF compendium summary (one page). Skipped if null. */
+  essf?: EssfSubmissionRow | null;
+  /** Phase 3b — EMMP compendium summary (one page). Skipped if null. */
+  emmp?: EmmpSubmissionRow | null;
+  emmpTemplateName?: string | null;
+  emmpTemplateVersion?: string | null;
+  /** Phase 3b — most-recent Inspection visit summary (one page). Skipped if null. */
+  latestInspection?: InspectionVisitRow | null;
 }
 
 export function M1PdfDocument(props: M1PdfDocumentProps) {
-  const { enterprise: e, narrative, cashbook, financialReport, bankReconciliation, reportDate, m1PeriodStart, m1PeriodEnd } = props;
+  const {
+    enterprise: e,
+    narrative,
+    cashbook,
+    financialReport,
+    bankReconciliation,
+    reportDate,
+    m1PeriodStart,
+    m1PeriodEnd,
+    supportingDocs,
+    essf,
+    emmp,
+    emmpTemplateName,
+    emmpTemplateVersion,
+    latestInspection,
+  } = props;
   const narrativeData = narrative ?? {};
   const cashbookData = cashbook ?? {};
   const frData = financialReport ?? {};
@@ -316,6 +443,11 @@ export function M1PdfDocument(props: M1PdfDocumentProps) {
     brData.total_grant_funds_from_sadp_pmu !== undefined ||
     brData.total_eligible_expenditure !== undefined ||
     brData.balance_per_bank_statement !== undefined;
+  const docs = supportingDocs ?? [];
+  const hasDocs = docs.length > 0;
+  const hasEssf = !!essf && essf.status === 'approved';
+  const hasEmmp = !!emmp && emmp.status === 'approved';
+  const hasInspection = !!latestInspection;
 
   const metaLine = [
     m1PeriodStart && m1PeriodEnd
@@ -393,6 +525,40 @@ export function M1PdfDocument(props: M1PdfDocumentProps) {
           m1PeriodStart={m1PeriodStart}
           m1PeriodEnd={m1PeriodEnd}
           br={brData}
+        />
+      )}
+
+      {/* Phase 3b — Supporting Documents index (only if at least one doc) */}
+      {hasDocs && (
+        <SupportingDocsIndexPage
+          beneficiary={e.beneficiary_short_name}
+          docs={docs}
+        />
+      )}
+
+      {/* Phase 3b — ESSF compendium summary */}
+      {hasEssf && essf && (
+        <EssfCompendiumPage
+          beneficiary={e.beneficiary_short_name}
+          essf={essf}
+        />
+      )}
+
+      {/* Phase 3b — EMMP compendium summary */}
+      {hasEmmp && emmp && (
+        <EmmpCompendiumPage
+          beneficiary={e.beneficiary_short_name}
+          emmp={emmp}
+          templateName={emmpTemplateName ?? null}
+          templateVersion={emmpTemplateVersion ?? null}
+        />
+      )}
+
+      {/* Phase 3b — Most-recent Inspection compendium summary */}
+      {hasInspection && latestInspection && (
+        <InspectionCompendiumPage
+          beneficiary={e.beneficiary_short_name}
+          inspection={latestInspection}
         />
       )}
     </Document>
@@ -843,4 +1009,455 @@ function BRLine({
       </Text>
     </View>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3b — back-of-PDF compendium pages
+// ---------------------------------------------------------------------------
+
+/**
+ * Supporting Documents Index — one-or-more A4 page(s) listing every attached
+ * supporting doc, grouped by `kind`. This is a REFERENCE INDEX, not an
+ * embedding of the actual file contents — the PDF can't fetch from private
+ * storage at render time. Field supervisors print the index alongside the
+ * binder of physical attachments.
+ */
+function SupportingDocsIndexPage({
+  beneficiary,
+  docs,
+}: {
+  beneficiary: string;
+  docs: M1SupportingDocumentRow[];
+}) {
+  // Group by kind in canonical order
+  const grouped = M1_DOC_KIND_ORDER
+    .map((k) => ({
+      kind: k,
+      label: M1_DOC_KIND_LABELS[k],
+      rows: docs.filter((d) => d.kind === k),
+    }))
+    .filter((g) => g.rows.length > 0);
+
+  const totalBytes = docs.reduce((s, d) => s + (d.size_bytes ?? 0), 0);
+
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.topRule}>Milestone 1 Progress Report</Text>
+      <Text style={styles.partTitle}>SUPPORTING DOCUMENTS — INDEX</Text>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Beneficiary:</Text>
+        <Text style={styles.compKvValue}>{beneficiary}</Text>
+      </View>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Files attached:</Text>
+        <Text style={styles.compKvValue}>
+          {docs.length} {docs.length === 1 ? 'file' : 'files'} · {formatBytes(totalBytes)} total
+        </Text>
+      </View>
+
+      {grouped.map((g) => (
+        <View key={g.kind} wrap={false}>
+          <Text style={styles.docKindHeader}>
+            {g.label} ({g.rows.length})
+          </Text>
+          <View style={styles.docTableHeader}>
+            <Text style={styles.docCol_file}>Filename</Text>
+            <Text style={styles.docCol_size}>Size</Text>
+            <Text style={styles.docCol_date}>Uploaded</Text>
+            <Text style={styles.docCol_notes}>Notes</Text>
+          </View>
+          {g.rows.map((doc) => (
+            <View key={doc.id} style={styles.docTableRow}>
+              <Text style={styles.docCol_file}>
+                {doc.original_filename ?? doc.storage_path.split('/').pop()}
+              </Text>
+              <Text style={styles.docCol_size}>{formatBytes(doc.size_bytes ?? 0)}</Text>
+              <Text style={styles.docCol_date}>{formatDateDMY(doc.uploaded_at)}</Text>
+              <Text style={styles.docCol_notes}>{doc.notes ?? ''}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+
+      <Text style={styles.refNote}>
+        Files listed here are stored privately in the SADP-II monitoring app. Field supervisors
+        can download them via the Supporting Docs tab on the M1 page. The physical binder
+        should contain printouts of every file listed above.
+      </Text>
+
+      <Text
+        style={styles.pageNumber}
+        render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
+        fixed
+      />
+    </Page>
+  );
+}
+
+/**
+ * ESSF compendium — one-page summary of the approved ESSF (Annex II /
+ * Environmental & Social Screening Form). Shows site-sensitivity ratings,
+ * completeness Y/N/NA counts, checklist Y/N counts, and certification
+ * signatures. Field supervisors who need the full ESSF can open
+ * `/enterprises/:id/esmp.pdf` for the complete report.
+ */
+function EssfCompendiumPage({
+  beneficiary,
+  essf,
+}: {
+  beneficiary: string;
+  essf: EssfSubmissionRow;
+}) {
+  const responses = (essf.responses ?? {}) as EssfResponses;
+  const ss = responses.site_sensitivity ?? {};
+  const cm = responses.completeness ?? {};
+  const ck = responses.checklist ?? {};
+  const signed = responses.signed ?? {};
+
+  // Sensitivity tally
+  const ssCount = { low: 0, medium: 0, high: 0, unrated: 0 };
+  for (const issue of ESSF_SITE_SENSITIVITY.issues) {
+    const v = ss[issue.id];
+    if (v === 'low') ssCount.low += 1;
+    else if (v === 'medium') ssCount.medium += 1;
+    else if (v === 'high') ssCount.high += 1;
+    else ssCount.unrated += 1;
+  }
+
+  // Completeness tally
+  const cmCount = { yes: 0, no: 0, n_a: 0, unrated: 0 };
+  for (const q of ESSF_COMPLETENESS.questions) {
+    const v = cm[q.id];
+    if (v === 'yes') cmCount.yes += 1;
+    else if (v === 'no') cmCount.no += 1;
+    else if (v === 'n_a') cmCount.n_a += 1;
+    else cmCount.unrated += 1;
+  }
+
+  // Checklist tally (flatten groups)
+  let ckYes = 0;
+  let ckNo = 0;
+  let ckUnrated = 0;
+  let ckTotal = 0;
+  for (const group of ESSF_CHECKLIST.groups) {
+    for (const q of group.questions) {
+      ckTotal += 1;
+      const v = ck[q.id];
+      if (v === 'yes') ckYes += 1;
+      else if (v === 'no') ckNo += 1;
+      else ckUnrated += 1;
+    }
+  }
+
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.topRule}>Milestone 1 Progress Report</Text>
+      <Text style={styles.partTitle}>ESSF — APPROVED (COMPENDIUM)</Text>
+
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Beneficiary:</Text>
+        <Text style={styles.compKvValue}>{beneficiary}</Text>
+      </View>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Status:</Text>
+        <Text style={styles.compKvValue}>Approved</Text>
+      </View>
+      {essf.approved_at && (
+        <View style={styles.compKv}>
+          <Text style={styles.compKvLabel}>Approved on:</Text>
+          <Text style={styles.compKvValue}>{formatDateDMY(essf.approved_at)}</Text>
+        </View>
+      )}
+      {essf.submitted_at && (
+        <View style={styles.compKv}>
+          <Text style={styles.compKvLabel}>Submitted on:</Text>
+          <Text style={styles.compKvValue}>{formatDateDMY(essf.submitted_at)}</Text>
+        </View>
+      )}
+
+      <Text style={styles.compSubTitle}>Section 1 — Site sensitivity</Text>
+      <View style={styles.countRow}>
+        <Text style={styles.countPill}>Low: {ssCount.low}</Text>
+        <Text style={styles.countPill}>Medium: {ssCount.medium}</Text>
+        <Text style={styles.countPill}>High: {ssCount.high}</Text>
+        {ssCount.unrated > 0 && (
+          <Text style={styles.countPill}>Unrated: {ssCount.unrated}</Text>
+        )}
+      </View>
+      <View style={styles.compTableHeader}>
+        <Text style={{ flex: 2 }}>Issue</Text>
+        <Text style={{ width: 80, textAlign: 'right' }}>Rating</Text>
+      </View>
+      {ESSF_SITE_SENSITIVITY.issues.map((issue) => (
+        <View key={issue.id} style={styles.compTableRow}>
+          <Text style={{ flex: 2 }}>{issue.label}</Text>
+          <Text style={{ width: 80, textAlign: 'right', textTransform: 'uppercase' }}>
+            {ss[issue.id] ?? '—'}
+          </Text>
+        </View>
+      ))}
+
+      <Text style={styles.compSubTitle}>Section 2 — Completeness of application</Text>
+      <View style={styles.countRow}>
+        <Text style={styles.countPill}>Yes: {cmCount.yes}</Text>
+        <Text style={styles.countPill}>No: {cmCount.no}</Text>
+        <Text style={styles.countPill}>N/A: {cmCount.n_a}</Text>
+        {cmCount.unrated > 0 && (
+          <Text style={styles.countPill}>Unrated: {cmCount.unrated}</Text>
+        )}
+      </View>
+
+      <Text style={styles.compSubTitle}>Section 3 — Environmental &amp; social checklist</Text>
+      <View style={styles.countRow}>
+        <Text style={styles.countPill}>Yes: {ckYes} / {ckTotal}</Text>
+        <Text style={styles.countPill}>No: {ckNo} / {ckTotal}</Text>
+        {ckUnrated > 0 && (
+          <Text style={styles.countPill}>Unrated: {ckUnrated} / {ckTotal}</Text>
+        )}
+      </View>
+
+      <Text style={styles.compSubTitle}>Certification</Text>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Extension team rep:</Text>
+        <Text style={styles.compKvValue}>
+          {signed.extension_team_rep_name || '—'}
+          {signed.extension_team_rep_signed_at
+            ? `  ·  signed ${formatDateDMY(signed.extension_team_rep_signed_at)}`
+            : ''}
+        </Text>
+      </View>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Sub-project rep:</Text>
+        <Text style={styles.compKvValue}>
+          {signed.sub_project_rep_name || '—'}
+          {signed.sub_project_rep_signed_at
+            ? `  ·  signed ${formatDateDMY(signed.sub_project_rep_signed_at)}`
+            : ''}
+        </Text>
+      </View>
+
+      <Text style={styles.refNote}>
+        This is a one-page summary. For the full Environmental and Social Screening Form, open
+        the ESMP report PDF for this enterprise.
+      </Text>
+
+      <Text
+        style={styles.pageNumber}
+        render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
+        fixed
+      />
+    </Page>
+  );
+}
+
+/**
+ * EMMP compendium — one-page summary of the approved EMMP (Environmental
+ * Mitigation & Management Plan) for the enterprise's enterprise type. Shows
+ * the template name + version + per-item response counts. The full
+ * checkbox-style EMMP table lives in `/enterprises/:id/esmp.pdf`.
+ */
+function EmmpCompendiumPage({
+  beneficiary,
+  emmp,
+  templateName,
+  templateVersion,
+}: {
+  beneficiary: string;
+  emmp: EmmpSubmissionRow;
+  templateName: string | null;
+  templateVersion: string | null;
+}) {
+  // EMMP responses is an opaque jsonb (templates vary by enterprise type) — we
+  // can't tally checkboxes without the template, but we can show the response
+  // key count as a rough fill indicator.
+  const responses = (emmp.responses ?? {}) as Record<string, unknown>;
+  const responseKeys = Object.keys(responses);
+  const filledKeys = responseKeys.filter((k) => {
+    const v = responses[k];
+    return v !== null && v !== undefined && v !== '' && v !== false;
+  });
+
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.topRule}>Milestone 1 Progress Report</Text>
+      <Text style={styles.partTitle}>EMMP — APPROVED (COMPENDIUM)</Text>
+
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Beneficiary:</Text>
+        <Text style={styles.compKvValue}>{beneficiary}</Text>
+      </View>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Template:</Text>
+        <Text style={styles.compKvValue}>{templateName ?? '—'}</Text>
+      </View>
+      {templateVersion && (
+        <View style={styles.compKv}>
+          <Text style={styles.compKvLabel}>Template version:</Text>
+          <Text style={styles.compKvValue}>{templateVersion}</Text>
+        </View>
+      )}
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Status:</Text>
+        <Text style={styles.compKvValue}>Approved</Text>
+      </View>
+      {emmp.approved_at && (
+        <View style={styles.compKv}>
+          <Text style={styles.compKvLabel}>Approved on:</Text>
+          <Text style={styles.compKvValue}>{formatDateDMY(emmp.approved_at)}</Text>
+        </View>
+      )}
+      {emmp.submitted_at && (
+        <View style={styles.compKv}>
+          <Text style={styles.compKvLabel}>Submitted on:</Text>
+          <Text style={styles.compKvValue}>{formatDateDMY(emmp.submitted_at)}</Text>
+        </View>
+      )}
+
+      <Text style={styles.compSubTitle}>Response coverage</Text>
+      <View style={styles.countRow}>
+        <Text style={styles.countPill}>Items answered: {filledKeys.length}</Text>
+        <Text style={styles.countPill}>Keys total: {responseKeys.length}</Text>
+      </View>
+
+      <Text style={styles.refNote}>
+        This is a one-page reference card. The full EMMP — including per-row mitigation
+        measures, monitoring frequency, responsible party, and budget — lives in the ESMP
+        report PDF for this enterprise.
+      </Text>
+
+      <Text
+        style={styles.pageNumber}
+        render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
+        fixed
+      />
+    </Page>
+  );
+}
+
+/**
+ * Inspection visit compendium — one-page summary of the most-recent
+ * inspection visit. Shows the visit date, inspector, top-level notes, and a
+ * per-phase compliance count (Compliant / Non-Compliant / Partially / N/A).
+ */
+function InspectionCompendiumPage({
+  beneficiary,
+  inspection,
+}: {
+  beneficiary: string;
+  inspection: InspectionVisitRow;
+}) {
+  const responses = (inspection.responses ?? {}) as InspectionResponses;
+  const aspects = responses.aspects ?? {};
+
+  // Count statuses across all phases
+  const tally = { c: 0, nc: 0, pc: 0, na: 0, unanswered: 0 };
+  let total = 0;
+  const phaseSummaries: { id: string; title: string; counts: typeof tally }[] = [];
+  for (const phase of INSPECTION_PHASES) {
+    const phaseCounts = { c: 0, nc: 0, pc: 0, na: 0, unanswered: 0 };
+    for (const aspect of phase.aspects) {
+      total += 1;
+      const v = aspects[aspect.id]?.status;
+      if (v === 'c') {
+        tally.c += 1;
+        phaseCounts.c += 1;
+      } else if (v === 'nc') {
+        tally.nc += 1;
+        phaseCounts.nc += 1;
+      } else if (v === 'pc') {
+        tally.pc += 1;
+        phaseCounts.pc += 1;
+      } else if (v === 'na') {
+        tally.na += 1;
+        phaseCounts.na += 1;
+      } else {
+        tally.unanswered += 1;
+        phaseCounts.unanswered += 1;
+      }
+    }
+    phaseSummaries.push({ id: phase.id, title: phase.title, counts: phaseCounts });
+  }
+
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.topRule}>Milestone 1 Progress Report</Text>
+      <Text style={styles.partTitle}>INSPECTION VISIT — MOST RECENT (COMPENDIUM)</Text>
+
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Beneficiary:</Text>
+        <Text style={styles.compKvValue}>{beneficiary}</Text>
+      </View>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Visit date:</Text>
+        <Text style={styles.compKvValue}>{formatDateDMY(inspection.visit_date)}</Text>
+      </View>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Inspected by:</Text>
+        <Text style={styles.compKvValue}>{inspection.inspected_by_name}</Text>
+      </View>
+      <View style={styles.compKv}>
+        <Text style={styles.compKvLabel}>Status:</Text>
+        <Text style={styles.compKvValue}>{cap(inspection.status)}</Text>
+      </View>
+      {inspection.approved_at && (
+        <View style={styles.compKv}>
+          <Text style={styles.compKvLabel}>Approved on:</Text>
+          <Text style={styles.compKvValue}>{formatDateDMY(inspection.approved_at)}</Text>
+        </View>
+      )}
+
+      <Text style={styles.compSubTitle}>Overall compliance ({total} aspects)</Text>
+      <View style={styles.countRow}>
+        <Text style={styles.countPill}>{INSPECTION_STATUS_LABELS.c}: {tally.c}</Text>
+        <Text style={styles.countPill}>{INSPECTION_STATUS_LABELS.nc}: {tally.nc}</Text>
+        <Text style={styles.countPill}>{INSPECTION_STATUS_LABELS.pc}: {tally.pc}</Text>
+        <Text style={styles.countPill}>{INSPECTION_STATUS_LABELS.na}: {tally.na}</Text>
+        {tally.unanswered > 0 && (
+          <Text style={styles.countPill}>Unanswered: {tally.unanswered}</Text>
+        )}
+      </View>
+
+      <Text style={styles.compSubTitle}>By phase</Text>
+      <View style={styles.compTableHeader}>
+        <Text style={{ flex: 2 }}>Phase</Text>
+        <Text style={{ width: 28, textAlign: 'right' }}>C</Text>
+        <Text style={{ width: 28, textAlign: 'right' }}>NC</Text>
+        <Text style={{ width: 28, textAlign: 'right' }}>PC</Text>
+        <Text style={{ width: 28, textAlign: 'right' }}>N/A</Text>
+      </View>
+      {phaseSummaries.map((p) => (
+        <View key={p.id} style={styles.compTableRow}>
+          <Text style={{ flex: 2 }}>{p.title}</Text>
+          <Text style={{ width: 28, textAlign: 'right' }}>{p.counts.c}</Text>
+          <Text style={{ width: 28, textAlign: 'right' }}>{p.counts.nc}</Text>
+          <Text style={{ width: 28, textAlign: 'right' }}>{p.counts.pc}</Text>
+          <Text style={{ width: 28, textAlign: 'right' }}>{p.counts.na}</Text>
+        </View>
+      ))}
+
+      {responses.notes && (
+        <>
+          <Text style={styles.compSubTitle}>Inspector notes</Text>
+          <Text style={{ fontSize: 9.5, lineHeight: 1.5 }}>{responses.notes}</Text>
+        </>
+      )}
+
+      <Text style={styles.refNote}>
+        Per-aspect detail with comments lives in the standalone inspection report. This
+        compendium shows the most-recent visit only; earlier visits remain in the inspection
+        history.
+      </Text>
+
+      <Text
+        style={styles.pageNumber}
+        render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
+        fixed
+      />
+    </Page>
+  );
+}
+
+/** Capitalize the first letter — used for inspection.status display. */
+function cap(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
 }
