@@ -263,8 +263,10 @@ export function EnterpriseDetailPage() {
 
       <Tabs value={currentTab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger value="details">Details</TabsTrigger>
+          {/* Progress is the default landing tab AND the leftmost tab — the
+              first thing a user sees should match what's pre-selected. */}
           <TabsTrigger value="progress">Progress</TabsTrigger>
+          <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="esmp">ESMP</TabsTrigger>
           <TabsTrigger value="m1">Milestone 1</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
