@@ -68,16 +68,21 @@ export interface M1CashbookResponses {
  * 3 computed).
  */
 export const CASHBOOK_COLUMNS = [
-  { id: 'date',           label: 'Date',           width: '8%',  align: 'left'  as const },
-  { id: 'item',           label: 'Item',           width: '14%', align: 'left'  as const },
-  { id: 'budget_code',    label: 'Budget',         width: '7%',  align: 'left'  as const },
-  { id: 'supplier',       label: 'Supplier',       width: '12%', align: 'left'  as const },
-  { id: 'description',    label: 'Description',    width: '14%', align: 'left'  as const },
-  { id: 'credit',         label: 'Credit (M)',     width: '8%',  align: 'right' as const },
-  { id: 'debit',          label: 'Debit (M)',      width: '8%',  align: 'right' as const },
+  // Widths bumped 2026-05-31: Date needed room for full DD/MM/YYYY (was
+  // truncating "14/10/2025" to "14/10/20" and hiding year-typos from the
+  // AVAILS extraction). Credit/Debit needed room for 6+ digit amounts
+  // (197,000 was rendering as "19700"). Item/Description/Supplier trimmed
+  // slightly to keep total at 100%.
+  { id: 'date',           label: 'Date',           width: '10%', align: 'left'  as const },
+  { id: 'item',           label: 'Item',           width: '8%',  align: 'left'  as const },
+  { id: 'budget_code',    label: 'Budget',         width: '9%',  align: 'left'  as const },
+  { id: 'supplier',       label: 'Supplier',       width: '13%', align: 'left'  as const },
+  { id: 'description',    label: 'Description',    width: '13%', align: 'left'  as const },
+  { id: 'credit',         label: 'Credit (M)',     width: '10%', align: 'right' as const },
+  { id: 'debit',          label: 'Debit (M)',      width: '10%', align: 'right' as const },
   { id: 'accum',          label: 'Accum (M)',      width: '9%',  align: 'right' as const },
   { id: 'balance',        label: 'Balance (M)',    width: '9%',  align: 'right' as const },
-  { id: 'budget_balance', label: 'Budget bal (M)', width: '11%', align: 'right' as const },
+  { id: 'budget_balance', label: 'Budget bal (M)', width: '9%',  align: 'right' as const },
 ] as const;
 
 /**

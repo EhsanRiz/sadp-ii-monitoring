@@ -247,6 +247,8 @@ export function M1EditPage() {
             responses={cashbook}
             onChange={setCashbook}
             readOnly={isApproved}
+            m1PeriodStart={m1.data?.m1_period_start ?? null}
+            m1PeriodEnd={m1.data?.m1_period_end ?? null}
           />
         </TabsContent>
         <TabsContent value="financial" className="mt-4 space-y-4">

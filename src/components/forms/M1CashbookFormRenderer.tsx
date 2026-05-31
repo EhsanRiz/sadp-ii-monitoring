@@ -36,6 +36,26 @@ interface Props {
   responses: M1CashbookResponses;
   onChange: (next: M1CashbookResponses) => void;
   readOnly?: boolean;
+  /**
+   * M1 reporting period — used to flag entries with dates outside this range
+   * as likely typos. Pass `null` to disable the warning. Both bounds are ISO
+   * yyyy-mm-dd strings; comparison is purely lexicographic since ISO dates
+   * collate correctly.
+   */
+  m1PeriodStart?: string | null;
+  m1PeriodEnd?: string | null;
+}
+
+/** Return true when `date` falls outside [start, end]. Bounds may be null. */
+function isOutOfPeriod(
+  date: string | undefined | null,
+  start: string | null | undefined,
+  end: string | null | undefined,
+): boolean {
+  if (!date) return false;
+  if (start && date < start) return true;
+  if (end && date > end) return true;
+  return false;
 }
 
 /**
@@ -113,11 +133,23 @@ function makeId(): string {
   return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }: Props) {
+export function M1CashbookFormRenderer({
+  responses,
+  onChange,
+  readOnly = false,
+  m1PeriodStart = null,
+  m1PeriodEnd = null,
+}: Props) {
   const reactId = useId();
   const opening = responses.opening_balance ?? 0;
   const openingDate = responses.opening_balance_date ?? '';
   const entries = responses.entries ?? [];
+  // Count rows whose date falls outside the reporting period — surfaced as a
+  // header banner so the user spots typos like 2024 vs 2025 immediately.
+  const outOfPeriodCount = useMemo(
+    () => entries.filter((e) => isOutOfPeriod(e.date, m1PeriodStart, m1PeriodEnd)).length,
+    [entries, m1PeriodStart, m1PeriodEnd],
+  );
 
   const balances = useMemo(() => computeRunningBalances(entries, opening), [entries, opening]);
   const accums = useMemo(() => computeRunningAccum(entries), [entries]);
@@ -204,6 +236,26 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
               </Button>
             )}
           </div>
+          {outOfPeriodCount > 0 && (m1PeriodStart || m1PeriodEnd) && (
+            <div className="mt-2 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="font-medium text-warning">
+                    {outOfPeriodCount} {outOfPeriodCount === 1 ? 'row has a date' : 'rows have dates'}{' '}
+                    outside the M1 reporting period
+                  </span>
+                  <span className="text-muted-foreground">
+                    {' '}({m1PeriodStart ? new Date(m1PeriodStart).toLocaleDateString('en-GB') : '—'}{' '}
+                    – {m1PeriodEnd ? new Date(m1PeriodEnd).toLocaleDateString('en-GB') : '—'}). This
+                    often means a year typo in the source PDF (e.g. 2024 instead of 2025). The
+                    running balance follows whatever dates are stored, so out-of-period rows can
+                    make the per-row balance look wrong even when totals are correct.
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {entries.length === 0 ? (
@@ -235,15 +287,33 @@ export function M1CashbookFormRenderer({ responses, onChange, readOnly = false }
                     const credit = Number(e.credit) || 0;
                     const debit = Number(e.debit) || 0;
                     const bothPositive = credit > 0 && debit > 0;
+                    const dateOutOfPeriod = isOutOfPeriod(e.date, m1PeriodStart, m1PeriodEnd);
                     return (
-                      <tr key={e.id} className="border-b align-top hover:bg-muted/40">
+                      <tr
+                        key={e.id}
+                        className={cn(
+                          'border-b align-top hover:bg-muted/40',
+                          dateOutOfPeriod && 'bg-warning/5',
+                        )}
+                      >
                         <td className="py-1.5 pr-2">
                           <DmyDateInput
                             value={e.date}
                             disabled={readOnly}
                             onChange={(iso) => patchEntry(e.id, { date: iso })}
-                            className="h-7 text-xs px-2"
+                            className={cn(
+                              'h-7 text-xs px-2 tabular-nums',
+                              dateOutOfPeriod && 'border-warning',
+                            )}
                           />
+                          {dateOutOfPeriod && (
+                            <div
+                              className="text-warning text-[10px] inline-flex items-center gap-0.5 mt-0.5"
+                              title="This date falls outside the M1 reporting period — likely a year typo."
+                            >
+                              <AlertTriangle className="h-2.5 w-2.5" /> out of period
+                            </div>
+                          )}
                         </td>
                         <td className="py-1.5 pr-2">
                           <Input
