@@ -375,6 +375,10 @@ export interface ExtractM1Result {
   enterprise_id: string;
   narrative_sections_filled: number;
   cashbook_entry_count: number;
+  /** v4+: number of Financial Report line items populated. */
+  financial_report_item_count?: number;
+  /** v4+: whether any Bank Reconciliation field was extracted. */
+  bank_reconciliation_filled?: boolean;
   notes: M1ImportNote[];
 }
 
@@ -398,15 +402,19 @@ export function useExtractM1Pdf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<ExtractM1Result> => {
-      // NOTE: deployed under "-v3" slug.
+      // NOTE: deployed under "-v4" slug.
       //   -v1 pulled from supporting docs (bank statements / receipts) too,
       //        over-counting cashbook rows.
       //   -v2 scoped extraction to the cashbook page only.
-      //   -v3 adds explicit column-to-field mapping (PDF ITEM = code → item;
-      //        PDF BUDGET = type → budget_code; full supplier names not
-      //        truncated). Fixes the supplier-in-item-field bug.
+      //   -v3 added explicit column-to-field mapping for cashbook.
+      //   -v4 (current): adds rotation awareness + STRICT no-reconstruction
+      //        rule + scale-check rule for the cashbook (fixes the AVAILS
+      //        failure where 197 000 → 19 700 and bank-statement rows
+      //        leaked into the cashbook). Also extends extraction to
+      //        Financial Report (8 categories) + Bank Reconciliation
+      //        fields, both of which were manual-entry-only in v3.
       // Future re-deploys bump the suffix per PROGRESS.md §6.
-      const { data, error } = await supabase.functions.invoke('extract-m1-pdf-v3', {
+      const { data, error } = await supabase.functions.invoke('extract-m1-pdf-v4', {
         body: { enterpriseId },
       });
       if (error) {

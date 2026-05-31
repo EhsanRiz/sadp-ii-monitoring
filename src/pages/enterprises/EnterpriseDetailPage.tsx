@@ -1173,16 +1173,18 @@ export function EnterpriseDetailPage() {
 
           {/* Source M1 PDF + Auto-extract.
               Same shape as the Legacy ESMP section: upload a scanned/printed
-              M1 report PDF, click Extract, get a draft narrative + cashbook
-              to review on the M1 page. Approved submissions are protected
-              from being overwritten (409 → Reopen-first guide). */}
+              M1 report PDF, click Extract, get a draft (narrative, cashbook,
+              financial report, bank reconciliation) to review on the M1
+              page. Approved submissions are protected from being overwritten
+              (409 → Reopen-first guide). */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Source M1 PDF</CardTitle>
               <CardDescription>
                 Upload a scanned/printed M1 report and let Claude pre-fill the digital
-                narrative + cashbook from it. You always review the draft before
-                submitting — extraction is never auto-approved.
+                narrative, cashbook, financial report, and bank reconciliation from it.
+                You always review the draft before submitting — extraction is never
+                auto-approved.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1275,9 +1277,10 @@ export function EnterpriseDetailPage() {
                           Auto-extract from this PDF
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Reads the uploaded PDF and writes a draft narrative + cashbook
-                          onto the M1 submission. Approved submissions are left untouched
-                          (reopen first if you want to re-import).
+                          Reads the uploaded PDF and writes a draft narrative, cashbook,
+                          financial report, and bank reconciliation onto the M1
+                          submission. Approved submissions are left untouched (reopen
+                          first if you want to re-import).
                         </p>
                       </div>
                       <Button
@@ -1287,9 +1290,15 @@ export function EnterpriseDetailPage() {
                           extractM1.mutate(undefined, {
                             onSuccess: (data) => {
                               setLastM1Extract(data);
-                              toast.success(
-                                `Drafted: ${data.narrative_sections_filled}/7 narrative sections, ${data.cashbook_entry_count} cashbook entries`,
-                              );
+                              const parts = [
+                                `${data.narrative_sections_filled}/7 narrative sections`,
+                                `${data.cashbook_entry_count} cashbook entries`,
+                                typeof data.financial_report_item_count === 'number'
+                                  ? `${data.financial_report_item_count} FR items`
+                                  : null,
+                                data.bank_reconciliation_filled ? 'bank reconciliation' : null,
+                              ].filter(Boolean);
+                              toast.success(`Drafted: ${parts.join(', ')}`);
                             },
                             onError: (e: Error) => {
                               if (e instanceof ExtractM1Error && e.status === 409) {
@@ -1336,8 +1345,9 @@ export function EnterpriseDetailPage() {
                     )}
                     {extractM1.isPending && (
                       <p className="text-xs text-muted-foreground">
-                        Reading the PDF and asking Claude to map narrative + cashbook.
-                        Usually 30–90 seconds depending on PDF length.
+                        Reading the PDF and asking Claude to map narrative, cashbook,
+                        financial report, and bank reconciliation. Usually 30–90 seconds
+                        depending on PDF length.
                       </p>
                     )}
                     {lastM1Extract && (
@@ -1352,6 +1362,16 @@ export function EnterpriseDetailPage() {
                           <Badge variant="outline" className="border-success/40 text-success">
                             Cashbook: {lastM1Extract.cashbook_entry_count} entries
                           </Badge>
+                          {typeof lastM1Extract.financial_report_item_count === 'number' && (
+                            <Badge variant="outline" className="border-success/40 text-success">
+                              Financial report: {lastM1Extract.financial_report_item_count} items
+                            </Badge>
+                          )}
+                          {lastM1Extract.bank_reconciliation_filled && (
+                            <Badge variant="outline" className="border-success/40 text-success">
+                              Bank reconciliation
+                            </Badge>
+                          )}
                         </div>
                         {lastM1Extract.notes.length > 0 && (
                           <details className="text-xs" open>

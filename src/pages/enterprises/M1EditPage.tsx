@@ -186,8 +186,8 @@ export function M1EditPage() {
                   Auto-imported from PDF — please review before submitting
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Claude extracted the narrative + cashbook from the uploaded scanned M1
-                  report on{' '}
+                  Claude extracted the narrative, cashbook, financial report, and bank
+                  reconciliation from the uploaded scanned M1 report on{' '}
                   {m1.data.imported_at ? formatDateDMY(m1.data.imported_at) : '—'}.
                   Verify every section, especially anything flagged below as low confidence.
                 </p>
