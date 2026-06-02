@@ -497,7 +497,7 @@ export function useBackfillM1Binder(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<BackfillBinderResult> => {
-      const { data, error } = await supabase.functions.invoke('extract-m1-binder-v1', {
+      const { data, error } = await supabase.functions.invoke('extract-m1-binder-v2', {
         body: { enterpriseId },
       });
       if (error) {
