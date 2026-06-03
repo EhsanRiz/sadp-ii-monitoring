@@ -759,6 +759,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      period_reports: {
+        Row: {
+          id: string;
+          kind: 'monthly' | 'quarterly' | 'custom';
+          period_start: string;
+          period_end: string;
+          period_label: string;
+          scope_org_id: string | null;
+          payload: Json;
+          title: string | null;
+          notes: string | null;
+          generated_by: string | null;
+          generated_at: string;
+        };
+        Insert: {
+          id?: string;
+          kind: 'monthly' | 'quarterly' | 'custom';
+          period_start: string;
+          period_end: string;
+          period_label: string;
+          scope_org_id?: string | null;
+          payload: Json;
+          title?: string | null;
+          notes?: string | null;
+          generated_by?: string | null;
+          generated_at?: string;
+        };
+        Update: {
+          id?: string;
+          kind?: 'monthly' | 'quarterly' | 'custom';
+          period_start?: string;
+          period_end?: string;
+          period_label?: string;
+          scope_org_id?: string | null;
+          payload?: Json;
+          title?: string | null;
+          notes?: string | null;
+          generated_by?: string | null;
+          generated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       enterprise_lifecycle: {
@@ -825,6 +867,7 @@ export interface Database {
       current_user_org_id: { Args: Record<string, never>; Returns: string | null };
       current_user_role: { Args: Record<string, never>; Returns: AppRole | null };
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
+      generate_period_report: { Args: { p_start: string; p_end: string; p_org_id: string | null }; Returns: Json };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

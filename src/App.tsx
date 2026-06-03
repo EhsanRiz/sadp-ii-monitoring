@@ -25,6 +25,8 @@ import { DistrictsAdminPage } from '@/pages/admin/DistrictsAdminPage';
 import { CommunityCouncilsAdminPage } from '@/pages/admin/CommunityCouncilsAdminPage';
 import { ResourceCentersAdminPage } from '@/pages/admin/ResourceCentersAdminPage';
 import { EnterpriseTypesAdminPage } from '@/pages/admin/EnterpriseTypesAdminPage';
+import { ReportsHomePage } from '@/pages/reports/ReportsHomePage';
+import { ReportsArchivePage } from '@/pages/reports/ReportsArchivePage';
 
 /**
  * Top-level route table. RBAC matrix (PHASE_1_DESIGN.md §4):
@@ -82,6 +84,11 @@ export default function App() {
         <Route path="/enterprises/:id/inspections/new" element={<InspectionEditPage />} />
         <Route path="/enterprises/:id/inspections/:visitId" element={<InspectionEditPage />} />
         <Route path="/enterprises/:id/m1" element={<M1EditPage />} />
+
+        {/* Reports */}
+        <Route path="/reports" element={<ReportsHomePage />} />
+        <Route path="/reports/:kind" element={<ReportsHomePage />} />
+        <Route path="/reports/archive" element={<ReportsArchivePage />} />
       </Route>
 
       {/* Cover-page PDF — auth required, but renders raw PDF (not inside AppShell) */}

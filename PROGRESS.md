@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-03 (Borehole Supervision tab · Hover animations · Org-scoped districts) · HEAD: `<pending>`
+Last updated: 2026-06-03 (Period Reports · Borehole tab · Hover animations · Org-scoped districts) · HEAD: `<pending>`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -19,6 +19,38 @@ is here or one link away.
 | **Owner** | Ehsan Rizvi · 4D Climate Solutions · super admin of the app |
 | **Hosting** | Render Static Site, auto-redeploys on push to `main` |
 | **Stack** | Vite + React 18 + TypeScript + Tailwind + shadcn/ui PWA, backed by Supabase (Postgres + Auth + Storage + Edge Functions + RLS) |
+
+---
+
+## 2. What changed in this push
+
+**Period Reports — Monthly / Quarterly / Custom range**
+(`migration 260` + `261`,
+`src/lib/reports.ts`,
+`src/lib/reportExcel.ts`,
+`src/components/reports/PeriodReportPreview.tsx`,
+`src/pdf/PeriodReportPdf.tsx`,
+`src/pages/reports/ReportsHomePage.tsx`,
+`src/pages/reports/ReportsArchivePage.tsx`,
+`src/components/AppShell.tsx`, `src/App.tsx`)
+
+- New "Reports" sidebar entry. Three tabs (Monthly / Quarterly / Custom range)
+  plus an Archive view. Standard Jan-Dec calendar.
+- Page flow: pick period + scope → Generate → live preview (cover, 8 KPI tiles,
+  district × milestone matrix with cumulative state, ESMP compliance,
+  borehole supervision in-period, M1 financials, new-enterprises list,
+  appendix counter) → Download PDF / Download Excel / Save to archive.
+- Heavy lifting in Postgres: `generate_period_report(p_start, p_end, p_org_id)`
+  returns a single jsonb blob. `p_org_id = NULL` is an all-org report
+  (super-admin only). Function is `SECURITY INVOKER` so partner admins are
+  RLS-scoped naturally.
+- `period_reports` archive table with RLS (super admin sees all, partner admins
+  see only their org's saves). Payload is the full jsonb so saved reports
+  survive schema/data changes — exactly what donors / audit need.
+- PDF uses `@react-pdf/renderer` matching the existing CoverPage / M1 style;
+  Excel via SheetJS with sheets: Summary, Matrix, NewEnterprises, Appendix.
+- Period picker auto-suggests the just-closed period (e.g. on June 3 it
+  defaults Monthly to May 2026, Quarterly to Q1 2026).
 
 ---
 

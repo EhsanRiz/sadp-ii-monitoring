@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
-import { LogOut, LayoutDashboard, Sprout, Users2, MapPin, ShieldCheck } from 'lucide-react';
+import { LogOut, LayoutDashboard, Sprout, FileBarChart, Users2, MapPin, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -15,6 +15,7 @@ interface NavItem {
 const items: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/enterprises', label: 'Enterprises', icon: Sprout },
+  { to: '/reports/monthly', label: 'Reports', icon: FileBarChart },
   { to: '/admin/users', label: 'Users', icon: Users2, superAdminOnly: true },
   { to: '/admin/districts', label: 'Geography', icon: MapPin, superAdminOnly: true },
   { to: '/admin/organizations', label: 'Organizations', icon: ShieldCheck, superAdminOnly: true },
