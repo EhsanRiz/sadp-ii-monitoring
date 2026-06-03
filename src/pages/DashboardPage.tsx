@@ -44,8 +44,14 @@ import { getEnterpriseVisual } from '@/lib/enterprise-icons';
  *     enterprises by type, and a horizontal bar of M1-readiness pipeline.
  */
 export function DashboardPage() {
-  const { role, isSuperAdmin } = useAuth();
+  const { role, isSuperAdmin, organizationId } = useAuth();
   const { data: orgs } = useOrganizations();
+
+  // For non-super-admin users, find their own org so the dashboard section
+  // header reads "4D" / "RSDA" instead of the generic "Your org".
+  const myOrg = !isSuperAdmin
+    ? orgs?.find((o) => o.id === organizationId) ?? null
+    : null;
 
   return (
     <div className="space-y-8">
@@ -59,7 +65,11 @@ export function DashboardPage() {
 
       {isSuperAdmin
         ? orgs?.map((o) => <OrgSection key={o.id} orgId={o.id} orgCode={o.code} orgName={o.name} />)
-        : <OrgSection orgId={null} orgCode="Your org" orgName="" />}
+        : <OrgSection
+            orgId={organizationId}
+            orgCode={myOrg?.code ?? 'Your org'}
+            orgName={myOrg?.name ?? ''}
+          />}
 
       <Card className="border-primary/20 bg-gradient-to-br from-tint-success/50 to-background">
         <CardHeader>
