@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-03 (M1 complete · User management · Auth set-password flow) · HEAD: `9df3c8e`
+Last updated: 2026-06-03 (Borehole Supervision tab · Hover animations · Org-scoped districts) · HEAD: `<pending>`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -19,6 +19,44 @@ is here or one link away.
 | **Owner** | Ehsan Rizvi · 4D Climate Solutions · super admin of the app |
 | **Hosting** | Render Static Site, auto-redeploys on push to `main` |
 | **Stack** | Vite + React 18 + TypeScript + Tailwind + shadcn/ui PWA, backed by Supabase (Postgres + Auth + Storage + Edge Functions + RLS) |
+
+---
+
+## 2. What changed in this push
+
+**Borehole Supervision tab** (`migration 250`, `src/forms/boreholeSupervisionSchema.ts`,
+`src/components/enterprise/BoreholeSupervisionForm.tsx`,
+`src/pages/enterprises/EnterpriseDetailPage.tsx`)
+
+- New jsonb column `enterprises.borehole_supervision` to track 6 milestones per
+  enterprise: drilling permit, borehole drilling, borehole casing, borehole yield
+  test, borehole drilling report, water use permit.
+- Each milestone has a checkbox + optional completion date. Free-text notes
+  field. Single Save button (avoids 6 round-trips). Stored on the enterprise row
+  the same way `lifecycle_status` is, so the dashboard matrix can join in one read.
+- New tab between **ESMP** and **Milestone 1** on the Enterprise detail page.
+- Reading the schema as the source of truth: `BOREHOLE_MILESTONES[]` in
+  `boreholeSupervisionSchema.ts` is the canonical list — update there and the
+  form regenerates.
+
+**Subtle hover animations** (`src/pages/DashboardPage.tsx`,
+`src/pages/enterprises/EnterprisesListPage.tsx`)
+
+- Chart cards (Type donut, Pipeline bar, District readiness) lift on hover
+  (`hover:shadow-md hover:-translate-y-0.5`) with a 200ms ease.
+- Milestone matrix rows: smooth `transition-colors` + light success-tinted
+  background on hover, plus a sub-`scale-105` on each completion-count chip via
+  a parent `group`/`group-hover` pattern.
+- Enterprises list table rows: success-tinted hover with 150ms colour transition.
+
+**Org-scoped District dropdown** (`src/pages/enterprises/EnterprisesListPage.tsx`)
+
+- When the **Organisation** filter is `4D`, the **District** dropdown only shows
+  4D's districts (Maseru / Berea / Thaba Tseka). When `RSDA`, only RSDA's four
+  (Mafeteng / Mohale's Hoek / Quithing / Qacha's Nek). Implemented client-side:
+  resolve the org code → id from the `useOrganizations` cache, then filter the
+  `useDistricts()` rows by `organization_id`. No new query — the catalog hook
+  already includes `organization_id` on every row.
 
 ---
 

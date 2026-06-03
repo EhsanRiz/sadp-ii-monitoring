@@ -241,7 +241,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
       {/* Charts row */}
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Donut: enterprises by type */}
-        <Card>
+        <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
@@ -312,7 +312,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         </Card>
 
         {/* Horizontal-bar pipeline */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <ArrowRight className="h-4 w-4 text-primary" />
@@ -359,7 +359,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
 
       {/* District readiness — only when we actually have multiple districts */}
       {districtChart.length > 1 && (
-        <Card>
+        <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Cover-page readiness by district</CardTitle>
           </CardHeader>
@@ -446,7 +446,7 @@ function LifecycleMatrix({
   };
 
   return (
-    <Card>
+    <Card className="transition-shadow duration-200 hover:shadow-md">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">Milestone tracker — district × milestone</CardTitle>
         <CardDescription className="text-xs">
@@ -478,7 +478,7 @@ function LifecycleMatrix({
             </thead>
             <tbody>
               {districtRows.map((d) => (
-                <tr key={d.id} className="border-b hover:bg-muted/30">
+                <tr key={d.id} className="border-b transition-colors duration-150 hover:bg-tint-success/40 hover:shadow-sm">
                   <td className="py-1.5 pr-3 font-medium sticky left-0 bg-background z-10">{d.name}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{d.total}</td>
                   {LIFECYCLE_MILESTONES.map((m) => {
@@ -512,9 +512,10 @@ function MatrixCell({ count, total }: { count: number; total: number }) {
     ratio < 0.67 ? 'bg-success/30 text-success' :
                    'bg-success/60 text-success-foreground';
   return (
-    <td className="py-1 px-1 text-center">
+    <td className="py-1 px-1 text-center group">
       <span className={cn(
         'inline-flex items-center justify-center min-w-[44px] px-1 py-0.5 rounded text-[11px] tabular-nums',
+        'transition-all duration-150 group-hover:scale-105 group-hover:shadow-sm',
         bg,
       )}>
         {count} / {total}

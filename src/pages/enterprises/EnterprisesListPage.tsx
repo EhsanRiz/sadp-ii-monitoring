@@ -132,6 +132,15 @@ export function EnterprisesListPage() {
   const { isSuperAdmin } = useAuth();
   const { data: organizations } = useOrganizations();
   const { data: districts } = useDistricts();
+  // When an Org filter is set, scope the District dropdown to that org only.
+  // Non-super-admins are already RLS-scoped server-side; the catalog query
+  // still returns everything, so we filter client-side here for UI clarity.
+  const selectedOrgId = filters.organizationCode
+    ? organizations?.find((o) => o.code === filters.organizationCode)?.id
+    : null;
+  const visibleDistricts = selectedOrgId
+    ? districts?.filter((d) => d.organization_id === selectedOrgId)
+    : districts;
   const { data: types } = useEnterpriseTypes();
   const { data: rcs } = useResourceCenters(filters.districtId ?? null);
   const { data: enterprises, isLoading, error } = useEnterprises(filters);
@@ -249,7 +258,7 @@ export function EnterprisesListPage() {
                 <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all">All districts</SelectItem>
-                  {districts?.map((d) => (
+                  {visibleDistricts?.map((d) => (
                     <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -442,7 +451,7 @@ export function EnterprisesListPage() {
                     const Icon = v.icon;
                     const lc = lifecycle?.get(e.id);
                     return (
-                      <tr key={e.id} className="border-b hover:bg-muted/40">
+                      <tr key={e.id} className="border-b transition-colors duration-150 hover:bg-tint-success/30">
                         <td className="py-1.5 pl-2 pr-3 font-medium sticky left-0 bg-background z-10">
                           <Link to={`/enterprises/${e.id}`} className="flex items-center gap-2 hover:text-primary">
                             <div className={cn('flex h-6 w-6 items-center justify-center rounded shrink-0', v.tileBg)}>

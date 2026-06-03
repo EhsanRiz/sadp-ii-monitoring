@@ -43,6 +43,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/StatusBadge';
 import { EnterpriseLifecycleEditor } from '@/components/enterprise/EnterpriseLifecycleEditor';
+import { BoreholeSupervisionForm } from '@/components/enterprise/BoreholeSupervisionForm';
+import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSchema';
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
 import { useEnterpriseLifecycle } from '@/lib/enterprises';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
@@ -120,7 +122,7 @@ export function EnterpriseDetailPage() {
   // `replace: true` keeps tab switches out of browser history so the back
   // button still returns to the previous *page*, not the previous tab.
   const [searchParams, setSearchParams] = useSearchParams();
-  const allowedTabs = ['details', 'progress', 'esmp', 'm1', 'history'] as const;
+  const allowedTabs = ['details', 'progress', 'esmp', 'borehole', 'm1', 'history'] as const;
   type TabId = (typeof allowedTabs)[number];
   const tabFromUrl = searchParams.get('tab');
   const currentTab: TabId = (allowedTabs as readonly string[]).includes(tabFromUrl ?? '')
@@ -275,6 +277,7 @@ export function EnterpriseDetailPage() {
           <TabsTrigger value="progress">Progress</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="esmp">ESMP</TabsTrigger>
+          <TabsTrigger value="borehole">Borehole</TabsTrigger>
           <TabsTrigger value="m1">Milestone 1</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
@@ -1131,6 +1134,13 @@ export function EnterpriseDetailPage() {
               </CardContent>
             )}
           </Card>
+        </TabsContent>
+
+        <TabsContent value="borehole" className="space-y-4">
+          <BoreholeSupervisionForm
+            enterpriseId={enterprise.id}
+            initial={(enterprise.borehole_supervision as unknown as BoreholeSupervisionResponses | null) ?? null}
+          />
         </TabsContent>
 
         <TabsContent value="m1" className="space-y-4">
