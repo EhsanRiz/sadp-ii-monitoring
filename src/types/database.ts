@@ -868,6 +868,28 @@ export interface Database {
       current_user_role: { Args: Record<string, never>; Returns: AppRole | null };
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
       generate_period_report: { Args: { p_start: string; p_end: string; p_org_id: string | null }; Returns: Json };
+      user_admin_list: { Args: Record<string, never>; Returns: Array<{
+        id: string;
+        email: string | null;
+        full_name: string;
+        phone: string | null;
+        role: string;
+        organization_id: string | null;
+        organization_name: string | null;
+        is_active: boolean;
+        created_at: string | null;
+        last_sign_in_at: string | null;
+        sign_in_count_total: number;
+        sign_in_count_30d: number;
+        failed_30d: number;
+      }> };
+      user_login_history: { Args: { p_user_id: string }; Returns: Array<{
+        kind: 'login' | 'failed';
+        email: string;
+        ip: string | null;
+        occurred_at: string;
+      }> };
+      log_failed_login: { Args: { p_email: string }; Returns: undefined };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

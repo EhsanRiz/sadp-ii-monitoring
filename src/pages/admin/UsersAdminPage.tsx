@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOrganizations } from '@/lib/catalogs';
 import { useAuth } from '@/lib/auth';
@@ -27,11 +27,18 @@ const ROLE_LABEL: Record<AppRole, string> = {
 
 interface UserProfile {
   id: string;
+  email: string | null;
   full_name: string;
   role: AppRole;
   organization_id: string | null;
+  organization_name: string | null;
   phone: string | null;
   is_active: boolean;
+  created_at: string | null;
+  last_sign_in_at: string | null;
+  sign_in_count_total: number;
+  sign_in_count_30d: number;
+  failed_30d: number;
 }
 
 export function UsersAdminPage() {
@@ -40,14 +47,11 @@ export function UsersAdminPage() {
   const qc = useQueryClient();
 
   const users = useQuery({
-    queryKey: ['user_profiles'],
+    queryKey: ['user_admin_list'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data, error } = await supabase.rpc('user_admin_list');
       if (error) throw error;
-      return (data ?? []) as UserProfile[];
+      return (data ?? []) as unknown as UserProfile[];
     },
   });
 
@@ -90,7 +94,7 @@ export function UsersAdminPage() {
       setSuccess(`Invitation sent to ${email}. They'll receive a sign-up link by email.`);
       setEmail(''); setFullName(''); setPhone('');
       setRole(undefined); setOrganizationId(undefined);
-      qc.invalidateQueries({ queryKey: ['user_profiles'] });
+      qc.invalidateQueries({ queryKey: ['user_admin_list'] });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -111,7 +115,7 @@ export function UsersAdminPage() {
     onSuccess: (_, vars) => {
       const action = (vars as { action: string }).action;
       toast.success(actionToast(action));
-      qc.invalidateQueries({ queryKey: ['user_profiles'] });
+      qc.invalidateQueries({ queryKey: ['user_admin_list'] });
       setRoleDialog(null); setOrgDialog(null); setConfirmDialog(null);
     },
     onError: (e: Error) => toast.error('Action failed', { description: e.message }),
@@ -122,6 +126,7 @@ export function UsersAdminPage() {
   const [orgDialog, setOrgDialog] = useState<UserProfile | null>(null);
   const [newOrg, setNewOrg] = useState<string | undefined>(undefined);
   const [confirmDialog, setConfirmDialog] = useState<{ user: UserProfile; action: 'delete' | 'deactivate' | 'reactivate' | 'resend_invite' | 'reset_password' } | null>(null);
+  const [activityUser, setActivityUser] = useState<UserProfile | null>(null);
 
   return (
     <div className="space-y-6">
@@ -200,6 +205,7 @@ export function UsersAdminPage() {
                   <th className="py-2 pr-4">Organization</th>
                   <th className="py-2 pr-4">Phone</th>
                   <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Last seen</th>
                   <th className="py-2 text-right">Actions</th>
                 </tr>
               </thead>
@@ -215,16 +221,20 @@ export function UsersAdminPage() {
                       <td className="py-2 pr-4">
                         <Badge variant={u.is_active ? 'default' : 'destructive'}>{u.is_active ? 'active' : 'disabled'}</Badge>
                       </td>
+                      <td className="py-2 pr-4"><LastSeenCell u={u} /></td>
                       <td className="py-2">
-                        <div className="flex justify-end gap-1 flex-wrap">
+                        <div className="flex justify-end gap-1 items-center">
                           <Button size="sm" variant="ghost" onClick={() => { setRoleDialog(u); setNewRole(u.role); }}>Role</Button>
-                          <Button size="sm" variant="ghost" onClick={() => { setOrgDialog(u); setNewOrg(u.organization_id ?? undefined); }}>Org</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setConfirmDialog({ user: u, action: 'resend_invite' })}>Resend invite</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setConfirmDialog({ user: u, action: 'reset_password' })}>Reset pwd</Button>
                           {u.is_active
                             ? <Button size="sm" variant="ghost" disabled={isSelf} onClick={() => setConfirmDialog({ user: u, action: 'deactivate' })}>Deactivate</Button>
                             : <Button size="sm" variant="ghost" onClick={() => setConfirmDialog({ user: u, action: 'reactivate' })}>Reactivate</Button>}
                           <Button size="sm" variant="ghost" className="text-destructive" disabled={isSelf} onClick={() => setConfirmDialog({ user: u, action: 'delete' })}>Delete</Button>
+                          <KebabMenu
+                            onActivity={() => setActivityUser(u)}
+                            onChangeOrg={() => { setOrgDialog(u); setNewOrg(u.organization_id ?? undefined); }}
+                            onResendInvite={() => setConfirmDialog({ user: u, action: 'resend_invite' })}
+                            onResetPassword={() => setConfirmDialog({ user: u, action: 'reset_password' })}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -299,6 +309,7 @@ export function UsersAdminPage() {
           </div>
         </ModalCard>
       )}
+      <ActivitySheet user={activityUser} onClose={() => setActivityUser(null)} />
     </div>
   );
 }
@@ -353,6 +364,183 @@ function ModalCard({ title, children, onClose }: { title: string; children: Reac
         <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
         <CardContent>{children}</CardContent>
       </Card>
+    </div>
+  );
+}
+
+
+// ============================================================================
+// Helper components — Last-seen cell, Kebab menu, Activity sheet
+// ============================================================================
+
+function fmtRelative(iso: string | null): string {
+  if (!iso) return 'never';
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const dMs = now - then;
+  const dMin = Math.floor(dMs / 60000);
+  if (dMin < 1) return 'just now';
+  if (dMin < 60) return `${dMin} min ago`;
+  const dH = Math.floor(dMin / 60);
+  if (dH < 24) return `${dH} hr ago`;
+  const dD = Math.floor(dH / 24);
+  if (dD < 30) return `${dD} day${dD === 1 ? '' : 's'} ago`;
+  const dMo = Math.floor(dD / 30);
+  if (dMo < 12) return `${dMo} mo ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function recencyTone(iso: string | null): string {
+  if (!iso) return 'text-muted-foreground';
+  const dH = (Date.now() - new Date(iso).getTime()) / 3_600_000;
+  if (dH < 24)        return 'text-success';
+  if (dH < 24 * 7)    return 'text-warning';
+  if (dH < 24 * 30)   return 'text-muted-foreground';
+  return 'text-destructive';
+}
+
+function LastSeenCell({ u }: { u: UserProfile }) {
+  const tone = recencyTone(u.last_sign_in_at);
+  const label = u.last_sign_in_at ? fmtRelative(u.last_sign_in_at)
+              : (u.sign_in_count_total === 0 ? 'never' : '—');
+  return (
+    <div className="text-xs">
+      <div className={tone + ' font-medium'}>{label}</div>
+      <div className="text-muted-foreground">
+        {u.sign_in_count_30d}× in 30d
+        {u.failed_30d > 0 && <span className="text-destructive"> · {u.failed_30d} failed</span>}
+      </div>
+    </div>
+  );
+}
+
+function KebabMenu({
+  onActivity, onChangeOrg, onResendInvite, onResetPassword,
+}: {
+  onActivity: () => void;
+  onChangeOrg: () => void;
+  onResendInvite: () => void;
+  onResetPassword: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}
+              aria-label="More actions">⋯</Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 min-w-[180px] rounded-md border bg-popover shadow-md z-20 py-1 text-sm">
+          <MenuItem onClick={() => { setOpen(false); onActivity(); }}>View activity</MenuItem>
+          <MenuItem onClick={() => { setOpen(false); onChangeOrg(); }}>Change organization</MenuItem>
+          <MenuItem onClick={() => { setOpen(false); onResendInvite(); }}>Resend invite</MenuItem>
+          <MenuItem onClick={() => { setOpen(false); onResetPassword(); }}>Reset password</MenuItem>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      className="block w-full text-left px-3 py-1.5 hover:bg-accent hover:text-accent-foreground transition-colors"
+      onClick={onClick}
+    >{children}</button>
+  );
+}
+
+interface LoginEvent {
+  kind: 'login' | 'failed';
+  email: string;
+  ip: string | null;
+  occurred_at: string;
+}
+
+function ActivitySheet({ user, onClose }: { user: UserProfile | null; onClose: () => void }) {
+  const open = !!user;
+  const history = useQuery({
+    queryKey: ['user_login_history', user?.id],
+    enabled: open,
+    queryFn: async (): Promise<LoginEvent[]> => {
+      const { data, error } = await supabase.rpc('user_login_history', { p_user_id: user!.id });
+      if (error) throw error;
+      return (data ?? []) as unknown as LoginEvent[];
+    },
+  });
+
+  if (!open) return null;
+  const u = user!;
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <aside className="fixed top-0 right-0 h-screen w-full max-w-md bg-background border-l z-50 shadow-xl flex flex-col">
+        <div className="p-5 border-b">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">User activity</div>
+              <h2 className="text-lg font-semibold">{u.full_name}</h2>
+              <p className="text-xs text-muted-foreground">{u.email ?? '—'}</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <Stat label="Last seen"        value={fmtRelative(u.last_sign_in_at)} tone={recencyTone(u.last_sign_in_at)} />
+            <Stat label="Account created"  value={u.created_at ? fmtRelative(u.created_at) : '—'} />
+            <Stat label="Sign-ins (total)" value={String(u.sign_in_count_total)} />
+            <Stat label="Sign-ins (30 days)" value={String(u.sign_in_count_30d)} />
+            {u.failed_30d > 0 && (
+              <Stat label="Failed (30 days)" value={String(u.failed_30d)} tone="text-destructive" />
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Recent events (last 50)
+          </h3>
+          {history.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {history.error && (
+            <p className="text-sm text-destructive">{(history.error as Error).message}</p>
+          )}
+          {history.data && history.data.length === 0 && (
+            <p className="text-sm text-muted-foreground">No events recorded yet.</p>
+          )}
+          {history.data && history.data.length > 0 && (
+            <ol className="space-y-2 text-sm">
+              {history.data.map((e, i) => (
+                <li key={i} className="flex items-start justify-between gap-3 border-b pb-2 last:border-0">
+                  <div>
+                    <div className={'font-medium ' + (e.kind === 'failed' ? 'text-destructive' : 'text-success')}>
+                      {e.kind === 'failed' ? 'Failed sign-in' : 'Signed in'}
+                    </div>
+                    {e.ip && <div className="text-[11px] text-muted-foreground">IP {e.ip}</div>}
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div>{new Date(e.occurred_at).toLocaleString()}</div>
+                    <div>{fmtRelative(e.occurred_at)}</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-md border bg-muted/20 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={'mt-0.5 text-sm font-semibold ' + (tone ?? '')}>{value}</div>
     </div>
   );
 }

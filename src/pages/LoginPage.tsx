@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,6 +33,9 @@ export function LoginPage() {
     setSubmitting(false);
     if (err) {
       setError(err);
+      // Fire-and-forget: record the failed attempt for the user-admin activity log.
+      // We don't block the UI on this and we don't surface errors from it.
+      void supabase.rpc('log_failed_login', { p_email: email });
       return;
     }
     navigate('/dashboard', { replace: true });

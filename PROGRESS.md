@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-03 (Period Reports · Borehole tab · Hover animations · Org-scoped districts) · HEAD: `<pending>`
+Last updated: 2026-06-03 (User activity · Period Reports · Borehole tab · Hover animations) · HEAD: `<pending>`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -19,6 +19,36 @@ is here or one link away.
 | **Owner** | Ehsan Rizvi · 4D Climate Solutions · super admin of the app |
 | **Hosting** | Render Static Site, auto-redeploys on push to `main` |
 | **Stack** | Vite + React 18 + TypeScript + Tailwind + shadcn/ui PWA, backed by Supabase (Postgres + Auth + Storage + Edge Functions + RLS) |
+
+---
+
+## 2. What changed in this push
+
+**User activity tracking on the Users admin page**
+(`migration 270`,
+`src/types/database.ts`,
+`src/pages/admin/UsersAdminPage.tsx`,
+`src/pages/LoginPage.tsx`)
+
+- New "Last seen" column on the All-users table with colour-coded recency:
+  green ≤24h, amber ≤7d, gray ≤30d, red older / never. Sub-line shows
+  `5× in 30d · 2 failed`. Sorted so the most recently active user is on top.
+- Action buttons collapsed: **Role / Deactivate / Delete** stay inline; the
+  rest (Resend invite, Reset password, Change organization, View activity)
+  move into a "⋯" kebab menu. Cleaner row, easier to scan.
+- "View activity" opens a right-sliding sheet with:
+  summary tiles (Last seen, Account created, Sign-ins total, Sign-ins 30d,
+  Failed 30d) + the last 50 login events (successes and failures) with
+  timestamp + relative time.
+- New `login_events` table: a Postgres trigger on `auth.users` records every
+  successful sign-in (Supabase only updates `last_sign_in_at` on actual login,
+  not refresh — so this stays clean). Failed sign-ins are captured by a new
+  anon-callable `log_failed_login(p_email)` RPC fired from LoginPage on auth
+  error.
+- New SECURITY DEFINER RPCs `user_admin_list()` and `user_login_history(uid)`,
+  both gated to super_admin. The page now reads via these instead of querying
+  `user_profiles` directly, so it can join in `auth.users.last_sign_in_at`
+  without us exposing the auth schema.
 
 ---
 
@@ -51,6 +81,36 @@ is here or one link away.
   Excel via SheetJS with sheets: Summary, Matrix, NewEnterprises, Appendix.
 - Period picker auto-suggests the just-closed period (e.g. on June 3 it
   defaults Monthly to May 2026, Quarterly to Q1 2026).
+
+---
+
+## 2. What changed in this push
+
+**User activity tracking on the Users admin page**
+(`migration 270`,
+`src/types/database.ts`,
+`src/pages/admin/UsersAdminPage.tsx`,
+`src/pages/LoginPage.tsx`)
+
+- New "Last seen" column on the All-users table with colour-coded recency:
+  green ≤24h, amber ≤7d, gray ≤30d, red older / never. Sub-line shows
+  `5× in 30d · 2 failed`. Sorted so the most recently active user is on top.
+- Action buttons collapsed: **Role / Deactivate / Delete** stay inline; the
+  rest (Resend invite, Reset password, Change organization, View activity)
+  move into a "⋯" kebab menu. Cleaner row, easier to scan.
+- "View activity" opens a right-sliding sheet with:
+  summary tiles (Last seen, Account created, Sign-ins total, Sign-ins 30d,
+  Failed 30d) + the last 50 login events (successes and failures) with
+  timestamp + relative time.
+- New `login_events` table: a Postgres trigger on `auth.users` records every
+  successful sign-in (Supabase only updates `last_sign_in_at` on actual login,
+  not refresh — so this stays clean). Failed sign-ins are captured by a new
+  anon-callable `log_failed_login(p_email)` RPC fired from LoginPage on auth
+  error.
+- New SECURITY DEFINER RPCs `user_admin_list()` and `user_login_history(uid)`,
+  both gated to super_admin. The page now reads via these instead of querying
+  `user_profiles` directly, so it can join in `auth.users.last_sign_in_at`
+  without us exposing the auth schema.
 
 ---
 
