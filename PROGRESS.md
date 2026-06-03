@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-03 (M1 complete · User management · Branded emails) · HEAD: `eaa9669`
+Last updated: 2026-06-03 (M1 complete · User management · Auth set-password flow) · HEAD: `9df3c8e`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -306,6 +306,64 @@ strip. Personalised via `{{ .Data.full_name }}` (populated by `invite-user`
 edge function in user_metadata). Email-client-safe (table layout + inline
 CSS). Pasted into Supabase Dashboard → Auth → Templates.
 
+### Set-password flow for invites + recovery ✅ (commit `9df3c8e`) — 2026-06-03
+Gap surfaced during a live test: invited users were landing on the
+dashboard auto-signed-in but never got a chance to set a password — they
+could never sign back in afterwards because they didn't know any
+password. Same gap existed for the recovery flow.
+
+**New flow** (works for both invite and recovery email links):
+1. User clicks email link → app loads with `#access_token=...&type=invite|recovery`.
+2. `src/lib/initial-url.ts` snapshots the hash SYNCHRONOUSLY at module
+   load (imported first in `main.tsx`, **before** supabase-js clears it).
+3. `App.tsx` mounts, top-level effect redirects to `/set-password` when
+   `INITIAL_URL_TYPE` is non-null.
+4. `SetPasswordPage` shows welcome + new-password + confirm-password
+   fields. Copy adapts: 'Welcome — set your password' for invite,
+   'Reset your password' for recovery.
+5. Submit calls `supabase.auth.updateUser({ password })`.
+6. On success: signs the user OUT and navigates to
+   `/login?passwordSet=1`.
+7. `LoginPage` shows a green success banner; user signs in with email +
+   the password they just chose.
+
+**Backend changes**:
+- `invite-user` edge function: new optional `redirect_to` body parameter.
+  When passed, it's forwarded to `inviteUserByEmail` as `redirectTo` so
+  the invite link lands directly on `/set-password` (instead of Supabase's
+  Site URL default).
+- Deployed under fresh slug **`invite-user-v2`** per the stuck-slug
+  pattern — the original v1 slot's redeploy was rejected with
+  `import map path does not exist`. Frontend (`UsersAdminPage`) now
+  invokes `invite-user-v2`. The original `invite-user` slug stays
+  deployed but is no longer called.
+- `lib/auth.tsx` `sendPasswordReset`: `redirectTo` flipped from
+  `/reset-password` (the request-email page — confusing name!) to
+  `/set-password` (the page that actually sets the new password).
+
+**Template fix (same commit)**:
+`email-templates/invite.html` — removed the bullet "Track 273+ enterprises
+across both partner organisations". That copy is only true for
+super_admins (cross-org view); field_supervisor / me_officer /
+team_leader only see their own org. Replaced with role-neutral "Manage
+enterprises through their full lifecycle".
+
+**Caveat**: the corrected `invite.html` is in git, but the deployed
+email won't use it until the HTML is pasted into Supabase Dashboard →
+Auth → Email Templates → Invite user → Save. Supabase doesn't auto-pull
+templates from the repo.
+
+### Dashboard: org name fix ✅ (commit `d11c282`) — 2026-06-03
+Non-super-admin users were seeing the section header `"Your org"` on
+the dashboard regardless of which org they belonged to. Now reads the
+actual org code + name — e.g. `"4D — 4D Climate Solutions"` — by
+looking up the user's `organization_id` from `useAuth()` against
+`useOrganizations()`.
+
+No data-scope change: RLS already scopes non-super-admin queries to
+their own org, so passing `organizationId` vs `null` to the underlying
+query is equivalent. Pure presentation fix.
+
 ### Enterprise lifecycle tracker (11 milestones) ✅ — added 2026-05-27
 Adopts the column structure RSDA uses on their Master Sheet so 4D + RSDA share
 one tracking vocabulary. Replaces the old 5-dot progress strip + 4 stat cards.
@@ -432,6 +490,9 @@ migration; just three INSERT batches.
 ## 3. Recent commits (most recent first)
 
 ```
+9df3c8e  feat(auth): set-password flow for invitees + recovery (invite-user-v2 + corrected invite.html)
+d11c282  ux(dashboard): show actual org name for non-super-admin users
+58b956b  docs: refresh PROGRESS.md + commit branded email templates
 eaa9669  feat(users): full user management — change role / org / resend / reset / deactivate / delete
 86bd404  Update m1.ts (frontend → extract-m1-binder-v2)
 568aad9  feat(history): expand to full enterprise timeline (what / when / who)
@@ -524,15 +585,24 @@ to an internal error"** indefinitely. The slot is poisoned.
 update the frontend hook. Earlier slugs stay deployed (they still work — they
 just can't be updated).
 
-**Active slugs as of HEAD `74b499f`:**
-- `invite-user` — Phase 1, never re-deployed.
+**Active slugs as of HEAD `9df3c8e`:**
+- `invite-user-v2` — current invite endpoint. Accepts `redirect_to` for
+  the set-password flow. `invite-user` (v1) stays deployed but is no
+  longer called (its redeploy was rejected with `import map path does
+  not exist` — classic stuck slot).
+- `manage-user-v1` — change role / org / resend / reset / deactivate /
+  delete (deployed via MCP on 2026-06-03; source committed in repo).
 - `extract-esmp-pdf-v4` — current ESSF/EMMP extractor. `-v1/-v2/-v3` stale.
-- `extract-m1-pdf-v3` — current M1 extractor. `-v1` (over-pulled supporting
-  docs) and `-v2` (scope fixed, column mapping unclear) stale.
+- `extract-m1-pdf-v4` — current M1-only extractor.
+- `extract-m1-binder-v2` — current full-binder extractor (cover + ESSF
+  + EMMP + Inspection + M1). v1 returned 16 empty FR shells for Hansen;
+  v2 ports the detailed FR prompt from `extract-m1-pdf-v4` AND adds a
+  defensive post-processing filter. v2 source is **only in Supabase**,
+  not in git — to regenerate, take v1's source and replace the FR prompt
+  block per the pattern in extract-m1-pdf-v4.
 
-When you add Phase 3b's supporting-docs extraction (or a future v4 for M1
-that also covers Financial Report + Bank Reconciliation), assume the next
-deploy needs a fresh suffix.
+When you add a future re-deploy, assume the next slug needs a fresh
+suffix.
 
 ---
 
@@ -672,19 +742,29 @@ SETUP.md                                      # new-machine bootstrap
   inline-URL push and has appeared in many bash command outputs. Replace
   with `gh auth login` for future pushes.
 
-**M1 Phase 3b — pending build:**
-- Supporting documents uploader (multi-file, kind-tagged — schema +
-  `m1-supporting-docs` bucket already exist). Per-doc original_filename is
-  preserved (unlike the ESMP single-PDF flow).
-- Embed supporting docs at the back of `m1.pdf` (by reference / thumbnails)
-  + compendium of ESSF / EMMP / most-recent Inspection.
+**Email template paste (do FIRST after this session):**
+- Paste the updated `email-templates/invite.html` into Supabase Dashboard
+  → Auth → Email Templates → Invite user → Save. Removes the
+  super-admin-only "Track 273+ enterprises across both partner
+  organisations" bullet (replaced with role-neutral copy). Supabase
+  doesn't auto-pull from git — until pasted, delivered emails still
+  carry the old bullet.
 
 **Optional M1 follow-up:**
-- `extract-m1-pdf-v4` with prompt to also extract Financial Report +
-  Bank Reconciliation. Currently only narrative + cashbook are auto-imported.
 - Wire `computeBudgetBalances` to the Financial Report's `total_planned` per
   budget code so the Budget Balance column in cashbook actually populates
   (currently blank by design — matches paper template).
+- Commit `extract-m1-binder-v2` source to git
+  (`supabase/functions/extract-m1-binder-v2/`). Currently the deployed
+  version is in Supabase only — see §6 stuck-slug note.
+
+**Phase 4 — Business Plan module (future):**
+- Phase 3 farmer BPs are done externally; Phase 4 BPs will need an
+  in-app module. Structure documented in memory `sadp-bp-structure.md`
+  for the next session — 7 numbered sections (Executive Summary,
+  Company Overview, Production/Operating, Market Overview, Sales Plan,
+  Management Plan, Financial Plan) + Validation block. ~2× the M1
+  module's size.
 
 **Testing leftovers from earlier sessions:**
 - Verify the 5-dot progress strip on the enterprise list reads cleanly
@@ -720,14 +800,19 @@ SETUP.md                                      # new-machine bootstrap
 ## 10. How to onboard a fresh Claude session
 
 > "Read PROGRESS.md top-to-bottom and continue from where the last session
-> left off. As of commit `74b499f`, M1 Phase 1 / 2.1 / 2.2 / 2.3 / 3a are all
-> live; Phase 3b (supporting documents uploader) is next. The current edge
-> function slugs are `extract-esmp-pdf-v4` and `extract-m1-pdf-v3` — any
-> new extractor or re-deploy needs a fresh suffix per the §6 stuck-slug
-> pattern. The PAT used in earlier commits is compromised — use
-> `gh auth login` for pushes from this machine."
+> left off. As of commit `9df3c8e`, the app is feature-complete for
+> Phase 3 — M1 module (all phases), Backfill from M1 binder, enterprise
+> timeline / History, full user management, branded emails, and the
+> set-password flow for invitees + recovery. Phase 4 (Business Plan
+> module) is the next major build. The current edge function slugs are
+> `extract-esmp-pdf-v4`, `extract-m1-pdf-v4`, `extract-m1-binder-v2`,
+> `invite-user-v2`, and `manage-user-v1` — any new extractor or
+> re-deploy needs a fresh suffix per the §6 stuck-slug pattern. The PAT
+> used in earlier commits is compromised — use `gh auth login` for
+> pushes from this machine."
 
 Claude will absorb the architecture decisions (3-table ESMP, item.id key
 scheme, no-self-approval, computed-status views, cashbook column mapping,
-DD/MM/YYYY date inputs, stuck-slug edge function workaround) without
-needing them re-explained.
+DD/MM/YYYY date inputs, stuck-slug edge function workaround,
+backfill = Option B, Progress tab first, history aggregated via SQL
+view) without needing them re-explained.
