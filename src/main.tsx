@@ -1,3 +1,9 @@
+// IMPORTANT: import order matters. `./lib/initial-url` snapshots the URL hash
+// synchronously at module-load time. It must run BEFORE `./lib/supabase` is
+// loaded (transitively via auth.tsx) so we capture `#access_token=...&type=invite`
+// before supabase-js's `detectSessionInUrl: true` clears the hash.
+import './lib/initial-url';
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

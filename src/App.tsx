@@ -1,10 +1,13 @@
-import { Route, Routes, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { RoleGate } from '@/components/RoleGate';
 import { AppShell } from '@/components/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
+import { SetPasswordPage } from '@/pages/SetPasswordPage';
 import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
+import { INITIAL_URL_TYPE } from '@/lib/initial-url';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { EnterprisesListPage } from '@/pages/enterprises/EnterprisesListPage';
 import { EnterpriseDetailPage } from '@/pages/enterprises/EnterpriseDetailPage';
@@ -34,6 +37,20 @@ import { EnterpriseTypesAdminPage } from '@/pages/admin/EnterpriseTypesAdminPage
  * Admin section is super-admin-only; non-admins land directly on /dashboard.
  */
 export default function App() {
+  // If the page loaded from an invite or recovery email link (captured by
+  // src/lib/initial-url.ts BEFORE supabase-js clears the hash), redirect
+  // once to /set-password so the user can choose a password before doing
+  // anything else.
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (INITIAL_URL_TYPE && location.pathname !== '/set-password') {
+      navigate('/set-password', { replace: true });
+    }
+    // run once on mount — INITIAL_URL_TYPE is a module constant
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       <Toaster
@@ -45,6 +62,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/set-password" element={<SetPasswordPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
       {/* Authenticated routes — anyone signed-in */}

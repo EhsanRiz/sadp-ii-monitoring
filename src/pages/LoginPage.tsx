@@ -1,16 +1,19 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate, useLocation, useNavigate, Link } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Logo } from '@/components/Logo';
+import { CheckCircle2 } from 'lucide-react';
 
 export function LoginPage() {
   const { user, signIn, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const passwordJustSet = searchParams.get('passwordSet') === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,15 @@ export function LoginPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {passwordJustSet && (
+            <div className="mb-4 flex items-start gap-2 rounded-md border border-success/40 bg-success/5 p-3 text-sm">
+              <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
+              <p>
+                <strong>Password set.</strong> Sign in below with your email and the
+                password you just chose.
+              </p>
+            </div>
+          )}
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

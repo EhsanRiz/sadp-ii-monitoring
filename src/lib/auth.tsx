@@ -84,8 +84,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendPasswordReset = useCallback(async (email: string) => {
+    // After the user clicks the recovery link they land on /set-password
+    // (not /reset-password — that page is for REQUESTING the reset email).
+    // /set-password reads the type=recovery flag from the URL hash via
+    // src/lib/initial-url.ts and shows the "set new password" UI.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}/set-password`,
     });
     return error ? { error: error.message } : {};
   }, []);

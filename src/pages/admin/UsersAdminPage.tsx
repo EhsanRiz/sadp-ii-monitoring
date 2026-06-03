@@ -68,13 +68,19 @@ export function UsersAdminPage() {
       if (role !== 'super_admin' && !organizationId) {
         throw new Error('Pick an organization for non-Super-Admin roles.');
       }
-      const { data, error: err } = await supabase.functions.invoke('invite-user', {
+      // -v2 slug per the stuck-slug pattern; v1 (original) doesn't accept the
+      // redirect_to parameter and would silently fall back to Site URL.
+      const { data, error: err } = await supabase.functions.invoke('invite-user-v2', {
         body: {
           email: email.trim(),
           full_name: fullName.trim(),
           phone: phone.trim() || null,
           role,
           organization_id: role === 'super_admin' ? null : organizationId,
+          // Force the invite link to land on /set-password, not the
+          // Supabase default Site URL, so invitees go directly to the
+          // welcome+password-setup screen.
+          redirect_to: `${window.location.origin}/set-password`,
         },
       });
       if (err) throw err;
