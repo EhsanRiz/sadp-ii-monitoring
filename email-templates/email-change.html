@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm your new email — SADP-II Monitoring</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#f4f6f4;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+
+          <tr>
+            <td style="background-color:#006838;padding:28px 32px;text-align:left;">
+              <div style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.3px;line-height:1.2;">
+                SADP-II Monitoring
+              </div>
+              <div style="color:#8DC63F;font-size:12px;font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-top:4px;">
+                4D Climate Solutions
+              </div>
+            </td>
+          </tr>
+
+          <tr><td style="background-color:#8DC63F;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:40px 40px 24px 40px;">
+              <h1 style="margin:0 0 16px 0;color:#1a1a1a;font-size:24px;font-weight:700;line-height:1.3;letter-spacing:-0.4px;">
+                Confirm your new email address
+              </h1>
+              <p style="margin:0 0 20px 0;color:#3a3a3a;font-size:16px;line-height:1.6;">
+                Hello {{ .Data.full_name }},
+              </p>
+              <p style="margin:0 0 28px 0;color:#3a3a3a;font-size:16px;line-height:1.6;">
+                You're updating the email on your SADP-II Monitoring account to
+                <strong>{{ .NewEmail }}</strong>. Click below to verify ownership and
+                complete the change.
+              </p>
+
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 28px auto;">
+                <tr>
+                  <td style="background-color:#006838;border-radius:8px;">
+                    <a href="{{ .ConfirmationURL }}"
+                       style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;letter-spacing:0.2px;">
+                      Confirm new email
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 8px 0;color:#6a6a6a;font-size:13px;line-height:1.5;">
+                Or copy &amp; paste this link:
+              </p>
+              <p style="margin:0 0 24px 0;color:#006838;font-size:13px;line-height:1.5;word-break:break-all;">
+                <a href="{{ .ConfirmationURL }}" style="color:#006838;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 40px 32px 40px;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#fff8e6;border-left:4px solid #f59e0b;border-radius:6px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0;color:#3a3a3a;font-size:13px;line-height:1.6;">
+                      <strong>Didn't request this change?</strong> Your old email
+                      remains active. Please contact your administrator immediately if
+                      you didn't initiate this.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 40px 32px 40px;border-top:1px solid #eaecea;">
+              <p style="margin:16px 0 0 0;color:#9a9a9a;font-size:12px;line-height:1.6;">
+                Sent by SADP-II Monitoring · 4D Climate Solutions ·
+                <a href="https://4dcs.co.za" style="color:#006838;text-decoration:none;">4dcs.co.za</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

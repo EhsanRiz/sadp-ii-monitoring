@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-05-27 (RSDA data loaded · 273 enterprises) · HEAD: `f458c86`
+Last updated: 2026-06-03 (M1 complete · User management · Branded emails) · HEAD: `eaa9669`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -88,7 +88,7 @@ is here or one link away.
   before submitting"** banner with Claude's confidence notes.
 - **Anthropic API key** is stored as a Supabase secret named `ANTHROPIC_API_KEY`.
 
-### Phase 3 — Milestone 1 module 🟡 (Phases 1, 2.1, 2.2, 2.3, 3a ✅ · Phase 3b ⏳)
+### Phase 3 — Milestone 1 module ✅ COMPLETE (Phases 1, 2.1, 2.2, 2.3, 3a, 3b all live)
 
 The full M1 schema was designed up-front in migration `180` so subsequent
 phases add UI only — no further table migrations needed (except migration
@@ -150,33 +150,161 @@ phases add UI only — no further table migrations needed (except migration
 - Bottom callout flips green/check ↔ red/alert as unexplained-differences
   approaches 0.
 
-**Phase 3a ✅ — Source PDF + auto-extraction**
-- File-card UI on the M1 tab in EnterpriseDetailPage: upload, replace, or
-  **Remove** the source M1 PDF. Same Remove pattern exists for ESMP source
-  PDFs (deletes file + clears `enterprises.esmp_uploaded_pdf_url`).
-- Edge function: **`extract-m1-pdf-v3`** (active; `-v1` over-pulled from bank
-  statements; `-v2` scoped to cashbook page only; `-v3` adds explicit
-  column-to-field mapping — see §4 Architecture decisions for the mapping
-  table).
+**Phase 3a ✅ — Source PDF + auto-extraction (extract-m1-pdf-v4)**
+- File-card UI on the M1 tab: upload, replace, or **Remove** the source PDF.
+- Edge function **`extract-m1-pdf-v4`** is current (active). Slug history:
+  v1 over-pulled from bank statements; v2 scoped to cashbook; v3 added column
+  mapping; **v4** adds rotation-aware cashbook reading, strict no-reconstruction
+  (zero entries + note if cashbook unreadable), scale-check (`prior_balance +
+  credit − debit == next_balance`), AND extends to Financial Report + Bank
+  Reconciliation.
+- **Cashbook UX fixes (commit `414af81`)**: Date column 8→10% (was clipping
+  the year — caused AVAILS extraction to look broken when actually it had
+  2024 typos hidden), Credit/Debit 8→10% (was clipping 6-digit amounts).
+  New `isOutOfPeriod()` helper — amber row tint + warning badge for rows
+  whose date sits outside the M1 reporting period, summary banner in card
+  header.
 - Writes draft `m1_submissions` stamped with `imported_from_pdf_path` /
   `imported_at` / `import_notes`. Refuses approved (409).
-- **Discard draft** button on M1EditPage (destructive style) wipes all four
-  jsonb form columns + clears `imported_from_pdf_path` / `imported_at` /
-  `import_notes`, sets status='draft'. Source PDF, period dates, and
-  submitted/approved timestamps are KEPT for context.
-- M1EditPage shows the amber "Auto-imported from PDF — please review" banner
-  matching ESSF/EMMP treatment.
+- **Discard draft** button wipes all four jsonb columns + clears import
+  stamps. Source PDF, period dates, signoff timestamps are KEPT.
 
-**Phase 3b ⏳ — pending build:**
-- Supporting documents uploader: multi-file, kind-tagged (bank_statement /
-  transaction_history / invoice / receipt / audit_trail / contract / other).
-  Schema + bucket already in place.
-- (Optional) `extract-m1-pdf-v4` that also extracts Financial Report + Bank
-  Reconciliation. Schema is in place; just needs prompt updates.
-- Embed supporting docs at the back of `m1.pdf` + compendium of ESSF / EMMP
-  / most-recent Inspection at the end.
+**Phase 3b ✅ — Supporting docs + Compendium pages (commits `0a2037f`, `7735875`)**
+- **Supporting documents uploader** on the M1 Supporting Docs tab:
+  multi-file with kind tag (bank_statement / transaction_history / invoice /
+  receipt / audit_trail / contract / other), batch upload (kind + notes apply
+  to all files in one Add files action), per-row retag/notes/remove,
+  read-only when M1 approved. Hooks: `useM1SupportingDocs` /
+  `useUploadM1SupportingDoc` / `useUpdateM1SupportingDoc` /
+  `useRemoveM1SupportingDoc` / `openM1SupportingDoc` (short-lived signed URL).
+- **Compendium pages at the back of `m1.pdf`** (621-line addition). Four
+  OPTIONAL pages, silently skipped if source data missing:
+    1. Supporting Documents Index — table grouped by kind with filename /
+       size / upload date / notes.
+    2. ESSF compendium — one-page summary of the APPROVED ESSF:
+       site-sensitivity ratings + tally, completeness Y/N/NA counts,
+       checklist Y/N counts, certification signatures.
+    3. EMMP compendium — template name + version + approval dates +
+       response-coverage count.
+    4. Inspection compendium — most-recent visit's overall compliance
+       tally, per-phase C/N-C/PC/NA counts, inspector notes.
 
-**Business plan**: deferred. M1 works standalone without a separate BP module.
+**Business plan**: deferred. Phase 3 farmer BPs were done externally; Phase 4
+BP module would be a separate build later.
+
+### M1 Binder Backfill ✅ (commits `00294f1` + binder v2 fix)
+Option B from architecture decisions — for enterprises where the M1 binder
+already exists with cover + ESSF + EMMP + Inspection + M1 stapled into one
+PDF. Forward-going per-module flows are wasteful for legacy data.
+
+**Entry point**: Enterprise detail → Progress tab → **"Backfill from M1
+binder"** card. Upload one PDF → click "Backfill from binder" → confirm
+→ calls edge function → drafts written across all 4 submission tables.
+
+**Edge function progression**:
+- **`extract-m1-binder-v1`** (initial deploy, commit `00294f1`) — cover +
+  ESSF + EMMP + Inspection + M1 all in one Claude pass. 409 on any
+  already-approved section. Drafts only; never auto-approves.
+- **`extract-m1-binder-v2`** (current; deployed via MCP 2026-06-02) —
+  fixes the Hansen FR bug: v1 returned 16 empty FR shells (Claude saw
+  page 5 but didn't transcribe per-row data because the FR prompt was
+  one terse line with `"label": "..."` placeholders). v2 ports the
+  detailed FR prompt from `extract-m1-pdf-v4` AND adds a defensive
+  post-processing filter that drops items with no label and zero money
+  values. Frontend invokes `-v2` via `useBackfillM1Binder` (commit
+  `86bd404`).
+- Source for v2 is in Supabase only (not committed to git). To
+  regenerate: take v1's source and replace the FR prompt block per the
+  pattern in `extract-m1-pdf-v4`.
+
+**Schema**: Migration `230` added `imported_from_pdf_path` / `imported_at`
+/ `import_notes` to `inspection_visits` (mirroring 170 for ESSF/EMMP).
+
+**Frontend**: `useBackfillM1Binder` hook + `BackfillBinderError` class +
+`BackfillFromBinderCard` component. Per-module flows on ESMP/M1 tabs
+unchanged — backfill is purely additive.
+
+### Enterprise timeline ✅ (commit `568aad9`)
+Per user directive: "history should capture what info was captured when
+and by who." Replaces the audit-log-only History tab with a richer
+named-event timeline aggregated from every enterprise-scoped table.
+
+**Schema** (migration `240`, security_invoker = on):
+`enterprise_timeline` view = UNION ALL across:
+- `enterprises` — created
+- `essf_submissions` — created / submitted / approved
+- `emmp_submissions` — created / submitted / approved
+- `inspection_visits` — created / submitted / approved
+- `m1_submissions` — created / submitted / approved / pdf_uploaded
+- `m1_supporting_documents` — uploaded
+
+Columns: `enterprise_id, occurred_at, category, event_type, actor_id,
+source_pdf_path, description`.
+
+**Option B** from the architecture decisions — aggregate from existing
+timestamp columns rather than adding DB triggers everywhere.
+
+**Frontend**:
+- `useEnterpriseTimeline` hook + `EnterpriseTimelineRow` type.
+- `useUserDisplayNames` hook resolves actor uuids → full names via
+  `user_profiles`, with caching.
+- History tab rewritten: card per event with category icon, action badge,
+  timestamp, actor display name, brief description.
+- Raw `audit_log` dump kept underneath as a secondary card.
+
+### User Management ✅ (commit `eaa9669`) — 2026-06-03
+Backend edge function `manage-user-v1` (deployed via Supabase MCP). Single
+endpoint dispatching on `body.action`. JWT-verified, super_admin only.
+Wraps the `auth.admin.*` calls + `user_profiles` row updates.
+
+**Actions**:
+- `delete` — `auth.admin.deleteUser`; user_profiles cascades.
+- `change_role` — UPDATE user_profiles + auth user_metadata so the
+  `custom_access_token_hook` picks up the new role on next token refresh.
+- `change_org` — same pattern.
+- `resend_invite` — `auth.admin.inviteUserByEmail` for users who lost
+  the original email.
+- `deactivate` / `reactivate` — UPDATE user_profiles.is_active + auth
+  `ban_duration` ('100y' to block / 'none' to unblock).
+- `reset_password` — `auth.admin.generateLink(type='recovery')` so the
+  user receives the standard reset email.
+
+**Safety**: super_admin cannot delete or deactivate their own account
+(self-lockout protection) — enforced in the function AND the UI buttons
+are disabled.
+
+**Frontend (UsersAdminPage)**: per-row action buttons (Role · Org ·
+Resend invite · Reset pwd · Deactivate/Reactivate · Delete) with modal
+dialogs for change-role/change-org and destructive confirms. Toast
+feedback via sonner. 'you' tag on the caller's own row.
+
+### Custom SMTP via Resend ✅ — 2026-06-03
+Permanent fix for Supabase's free-tier email rate limit (was 2 emails/hour;
+caused live demo invites to fail with 429). Configured in Supabase Dashboard
+→ Auth → SMTP Settings:
+- Host: `smtp.resend.com` port 465
+- Username: `resend`, password: Resend API key
+- Sender: `noreply@4dcs.co.za`
+- Rate limit now **30 emails/hour** (verified in auth logs:
+  `GOTRUE_RATE_LIMIT_EMAIL_SENT changed from 2/1h to 30`). Adjustable
+  higher in Dashboard → Authentication → Rate Limits.
+
+Domain `4dcs.co.za` verified in Resend with DKIM + SPF DNS records — emails
+land in inbox, not spam.
+
+### Branded email templates ✅ — 2026-06-03
+Replaced Supabase's plain default emails with 4D-branded HTML templates.
+Files committed in `email-templates/` directory:
+- `invite.html` — "You've been invited to SADP-II Monitoring"
+- `password-reset.html` — "Reset your SADP-II Monitoring password"
+- `confirm-signup.html` — "Confirm your SADP-II Monitoring account"
+- `email-change.html` — "Confirm your new email address"
+- `magic-link.html` — "Your SADP-II Monitoring sign-in link"
+
+Design: dark green `#006838` header with wordmark + lime `#8DC63F` accent
+strip. Personalised via `{{ .Data.full_name }}` (populated by `invite-user`
+edge function in user_metadata). Email-client-safe (table layout + inline
+CSS). Pasted into Supabase Dashboard → Auth → Templates.
 
 ### Enterprise lifecycle tracker (11 milestones) ✅ — added 2026-05-27
 Adopts the column structure RSDA uses on their Master Sheet so 4D + RSDA share
@@ -296,12 +424,23 @@ migration; just three INSERT batches.
   previous *page* not the previous tab.
 - Back-from-sub-form navigation: ESSF / EMMP / Inspection → ESMP tab;
   M1 edit + M1 PDF → M1 tab.
+- **Progress tab is leftmost** (commit `ef2788a`) — order: Progress ·
+  Details · ESMP · Milestone 1 · History.
 
 ---
 
 ## 3. Recent commits (most recent first)
 
 ```
+eaa9669  feat(users): full user management — change role / org / resend / reset / deactivate / delete
+86bd404  Update m1.ts (frontend → extract-m1-binder-v2)
+568aad9  feat(history): expand to full enterprise timeline (what / when / who)
+00294f1  feat: Backfill from M1 binder (Option B) — one PDF, all forms
+ef2788a  ux: Progress tab moves to the leftmost position on enterprise detail
+414af81  ux(cashbook): widen Date/Credit/Debit columns + flag out-of-period dates
+b8de19d  feat(m1-extract): v4 — rotation-aware cashbook + FR + BR extraction
+7735875  feat(m1): Phase 3b — compendium pages at back of m1.pdf
+0a2037f  feat(m1): Phase 3b — Supporting documents uploader
 e2e1fb4  fix(lifecycle): drop RSDA-style label, switch 3 milestones to manual, rebuild filters, default tab → Progress
 b35b470  feat(lifecycle): RSDA-style 11-milestone tracker
 ab9f13c  docs: refresh PROGRESS.md for M1 Phases 1/2/3a + cashbook column-mapping fixes
@@ -348,7 +487,8 @@ ade22a4  fix(pdf): ✓ ticks in ESSF sections 2 + 3 + add Certification block
 | **20/20/60 source-of-funds split** | Financial Report's per-row Beneficiary/IFAD/Grant-IDA columns are computed from Incurred via `computeFinancialSplit` — never stored, never editable. |
 | **Bank Reconciliation: Unexplained must reach 0** | `computeBRAll` reports `reconciled = |unexplained| < 0.005`. Form + PDF flip a green/red callout based on this. |
 | **DD/MM/YYYY everywhere (Lesotho format)** | Custom `DmyDateInput` component in cashbook; ISO yyyy-mm-dd stays as the storage format. Read-only displays use `formatDateDMY`. |
-| **Edge function "stuck slug" workaround** | The Supabase deploy API rejects re-deploys to a slug whose first deploy was partial/broken. Always deploy under a fresh `-vN` suffix; update the frontend hook. Current active slugs: `extract-esmp-pdf-v4`, `extract-m1-pdf-v3`. |
+| **Edge function "stuck slug" workaround** | The Supabase deploy API rejects re-deploys to a slug whose first deploy was partial/broken. Always deploy under a fresh `-vN` suffix; update the frontend hook. Current active slugs: `extract-esmp-pdf-v4`, `extract-m1-pdf-v4`, `extract-m1-binder-v2`, `manage-user-v1`. |
+| **Email infrastructure** | Custom SMTP via Resend with `4dcs.co.za` DKIM/SPF. Removes Supabase free-tier 2/hr rate limit (now 30/hr, adjustable). Branded HTML templates in `email-templates/` paste into Supabase Dashboard → Auth → Templates. |
 | **Source PDF storage paths** | ESMP: `esmp-pdfs/<enterprise_id>.pdf` (overwrites on re-upload). M1: `m1-supporting-docs/<enterprise_id>/_source.pdf`. Both private buckets, 100 MB cap. Original filenames not preserved for ESMP; preserved per-doc on M1 supporting docs. |
 | **Remove source PDF ≠ wipe draft** | Removing the source PDF just deletes the file + clears the path column. The draft data extracted from it survives — that's a separate "Discard draft" action. |
 
@@ -457,7 +597,9 @@ src/
     forms/M1CashbookFormRenderer.tsx         # + DmyDateInput component
     forms/M1FinancialReportFormRenderer.tsx
     forms/M1BankReconciliationFormRenderer.tsx
+    forms/M1SupportingDocsTab.tsx             # multi-file uploader, kind-tagged
     enterprise/EnterpriseLifecycleEditor.tsx  # 11-milestone Progress-tab editor
+    enterprise/BackfillFromBinderCard.tsx     # one-PDF backfill for legacy M1
     StatusBadge.tsx
     ui/status-pill.tsx · skeleton.tsx · empty-state.tsx
   lib/
@@ -489,6 +631,8 @@ supabase/
     180_m1_milestone_one_module.sql           # m1_submissions, m1_supporting_documents, bucket, view
     190_m1_source_pdf_columns.sql             # uploaded_pdf_path + uploaded_pdf_uploaded_at on m1_submissions
     200_bump_pdf_bucket_size_limit.sql        # 50 → 100 MB on esmp-pdfs + m1-supporting-docs
+    230_inspection_visits_pdf_import_tracking.sql  # mirrors 170 for inspection_visits
+    240_enterprise_timeline_view.sql          # UNION-ALL view across 6 tables
     210_enterprise_lifecycle.sql              # lifecycle_status jsonb + enterprise_lifecycle view
     211_lifecycle_make_three_manual.sql       # contracts_signed/sadp_contributed/business_plan → manual
   seeds/
@@ -496,8 +640,11 @@ supabase/
     160_emmp_templates.sql
   functions/
     invite-user/                              # deployed
-    extract-esmp-pdf-v4/                      # deployed (current); -v1/-v2/-v3 also deployed but stale
-    extract-m1-pdf-v3/                        # deployed (current); -v1/-v2 also deployed but stale
+    manage-user-v1/                           # deployed via MCP — user management actions (source not in repo; build from frontend spec)
+    extract-esmp-pdf-v4/                      # current; v1/v2/v3 stuck
+    extract-m1-pdf-v4/                        # current; v1/v2/v3 stuck
+    extract-m1-binder-v1/                     # legacy backfill function (source in repo)
+    extract-m1-binder-v2/                     # current; FR-extraction fix (deployed via MCP — source NOT in repo, regenerate by porting extract-m1-pdf-v4's FR prompt into v1)
 
 reference_documents/
   ESMP_MAQALIKA_AGRIFARM_sample.pdf
@@ -508,6 +655,9 @@ reference_documents/
 docs/
   PHASE_1_DESIGN.md
   PHASE_1_QUICKSTART.md
+email-templates/                              # 4D-branded HTML for Supabase Auth emails
+  README.md                                   # install instructions
+  invite.html · password-reset.html · confirm-signup.html · email-change.html · magic-link.html
 PROGRESS.md                                   # this file
 SETUP.md                                      # new-machine bootstrap
 ```
