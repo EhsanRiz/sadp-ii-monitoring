@@ -48,23 +48,36 @@ function setState(next: ConnectionState) {
 }
 
 /**
- * Send a HEAD request to the Supabase health endpoint. Resolves true if the
- * request succeeds within PROBE_TIMEOUT_MS, false otherwise.
+ * Probe Supabase to confirm we can actually reach it.
+ *
+ * We hit `/rest/v1/` with the anon apikey — that's the same endpoint shape
+ * supabase-js uses for every read, so CORS + auth are guaranteed correct.
+ * Any HTTP response code below 500 counts as "reachable" (we got a network
+ * round-trip; the app would have made the call anyway).
+ *
+ * If the probe throws but navigator.onLine says we're online, we believe
+ * navigator over the probe — fetch errors here are usually CORS quirks or
+ * transient connection blips, not real outages.
  */
 async function probe(): Promise<boolean> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  if (!supabaseUrl) return navigator.onLine;
-  // The /auth/v1/health endpoint is unauthenticated and very cheap. If a
-  // future Supabase release renames or rate-limits it, we can switch to a
-  // function `ping` endpoint instead.
-  const url = `${supabaseUrl.replace(/\/$/, '')}/auth/v1/health`;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  if (!supabaseUrl) return typeof navigator === 'undefined' ? true : navigator.onLine;
+  const url = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
-    return res.ok || res.status === 405; // some health endpoints reject HEAD with 405
+    const res = await fetch(url, {
+      method: 'HEAD',
+      headers: anonKey ? { apikey: anonKey } : undefined,
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    return res.status < 500;
   } catch {
-    return false;
+    // CORS / transient / preflight failure — trust navigator.onLine instead
+    // of flipping the user to "Offline" when their network actually works.
+    return typeof navigator === 'undefined' ? true : navigator.onLine;
   } finally {
     clearTimeout(timeout);
   }
