@@ -12,6 +12,7 @@ import App from './App';
 import { AuthProvider } from './lib/auth';
 import { initOnlineStatus } from './lib/online-status';
 import { queryPersister } from './lib/query-persister';
+import { initReplay } from './lib/offline-replay';
 import './index.css';
 
 // Phase 1 of the offline stack — boot the connection probe immediately so the
@@ -38,6 +39,12 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Phase 3 — boot the offline-queue replay engine. It listens for online
+// transitions and drains the queue, dispatching each entry to the matching
+// save handler. Wires the QueryClient so successful replays can invalidate
+// the relevant caches.
+initReplay(queryClient);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

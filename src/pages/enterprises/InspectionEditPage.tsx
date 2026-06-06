@@ -38,7 +38,7 @@ export function InspectionEditPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   // "Edit" mode
-  const save = useSaveInspectionDraft(visitId ?? '');
+  const save = useSaveInspectionDraft(visitId ?? '', enterpriseId ?? null);
   const transition = useTransitionInspection(visitId ?? '', enterpriseId!);
   const [draft, setDraft] = useState<InspectionResponses>({});
   const [inspectedByEdit, setInspectedByEdit] = useState('');
@@ -211,7 +211,7 @@ export function InspectionEditPage() {
                   inspected_by_name: inspectedByEdit,
                 },
                 {
-                  onSuccess: () => toast.success('Draft saved'),
+                  onSuccess: (result) => toast.success(result.online ? 'Draft saved' : 'Saved locally — will sync when online'),
                   onError: (e: Error) => {
                     setEditError(e.message);
                     toast.error('Save failed', { description: e.message });

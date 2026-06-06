@@ -219,7 +219,7 @@ export function EssfEditPage() {
               save.mutate(
                 { responses: draft as Record<string, unknown>, filled_by: user?.id ?? null },
                 {
-                  onSuccess: () => toast.success('Draft saved'),
+                  onSuccess: (result) => toast.success(result.online ? 'Draft saved' : 'Saved locally — will sync when online'),
                   onError: (e: Error) => {
                     setError(e.message);
                     toast.error('Save failed', { description: e.message });

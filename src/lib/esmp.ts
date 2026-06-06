@@ -17,6 +17,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { AppRole } from '@/lib/auth';
+import { saveOrEnqueue, type OfflineSaveResult } from '@/lib/offline-saves';
+import {
+  applyEssfDraft,
+  applyEmmpDraft,
+  applyInspectionDraft,
+} from '@/lib/offline-replay';
 import type {
   Database,
   EmmpTemplateRow,
@@ -50,33 +56,38 @@ export function useEssfSubmission(enterpriseId: string | undefined) {
 export function useSaveEssfDraft(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { responses: Record<string, unknown>; filled_by?: string | null }) => {
-      // Upsert: try insert (if no row), else update
-      const existing = await supabase
-        .from('essf_submissions')
-        .select('id, status')
-        .eq('enterprise_id', enterpriseId)
-        .maybeSingle();
-      if (existing.error) throw existing.error;
-      if (existing.data) {
-        if (existing.data.status === 'approved') {
-          throw new Error('Cannot edit an approved ESSF. Ask an admin to reopen it.');
-        }
-        const { error } = await supabase
-          .from('essf_submissions')
-          .update({ responses: payload.responses as Database['public']['Tables']['essf_submissions']['Update']['responses'] })
-          .eq('id', existing.data.id);
-        if (error) throw error;
-      } else {
-        const insertPayload: Database['public']['Tables']['essf_submissions']['Insert'] = {
+    mutationFn: async (
+      payload: { responses: Record<string, unknown>; filled_by?: string | null },
+    ): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: 'Save ESSF draft',
+        payload: {
+          saveType: 'essf_draft',
           enterprise_id: enterpriseId,
-          responses: payload.responses as Database['public']['Tables']['essf_submissions']['Insert']['responses'],
+          responses: payload.responses,
           filled_by: payload.filled_by ?? null,
-          status: 'draft',
-        };
-        const { error } = await supabase.from('essf_submissions').insert(insertPayload);
-        if (error) throw error;
-      }
+        },
+        doSave: () =>
+          applyEssfDraft({
+            saveType: 'essf_draft',
+            enterprise_id: enterpriseId,
+            responses: payload.responses,
+            filled_by: payload.filled_by ?? null,
+          }),
+        applyOptimistic: () => {
+          // While offline, patch the cached ESSF so the form reflects the
+          // user's most recent save. The eventual replay will refresh it
+          // with the canonical server state.
+          qc.setQueryData(['essf', enterpriseId], (old: unknown) => {
+            const base = (old ?? {
+              enterprise_id: enterpriseId,
+              status: 'draft',
+              responses: {},
+            }) as Record<string, unknown>;
+            return { ...base, responses: payload.responses };
+          });
+        },
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['essf', enterpriseId] }),
   });
@@ -146,34 +157,39 @@ export function useEmmpSubmission(enterpriseId: string | undefined) {
 export function useSaveEmmpDraft(enterpriseId: string, templateId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { responses: Record<string, unknown>; filled_by?: string | null }) => {
+    mutationFn: async (
+      payload: { responses: Record<string, unknown>; filled_by?: string | null },
+    ): Promise<OfflineSaveResult> => {
       if (!templateId) throw new Error('No EMMP template selected.');
-      const existing = await supabase
-        .from('emmp_submissions')
-        .select('id, status')
-        .eq('enterprise_id', enterpriseId)
-        .maybeSingle();
-      if (existing.error) throw existing.error;
-      if (existing.data) {
-        if (existing.data.status === 'approved') {
-          throw new Error('Cannot edit an approved EMMP. Ask an admin to reopen it.');
-        }
-        const { error } = await supabase
-          .from('emmp_submissions')
-          .update({ responses: payload.responses as Database['public']['Tables']['emmp_submissions']['Update']['responses'] })
-          .eq('id', existing.data.id);
-        if (error) throw error;
-      } else {
-        const insertPayload: Database['public']['Tables']['emmp_submissions']['Insert'] = {
+      return saveOrEnqueue({
+        description: 'Save EMMP draft',
+        payload: {
+          saveType: 'emmp_draft',
           enterprise_id: enterpriseId,
           template_id: templateId,
-          responses: payload.responses as Database['public']['Tables']['emmp_submissions']['Insert']['responses'],
+          responses: payload.responses,
           filled_by: payload.filled_by ?? null,
-          status: 'draft',
-        };
-        const { error } = await supabase.from('emmp_submissions').insert(insertPayload);
-        if (error) throw error;
-      }
+        },
+        doSave: () =>
+          applyEmmpDraft({
+            saveType: 'emmp_draft',
+            enterprise_id: enterpriseId,
+            template_id: templateId,
+            responses: payload.responses,
+            filled_by: payload.filled_by ?? null,
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['emmp', enterpriseId], (old: unknown) => {
+            const base = (old ?? {
+              enterprise_id: enterpriseId,
+              template_id: templateId,
+              status: 'draft',
+              responses: {},
+            }) as Record<string, unknown>;
+            return { ...base, responses: payload.responses };
+          });
+        },
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['emmp', enterpriseId] }),
   });
@@ -267,21 +283,45 @@ export function useCreateInspection(enterpriseId: string) {
   });
 }
 
-export function useSaveInspectionDraft(visitId: string) {
+export function useSaveInspectionDraft(visitId: string, enterpriseId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
       responses: Record<string, unknown>;
       inspected_by_name?: string;
       visit_date?: string;
-    }) => {
-      const patch: Database['public']['Tables']['inspection_visits']['Update'] = {
-        responses: payload.responses as Database['public']['Tables']['inspection_visits']['Update']['responses'],
-      };
-      if (payload.inspected_by_name !== undefined) patch.inspected_by_name = payload.inspected_by_name;
-      if (payload.visit_date !== undefined) patch.visit_date = payload.visit_date;
-      const { error } = await supabase.from('inspection_visits').update(patch).eq('id', visitId);
-      if (error) throw error;
+    }): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: 'Save inspection draft',
+        payload: {
+          saveType: 'inspection_draft',
+          visit_id: visitId,
+          enterprise_id: enterpriseId ?? null,
+          responses: payload.responses,
+          inspected_by_name: payload.inspected_by_name,
+          visit_date: payload.visit_date,
+        },
+        doSave: () =>
+          applyInspectionDraft({
+            saveType: 'inspection_draft',
+            visit_id: visitId,
+            enterprise_id: enterpriseId ?? null,
+            responses: payload.responses,
+            inspected_by_name: payload.inspected_by_name,
+            visit_date: payload.visit_date,
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['inspection-visit', visitId], (old: unknown) => {
+            const base = (old ?? { id: visitId, status: 'draft' }) as Record<string, unknown>;
+            return {
+              ...base,
+              responses: payload.responses,
+              ...(payload.inspected_by_name !== undefined && { inspected_by_name: payload.inspected_by_name }),
+              ...(payload.visit_date !== undefined && { visit_date: payload.visit_date }),
+            };
+          });
+        },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inspection-visit', visitId] });
