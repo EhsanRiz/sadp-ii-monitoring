@@ -10,7 +10,12 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { AuthProvider } from './lib/auth';
+import { initOnlineStatus } from './lib/online-status';
 import './index.css';
+
+// Phase 1 of the offline stack — boot the connection probe immediately so the
+// OfflineBadge in AppShell shows accurate state on first render.
+initOnlineStatus();
 
 const queryClient = new QueryClient({
   defaultOptions: {

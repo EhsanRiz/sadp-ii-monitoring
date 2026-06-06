@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
+import { OfflineBadge } from '@/components/OfflineBadge';
 import { LogOut, LayoutDashboard, Sprout, FileBarChart, Users2, MapPin, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -69,6 +70,11 @@ export function AppShell() {
         </div>
       </aside>
       <main className="p-6 md:p-8 max-w-6xl">
+        {/* Floating connection status — visible on every authenticated page.
+            Top-right so it doesn't compete with page titles or quick actions. */}
+        <div className="flex justify-end mb-4">
+          <OfflineBadge />
+        </div>
         <Outlet />
       </main>
     </div>

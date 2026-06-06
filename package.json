@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "SADP-II Monitoring App — Progressive Web App for 4D Climate Solutions and RSDA",
+  "description": "SADP-II Monitoring App \u2014 Progressive Web App for 4D Climate Solutions and RSDA",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -28,6 +28,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "idb": "^8.0.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

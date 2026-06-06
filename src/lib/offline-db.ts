@@ -1,0 +1,245 @@
+/**
+ * IndexedDB wrapper for the offline-first stack.
+ *
+ * Two object stores in `sadp_offline` DB:
+ *
+ *   queue — pending writes that need to be replayed when the device reconnects.
+ *     One entry per attempted mutation; entries persist across browser
+ *     restarts (data lives in IndexedDB, not session memory).
+ *
+ *   cache — last-known reads, used by React Query persistence (Phase 2)
+ *     and by the "Pre-cache enterprise for offline" button.
+ *
+ * Phase 1 implements only the queue side. The cache side is unused but the
+ * schema is provisioned now so Phase 2 doesn't need a migration.
+ */
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+
+// ---------------------------------------------------------------------------
+// Schema
+// ---------------------------------------------------------------------------
+
+export type QueueKind = 'mutation' | 'rpc' | 'upload' | 'storage_remove';
+export type QueueStatus = 'pending' | 'replaying' | 'synced' | 'conflict' | 'failed';
+
+export interface QueueEntry {
+  /** Stable UUID generated at enqueue time; used as the IDB key. */
+  id: string;
+  /** What category of write this is, for replay routing. */
+  kind: QueueKind;
+  /** Human-readable description shown in the queue UI. */
+  description: string;
+  /** Optional enterprise context — used to group queued writes per enterprise. */
+  enterprise_id: string | null;
+  /** Serialised mutation payload. Shape depends on kind:
+   *   mutation → { table, op: 'insert' | 'update' | 'upsert' | 'delete', match, values }
+   *   rpc      → { fn, args }
+   *   upload   → { bucket, path, blob_key, content_type, options }
+   *   storage_remove → { bucket, paths } */
+  payload: Record<string, unknown>;
+  /** updated_at value of the source row at enqueue time. Used by Phase 6
+   *  conflict detection — if the server's updated_at is later than this when
+   *  we replay, the write is marked 'conflict' instead of overwriting. */
+  source_updated_at: string | null;
+  /** ISO timestamp of enqueue. */
+  enqueued_at: string;
+  /** Replay attempt count. Capped at 5 before being marked 'failed'. */
+  attempts: number;
+  /** Last error message from a failed replay attempt. */
+  last_error: string | null;
+  /** Current state of this entry in its lifecycle. */
+  status: QueueStatus;
+}
+
+export interface CacheEntry {
+  /** "table:key" or "rq:hashed-query-key". */
+  cacheKey: string;
+  value: unknown;
+  fetched_at: string;
+}
+
+interface SadpOfflineSchema extends DBSchema {
+  queue: {
+    key: string;
+    value: QueueEntry;
+    indexes: {
+      'by-status': string;
+      'by-enterprise': string;
+      'by-enqueued_at': string;
+    };
+  };
+  cache: {
+    key: string;
+    value: CacheEntry;
+  };
+}
+
+const DB_NAME = 'sadp_offline';
+const DB_VERSION = 1;
+
+let dbPromise: Promise<IDBPDatabase<SadpOfflineSchema>> | null = null;
+
+function getDb(): Promise<IDBPDatabase<SadpOfflineSchema>> {
+  if (!dbPromise) {
+    dbPromise = openDB<SadpOfflineSchema>(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('queue')) {
+          const store = db.createObjectStore('queue', { keyPath: 'id' });
+          store.createIndex('by-status', 'status');
+          store.createIndex('by-enterprise', 'enterprise_id');
+          store.createIndex('by-enqueued_at', 'enqueued_at');
+        }
+        if (!db.objectStoreNames.contains('cache')) {
+          db.createObjectStore('cache', { keyPath: 'cacheKey' });
+        }
+      },
+    });
+  }
+  return dbPromise;
+}
+
+// ---------------------------------------------------------------------------
+// Queue API
+// ---------------------------------------------------------------------------
+
+function genId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback for very old browsers (unlikely in our PWA target).
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+export interface EnqueueInput {
+  kind: QueueKind;
+  description: string;
+  enterprise_id?: string | null;
+  payload: Record<string, unknown>;
+  source_updated_at?: string | null;
+}
+
+/** Append a new write to the replay queue. Returns the persisted entry. */
+export async function enqueue(input: EnqueueInput): Promise<QueueEntry> {
+  const db = await getDb();
+  const entry: QueueEntry = {
+    id: genId(),
+    kind: input.kind,
+    description: input.description,
+    enterprise_id: input.enterprise_id ?? null,
+    payload: input.payload,
+    source_updated_at: input.source_updated_at ?? null,
+    enqueued_at: new Date().toISOString(),
+    attempts: 0,
+    last_error: null,
+    status: 'pending',
+  };
+  await db.put('queue', entry);
+  notifyChange();
+  return entry;
+}
+
+/** Return every entry, oldest first. */
+export async function getAllQueueEntries(): Promise<QueueEntry[]> {
+  const db = await getDb();
+  return (await db.getAllFromIndex('queue', 'by-enqueued_at')) as QueueEntry[];
+}
+
+/** Return only entries that still need attention (pending or conflict or failed). */
+export async function getActiveQueueEntries(): Promise<QueueEntry[]> {
+  const all = await getAllQueueEntries();
+  return all.filter((e) => e.status !== 'synced');
+}
+
+export interface QueueSummary {
+  pending: number;
+  replaying: number;
+  conflict: number;
+  failed: number;
+  synced: number;
+}
+
+/** Counts by status. Cheap — single tx, single iteration. */
+export async function getQueueSummary(): Promise<QueueSummary> {
+  const all = await getAllQueueEntries();
+  const out: QueueSummary = { pending: 0, replaying: 0, conflict: 0, failed: 0, synced: 0 };
+  for (const e of all) out[e.status] += 1;
+  return out;
+}
+
+/** Patch one entry's status (replay loop calls this between attempts). */
+export async function markStatus(
+  id: string,
+  status: QueueStatus,
+  lastError?: string | null,
+): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get('queue', id);
+  if (!existing) return;
+  const next: QueueEntry = {
+    ...existing,
+    status,
+    last_error: lastError ?? existing.last_error,
+    attempts: status === 'replaying' ? existing.attempts + 1 : existing.attempts,
+  };
+  await db.put('queue', next);
+  notifyChange();
+}
+
+/** Permanently remove one entry (after successful replay, or when user discards). */
+export async function purge(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('queue', id);
+  notifyChange();
+}
+
+/** Purge every entry whose status is 'synced'. */
+export async function purgeSynced(): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction('queue', 'readwrite');
+  const idx = tx.store.index('by-status');
+  for await (const cursor of idx.iterate('synced')) {
+    await cursor.delete();
+  }
+  await tx.done;
+  notifyChange();
+}
+
+// ---------------------------------------------------------------------------
+// Cache API (Phase 2 — implemented now for schema)
+// ---------------------------------------------------------------------------
+
+export async function cachePut(cacheKey: string, value: unknown): Promise<void> {
+  const db = await getDb();
+  await db.put('cache', { cacheKey, value, fetched_at: new Date().toISOString() });
+}
+
+export async function cacheGet<T = unknown>(cacheKey: string): Promise<T | null> {
+  const db = await getDb();
+  const row = await db.get('cache', cacheKey);
+  return (row?.value as T) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Change notifications — components subscribe to refresh badge counts etc.
+// ---------------------------------------------------------------------------
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+function notifyChange() {
+  for (const fn of listeners) {
+    try {
+      fn();
+    } catch {
+      /* swallow */
+    }
+  }
+}
+
+/** Subscribe to queue mutations. Returns an unsubscribe fn. */
+export function onQueueChange(fn: Listener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
