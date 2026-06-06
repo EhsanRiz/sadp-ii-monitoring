@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { AuthProvider } from './lib/auth';
 import { initOnlineStatus } from './lib/online-status';
+import { queryPersister } from './lib/query-persister';
 import './index.css';
 
 // Phase 1 of the offline stack — boot the connection probe immediately so the
@@ -23,9 +24,17 @@ const queryClient = new QueryClient({
       // Field staff are often offline. Trade some freshness for usability:
       // serve cached data first, refetch in background.
       staleTime: 30_000,
-      gcTime: 5 * 60_000,
+      // Phase 2: keep cached data in-memory for 24h so the user can revisit
+      // an enterprise after lunch without re-fetching. IDB persistence (below)
+      // covers cold-start / page-reload after the in-memory cache is GC'd.
+      gcTime: 24 * 60 * 60_000,
       retry: 1,
       refetchOnWindowFocus: false,
+      // Hook every query into the IDB-backed persister. Successful queries
+      // are written to IDB when they settle; on a fresh page load, the
+      // persister hydrates them back in. The result: previously-fetched
+      // reads survive page refreshes AND offline restarts.
+      persister: queryPersister,
     },
   },
 });

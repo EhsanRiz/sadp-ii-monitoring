@@ -46,6 +46,7 @@ import { EnterpriseLifecycleEditor } from '@/components/enterprise/EnterpriseLif
 import { BoreholeSupervisionForm } from '@/components/enterprise/BoreholeSupervisionForm';
 import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSchema';
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
+import { PrecacheEnterpriseButton } from '@/components/enterprise/PrecacheEnterpriseButton';
 import { useEnterpriseLifecycle } from '@/lib/enterprises';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
@@ -247,7 +248,12 @@ export function EnterpriseDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <PrecacheEnterpriseButton
+            enterpriseId={enterprise.id}
+            enterpriseTypeId={enterprise.enterprise_type_id ?? null}
+            districtId={enterprise.district_id ?? null}
+          />
           <Badge variant={enterprise.registration_completeness === 'cover_page_ready' ? 'default' : 'outline'}>
             {enterprise.registration_completeness === 'cover_page_ready' ? 'Cover-page ready' : 'Minimal'}
           </Badge>
