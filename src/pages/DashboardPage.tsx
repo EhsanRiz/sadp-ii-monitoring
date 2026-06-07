@@ -409,14 +409,14 @@ function LifecycleMatrix({
   districts,
 }: {
   scopeOrgId: string | null;
-  lifecycleMap: Map<string, EnterpriseLifecycleRow> | undefined;
+  lifecycleMap: Record<string, EnterpriseLifecycleRow> | undefined;
   districts: Array<{ id: string; name: string }>;
 }) {
   if (!lifecycleMap) {
     return <Skeleton className="h-40 w-full" />;
   }
   // Filter rows to this org's scope (or all if super-admin scope).
-  const rows = Array.from(lifecycleMap.values()).filter((r) =>
+  const rows = Object.values(lifecycleMap).filter((r) =>
     scopeOrgId ? r.organization_id === scopeOrgId : true,
   );
   if (rows.length === 0) {

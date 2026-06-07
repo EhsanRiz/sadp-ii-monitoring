@@ -75,10 +75,13 @@ interface SadpOfflineSchema extends DBSchema {
 }
 
 const DB_NAME = 'sadp_offline';
-// v2 bump: a bad initial persister wrote Maps to the cache store as plain
-// objects, which broke downstream `.values()` calls. Clear the cache store
-// on upgrade. The QUEUE store is preserved so users don't lose offline saves.
-const DB_VERSION = 2;
+// v3 bump: the persister `filters` option doesn't actually gate per-query
+// persistence, so Maps from useEnterpriseLifecycle / useUserDisplayNames
+// were still leaking into the cache as plain objects and breaking
+// `.values()` / `.get()` on rehydrate. The fix is two-pronged: change
+// those hooks to return plain Records at the source (commit), AND clear
+// the cache one more time for users who already have the bad data.
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<SadpOfflineSchema>> | null = null;
 
@@ -98,9 +101,18 @@ function getDb(): Promise<IDBPDatabase<SadpOfflineSchema>> {
           // v2 migration: purge cache store. The previous persister wrote
           // queries whose data is a JS Map (e.g. enterprise-lifecycle) into
           // the cache as plain objects, which then broke `.values()` calls on
-          // re-hydrate. Going forward the persister filter (see
-          // query-persister.ts) skips Maps; this clears any bad entries left
-          // behind from before that filter shipped.
+          // re-hydrate.
+          if (db.objectStoreNames.contains('cache')) {
+            void tx.objectStore('cache').clear();
+          }
+        }
+        if (oldVersion < 3) {
+          // v3 migration: the persister filter we shipped in v2 didn't
+          // actually gate per-query persistence, so Maps kept leaking in.
+          // The hooks that return Maps were rewritten to return Records at
+          // the source — but anyone with cached Map data from before that
+          // commit will still see the broken hydrate path. Clear the cache
+          // one more time to flush the bad entries.
           if (db.objectStoreNames.contains('cache')) {
             void tx.objectStore('cache').clear();
           }

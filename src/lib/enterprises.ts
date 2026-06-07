@@ -150,22 +150,25 @@ export function useEnterpriseTimeline(id: string | undefined) {
 
 /**
  * Resolve user UUIDs → `user_profiles.full_name` for display in History.
- * Returns a Map keyed by uuid. Silently drops ids RLS blocks.
+ *
+ * Returns a **plain object** keyed by uuid (not a Map) so the React Query
+ * persister can round-trip the data through JSON without losing type
+ * fidelity. Silently drops ids RLS blocks.
  */
 export function useUserDisplayNames(userIds: Array<string | null | undefined>) {
   const cleaned = Array.from(new Set(userIds.filter((u): u is string => !!u))).sort();
   return useQuery({
     queryKey: ['user-display-names', cleaned.join(',')],
-    queryFn: async (): Promise<Map<string, string>> => {
-      if (cleaned.length === 0) return new Map();
+    queryFn: async (): Promise<Record<string, string>> => {
+      if (cleaned.length === 0) return {};
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, full_name')
         .in('id', cleaned);
       if (error) throw error;
-      const out = new Map<string, string>();
+      const out: Record<string, string> = {};
       for (const row of (data ?? []) as Array<{ id: string; full_name: string }>) {
-        out.set(row.id, row.full_name);
+        out[row.id] = row.full_name;
       }
       return out;
     },
@@ -239,19 +242,27 @@ export function isCoverPageReady(e: EnterpriseRow): boolean {
 // Lifecycle (11-milestone matrix). Joins essf/emmp/m1 in
 // a server-side view; we just read it.
 // =================================================================
+/**
+ * Lifecycle rows keyed by enterprise_id. **Plain object** (not a Map) so the
+ * React Query persister can round-trip through JSON without losing type
+ * fidelity — see the dashboard `t.values is not a function` regression
+ * that hit when this returned a Map.
+ */
+export type EnterpriseLifecycleMap = Record<string, EnterpriseLifecycleRow>;
+
 export function useEnterpriseLifecycle() {
   return useQuery({
     queryKey: ['enterprise-lifecycle'],
-    queryFn: async (): Promise<Map<string, EnterpriseLifecycleRow>> => {
+    queryFn: async (): Promise<EnterpriseLifecycleMap> => {
       const { data, error } = await supabase
         .from('enterprise_lifecycle')
         .select('*');
       if (error) throw error;
-      const map = new Map<string, EnterpriseLifecycleRow>();
+      const out: EnterpriseLifecycleMap = {};
       for (const r of (data ?? []) as EnterpriseLifecycleRow[]) {
-        map.set(r.enterprise_id, r);
+        out[r.enterprise_id] = r;
       }
-      return map;
+      return out;
     },
     staleTime: 60_000,
   });

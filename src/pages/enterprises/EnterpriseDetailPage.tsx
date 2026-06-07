@@ -484,7 +484,7 @@ export function EnterpriseDetailPage() {
         <TabsContent value="progress" className="space-y-4">
           <EnterpriseLifecycleEditor
             enterpriseId={enterprise.id}
-            lifecycle={lifecycleMap.data?.get(enterprise.id) ?? null}
+            lifecycle={lifecycleMap.data?.[enterprise.id] ?? null}
           />
           <BackfillFromBinderCard
             enterpriseId={enterprise.id}
@@ -1488,7 +1488,7 @@ export function EnterpriseDetailPage() {
                   <TimelineEventRow
                     key={row.id}
                     row={row}
-                    actorName={row.actor_id ? actorNames.data?.get(row.actor_id) ?? null : null}
+                    actorName={row.actor_id ? actorNames.data?.[row.actor_id] ?? null : null}
                   />
                 ))}
               </ul>

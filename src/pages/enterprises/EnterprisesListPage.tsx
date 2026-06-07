@@ -150,7 +150,7 @@ export function EnterprisesListPage() {
   const filteredEnterprises = useMemo(() => {
     if (!enterprises || activityId === '__all') return enterprises ?? [];
     return enterprises.filter((e) => {
-      const row = lifecycle?.get(e.id);
+      const row = lifecycle?.[e.id];
       const cell = row ? (row[activityId] as LifecycleValue | null | undefined) : null;
       if (activityValue === '__any') return cell != null; // any tracked value matches
       if (activityValue === 'not_tracked') return cell == null;
@@ -449,7 +449,7 @@ export function EnterprisesListPage() {
                     const t = types?.find((x) => x.id === e.enterprise_type_id);
                     const v = getEnterpriseVisual(t?.name, t?.category as EnterpriseCategory);
                     const Icon = v.icon;
-                    const lc = lifecycle?.get(e.id);
+                    const lc = lifecycle?.[e.id];
                     return (
                       <tr key={e.id} className="border-b transition-colors duration-150 hover:bg-tint-success/30">
                         <td className="py-1.5 pl-2 pr-3 font-medium sticky left-0 bg-background z-10">
