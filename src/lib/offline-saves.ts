@@ -148,6 +148,20 @@ interface SaveOrEnqueueArgs<T> {
  * update. Returns metadata about which path was taken so callers can show the
  * right toast.
  */
+/**
+ * Read `updated_at` from an arbitrary cached row. Used by every hook in
+ * Phase 6 to capture the source row's `updated_at` at enqueue time, so the
+ * replay engine can detect conflicts (server moved on while we were offline).
+ *
+ * Returns null if the row isn't cached or doesn't expose `updated_at`. In
+ * that case the queue entry will replay without a conflict check.
+ */
+export function pickUpdatedAt(cached: unknown): string | null {
+  if (!cached || typeof cached !== 'object') return null;
+  const v = (cached as { updated_at?: unknown }).updated_at;
+  return typeof v === 'string' ? v : null;
+}
+
 export async function saveOrEnqueue<T>({
   description,
   payload,

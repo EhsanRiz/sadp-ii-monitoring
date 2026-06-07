@@ -38,6 +38,85 @@ import type { Database, Json } from '@/types/database';
 const MAX_ATTEMPTS = 5;
 
 // ---------------------------------------------------------------------------
+// Phase 6 — conflict detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the current server-side `updated_at` of the row this queued entry is
+ * about to write to, so the replay loop can detect "server moved on while we
+ * were offline" and surface the conflict instead of clobbering server data.
+ *
+ * Returns null if we can't determine an updated_at (no matching row, network
+ * blip, etc.) — in that case we proceed with the replay (no conflict).
+ */
+async function readServerUpdatedAt(p: FormSavePayload): Promise<string | null> {
+  try {
+    switch (p.saveType) {
+      case 'essf_draft':
+      case 'essf_transition': {
+        const r = await supabase
+          .from('essf_submissions')
+          .select('updated_at')
+          .eq('enterprise_id', p.enterprise_id)
+          .maybeSingle();
+        return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
+      }
+      case 'emmp_draft':
+      case 'emmp_transition': {
+        const r = await supabase
+          .from('emmp_submissions')
+          .select('updated_at')
+          .eq('enterprise_id', p.enterprise_id)
+          .maybeSingle();
+        return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
+      }
+      case 'inspection_draft':
+      case 'inspection_transition': {
+        const r = await supabase
+          .from('inspection_visits')
+          .select('updated_at')
+          .eq('id', p.visit_id)
+          .maybeSingle();
+        return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
+      }
+      case 'm1_draft':
+      case 'm1_transition': {
+        const r = await supabase
+          .from('m1_submissions')
+          .select('updated_at')
+          .eq('enterprise_id', p.enterprise_id)
+          .maybeSingle();
+        return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
+      }
+      case 'enterprise_patch': {
+        const r = await supabase
+          .from('enterprises')
+          .select('updated_at')
+          .eq('id', p.enterprise_id)
+          .maybeSingle();
+        return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
+      }
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decide whether the entry conflicts with current server state.
+ *   - If we never captured a source_updated_at, no conflict (best effort).
+ *   - If the server's updated_at is later than the source we saw, conflict.
+ *   - Otherwise OK to replay.
+ */
+async function entryConflicts(entry: QueueEntry): Promise<boolean> {
+  const source = entry.source_updated_at;
+  if (!source) return false;
+  const serverUpdatedAt = await readServerUpdatedAt(entry.payload as unknown as FormSavePayload);
+  if (!serverUpdatedAt) return false;
+  return new Date(serverUpdatedAt).getTime() > new Date(source).getTime();
+}
+
+// ---------------------------------------------------------------------------
 // Per-saveType handlers — each is the EXACT logic the hook used to run.
 // Keeping them here (not inside the hook closure) lets the replay loop run
 // without React being mounted, and means the hook can call the same helper
@@ -343,6 +422,18 @@ export async function replayQueue(): Promise<{ synced: number; failed: number }>
       }
       await markStatus(entry.id, 'replaying');
       try {
+        // Conflict gate: refuse to replay if the server has been written to
+        // since the user snapshotted updated_at. The entry is parked as
+        // 'conflict' and the user resolves manually via SyncConflictsPage.
+        const conflict = await entryConflicts(entry);
+        if (conflict) {
+          await markStatus(
+            entry.id,
+            'conflict',
+            'Server has newer data than what you saw when this change was made.',
+          );
+          continue;
+        }
         await dispatch(entry.payload as unknown as FormSavePayload);
         invalidateAfterSync(entry);
         await purge(entry.id);
@@ -357,6 +448,34 @@ export async function replayQueue(): Promise<{ synced: number; failed: number }>
     isReplaying = false;
   }
   return { synced, failed };
+}
+
+/**
+ * Phase 6 — manual conflict resolution.
+ *
+ *   resolveConflictUseMine: re-runs the queued write, ignoring the
+ *     conflict gate (the user explicitly chose to overwrite the server).
+ *   resolveConflictDiscardMine: deletes the queued entry without applying it
+ *     (the user chose to keep the server's version).
+ */
+export async function resolveConflictUseMine(entryId: string): Promise<void> {
+  const all = await getActiveQueueEntries();
+  const entry = all.find((e) => e.id === entryId);
+  if (!entry) return;
+  await markStatus(entry.id, 'replaying');
+  try {
+    await dispatch(entry.payload as unknown as FormSavePayload);
+    invalidateAfterSync(entry);
+    await purge(entry.id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await markStatus(entry.id, 'conflict', msg);
+    throw e;
+  }
+}
+
+export async function resolveConflictDiscardMine(entryId: string): Promise<void> {
+  await purge(entryId);
 }
 
 /**

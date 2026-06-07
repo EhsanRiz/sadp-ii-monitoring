@@ -4,7 +4,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { saveOrEnqueue, type OfflineSaveResult } from '@/lib/offline-saves';
+import { saveOrEnqueue, pickUpdatedAt, type OfflineSaveResult } from '@/lib/offline-saves';
 import { applyEnterprisePatch } from '@/lib/offline-replay';
 import type {
   AuditLogRow,
@@ -261,8 +261,10 @@ export function useSaveEnterpriseLifecycle(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (next: Record<string, 'yes' | 'no' | 'n_a'>): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['enterprise', enterpriseId]));
       return saveOrEnqueue({
         description: 'Save lifecycle milestones',
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'enterprise_patch',
           enterprise_id: enterpriseId,
@@ -301,8 +303,10 @@ export function useSaveEnterprisePatch(enterpriseId: string) {
       description: string;
       patch: Record<string, unknown>;
     }): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['enterprise', enterpriseId]));
       return saveOrEnqueue({
         description: input.description,
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'enterprise_patch',
           enterprise_id: enterpriseId,

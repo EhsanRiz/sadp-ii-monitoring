@@ -12,6 +12,7 @@
  * render a placeholder dropdown listing the queue entries.
  */
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useOnlineStatus, probeNow } from '@/lib/online-status';
 import {
   getQueueSummary,
@@ -23,6 +24,7 @@ import { cn } from '@/lib/utils';
 
 export function OfflineBadge() {
   const online = useOnlineStatus();
+  const navigate = useNavigate();
   const [summary, setSummary] = useState<QueueSummary>({
     pending: 0,
     replaying: 0,
@@ -50,10 +52,20 @@ export function OfflineBadge() {
   const conflicts = summary.conflict;
   const failed = summary.failed;
 
-  // Click handler for now just triggers a probe — Phase 6 hooks this up to
-  // a full sync-status drawer.
+  // When there are conflicts or queued/failed entries, the click takes the
+  // user to /sync-conflicts to triage. Otherwise (online + idle) just
+  // forces a probe.
   const onClick = () => {
-    void probeNow();
+    if (
+      summary.conflict > 0 ||
+      summary.failed > 0 ||
+      summary.pending > 0 ||
+      summary.replaying > 0
+    ) {
+      navigate('/sync-conflicts');
+    } else {
+      void probeNow();
+    }
   };
 
   // ---- visual variant resolution ----

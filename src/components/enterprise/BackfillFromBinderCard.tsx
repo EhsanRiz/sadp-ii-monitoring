@@ -11,6 +11,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useOnlineStatus } from '@/lib/online-status';
+import { OnlineRequiredHint } from '@/components/OfflineBadge';
 import {
   Card,
   CardContent,
@@ -48,6 +50,8 @@ type Props = {
 };
 
 export function BackfillFromBinderCard({ enterpriseId, beneficiaryShortName }: Props) {
+  const online = useOnlineStatus();
+  const isOffline = online === 'offline';
   const m1 = useM1Submission(enterpriseId);
   const hasSourcePdf = !!m1.data?.uploaded_pdf_path;
   const m1PdfMeta = useUploadedM1PdfMeta(enterpriseId, hasSourcePdf);
@@ -116,6 +120,7 @@ export function BackfillFromBinderCard({ enterpriseId, beneficiaryShortName }: P
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isOffline && <OnlineRequiredHint feature="Backfilling from a PDF binder" />}
         {/* File card / upload */}
         {hasSourcePdf ? (
           <div className="flex items-center gap-2">
@@ -145,7 +150,7 @@ export function BackfillFromBinderCard({ enterpriseId, beneficiaryShortName }: P
               size="sm"
               variant="outline"
               className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
-              disabled={removePdf.isPending || backfill.isPending}
+              disabled={removePdf.isPending || backfill.isPending || isOffline}
               onClick={() => {
                 if (
                   !window.confirm(
@@ -182,7 +187,7 @@ export function BackfillFromBinderCard({ enterpriseId, beneficiaryShortName }: P
                 });
                 e.target.value = '';
               }}
-              disabled={uploadPdf.isPending}
+              disabled={uploadPdf.isPending || isOffline}
             />
             {uploadPdf.isPending && (
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -207,7 +212,7 @@ export function BackfillFromBinderCard({ enterpriseId, beneficiaryShortName }: P
             </div>
             <Button
               onClick={onBackfill}
-              disabled={backfill.isPending || m1Approved}
+              disabled={backfill.isPending || m1Approved || isOffline}
               size="sm"
             >
               {backfill.isPending ? (

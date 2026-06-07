@@ -48,6 +48,8 @@ import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSc
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
 import { PrecacheEnterpriseButton } from '@/components/enterprise/PrecacheEnterpriseButton';
 import { useEnterpriseLifecycle, useSaveEnterprisePatch } from '@/lib/enterprises';
+import { useOnlineStatus } from '@/lib/online-status';
+import { OnlineRequiredHint } from '@/components/OfflineBadge';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
 import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2 } from 'lucide-react';
@@ -94,6 +96,11 @@ export function EnterpriseDetailPage() {
   const actorIds = (timeline.data ?? []).map((r) => r.actor_id);
   const actorNames = useUserDisplayNames(actorIds);
   const qc = useQueryClient();
+  // Phase 5 — PDF uploads + Extract responses are online-only (Anthropic API
+  // round-trip; multi-MB blobs). Use this to disable the upload inputs and
+  // extract buttons when offline.
+  const online = useOnlineStatus();
+  const isOffline = online === 'offline';
 
   // Phase-2 ESMP reads
   const essf = useEssfSubmission(id);
@@ -897,7 +904,7 @@ export function EnterpriseDetailPage() {
                       size="sm"
                       variant="outline"
                       className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
-                      disabled={removeEsmpPdf.isPending}
+                      disabled={removeEsmpPdf.isPending || isOffline}
                       onClick={() => {
                         if (
                           !window.confirm(
@@ -1125,6 +1132,7 @@ export function EnterpriseDetailPage() {
                     <Input
                       type="file"
                       accept="application/pdf"
+                  disabled={isOffline}
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) uploadEsmp.mutate(f);
@@ -1248,7 +1256,7 @@ export function EnterpriseDetailPage() {
                     size="sm"
                     variant="outline"
                     className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
-                    disabled={removeM1Pdf.isPending || extractM1.isPending}
+                    disabled={removeM1Pdf.isPending || extractM1.isPending || isOffline}
                     onClick={() => {
                       if (
                         !window.confirm(
@@ -1288,8 +1296,11 @@ export function EnterpriseDetailPage() {
                     // Reset the input so re-uploading the same file fires onChange.
                     e.target.value = '';
                   }}
-                  disabled={uploadM1Pdf.isPending}
+                  disabled={uploadM1Pdf.isPending || isOffline}
                 />
+                {isOffline && (
+                  <OnlineRequiredHint feature="Uploading the source M1 PDF" />
+                )}
                 {uploadM1Pdf.isPending && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Loader2 className="h-3 w-3 animate-spin" /> Uploading…
@@ -1345,7 +1356,7 @@ export function EnterpriseDetailPage() {
                             },
                           });
                         }}
-                        disabled={extractM1.isPending || m1Approved}
+                        disabled={extractM1.isPending || m1Approved || isOffline}
                       >
                         {extractM1.isPending ? (
                           <>

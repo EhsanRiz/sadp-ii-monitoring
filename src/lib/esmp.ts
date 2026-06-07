@@ -17,7 +17,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { AppRole } from '@/lib/auth';
-import { saveOrEnqueue, type OfflineSaveResult } from '@/lib/offline-saves';
+import { saveOrEnqueue, pickUpdatedAt, type OfflineSaveResult } from '@/lib/offline-saves';
 import {
   applyEssfDraft,
   applyEmmpDraft,
@@ -62,8 +62,10 @@ export function useSaveEssfDraft(enterpriseId: string) {
     mutationFn: async (
       payload: { responses: Record<string, unknown>; filled_by?: string | null },
     ): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['essf', enterpriseId]));
       return saveOrEnqueue({
         description: 'Save ESSF draft',
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'essf_draft',
           enterprise_id: enterpriseId,
@@ -100,8 +102,10 @@ export function useTransitionEssf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['essf', enterpriseId]));
       return saveOrEnqueue({
         description: `ESSF transition → ${input.to}`,
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'essf_transition',
           enterprise_id: enterpriseId,
@@ -181,8 +185,10 @@ export function useSaveEmmpDraft(enterpriseId: string, templateId: string | unde
       payload: { responses: Record<string, unknown>; filled_by?: string | null },
     ): Promise<OfflineSaveResult> => {
       if (!templateId) throw new Error('No EMMP template selected.');
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['emmp', enterpriseId]));
       return saveOrEnqueue({
         description: 'Save EMMP draft',
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'emmp_draft',
           enterprise_id: enterpriseId,
@@ -219,8 +225,10 @@ export function useTransitionEmmp(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['emmp', enterpriseId]));
       return saveOrEnqueue({
         description: `EMMP transition → ${input.to}`,
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'emmp_transition',
           enterprise_id: enterpriseId,
@@ -328,8 +336,10 @@ export function useSaveInspectionDraft(visitId: string, enterpriseId?: string | 
       inspected_by_name?: string;
       visit_date?: string;
     }): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['inspection-visit', visitId]));
       return saveOrEnqueue({
         description: 'Save inspection draft',
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'inspection_draft',
           visit_id: visitId,
@@ -370,8 +380,10 @@ export function useTransitionInspection(visitId: string, enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['inspection-visit', visitId]));
       return saveOrEnqueue({
         description: `Inspection transition → ${input.to}`,
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'inspection_transition',
           visit_id: visitId,

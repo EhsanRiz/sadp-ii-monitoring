@@ -6,6 +6,7 @@ import { AppShell } from '@/components/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { SetPasswordPage } from '@/pages/SetPasswordPage';
+import { SyncConflictsPage } from '@/pages/SyncConflictsPage';
 import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
 import { INITIAL_URL_TYPE } from '@/lib/initial-url';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -89,6 +90,9 @@ export default function App() {
         <Route path="/reports" element={<ReportsHomePage />} />
         <Route path="/reports/:kind" element={<ReportsHomePage />} />
         <Route path="/reports/archive" element={<ReportsArchivePage />} />
+
+        {/* Phase 6 — offline queue conflict review */}
+        <Route path="/sync-conflicts" element={<SyncConflictsPage />} />
       </Route>
 
       {/* Cover-page PDF — auth required, but renders raw PDF (not inside AppShell) */}

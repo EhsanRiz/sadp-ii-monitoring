@@ -11,7 +11,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { AppRole } from '@/lib/auth';
-import { saveOrEnqueue, type OfflineSaveResult } from '@/lib/offline-saves';
+import { saveOrEnqueue, pickUpdatedAt, type OfflineSaveResult } from '@/lib/offline-saves';
 import { applyM1Draft, applyM1Transition } from '@/lib/offline-replay';
 import type {
   Json,
@@ -61,8 +61,10 @@ export function useSaveM1Draft(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: M1DraftPatch): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['m1', enterpriseId]));
       return saveOrEnqueue({
         description: 'Save M1 draft',
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'm1_draft',
           enterprise_id: enterpriseId,
@@ -115,8 +117,10 @@ export function useTransitionM1(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      const sourceUpdatedAt = pickUpdatedAt(qc.getQueryData(['m1', enterpriseId]));
       return saveOrEnqueue({
         description: `M1 transition → ${input.to}`,
+        source_updated_at: sourceUpdatedAt,
         payload: {
           saveType: 'm1_transition',
           enterprise_id: enterpriseId,

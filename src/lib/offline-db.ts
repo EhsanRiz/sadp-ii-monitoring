@@ -256,3 +256,31 @@ export function onQueueChange(fn: Listener): () => void {
     listeners.delete(fn);
   };
 }
+
+// ---------------------------------------------------------------------------
+// React hook — re-render on queue changes
+// ---------------------------------------------------------------------------
+
+import { useEffect, useState } from 'react';
+
+/**
+ * Reactive list of every queued entry (pending / conflict / failed).
+ * Re-fetches whenever the queue changes.
+ */
+export function useQueueEntries(): QueueEntry[] {
+  const [entries, setEntries] = useState<QueueEntry[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const all = await getActiveQueueEntries();
+      if (!cancelled) setEntries(all);
+    };
+    void load();
+    const unsub = onQueueChange(() => void load());
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+  return entries;
+}

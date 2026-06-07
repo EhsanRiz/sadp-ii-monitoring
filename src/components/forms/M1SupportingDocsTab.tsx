@@ -10,6 +10,8 @@
  */
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useOnlineStatus } from '@/lib/online-status';
+import { OnlineRequiredHint } from '@/components/OfflineBadge';
 import {
   Card,
   CardContent,
@@ -59,6 +61,8 @@ type Props = {
 };
 
 export function M1SupportingDocsTab({ enterpriseId, readOnly }: Props) {
+  const online = useOnlineStatus();
+  const isOffline = online === 'offline';
   const docs = useM1SupportingDocs(enterpriseId);
   const upload = useUploadM1SupportingDoc(enterpriseId);
   const update = useUpdateM1SupportingDoc(enterpriseId);
@@ -137,6 +141,9 @@ export function M1SupportingDocsTab({ enterpriseId, readOnly }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {isOffline && !readOnly ? (
+            <OnlineRequiredHint feature="Uploading supporting documents" />
+          ) : null}
           {readOnly ? (
             <p className="text-sm text-muted-foreground">
               This M1 report is approved — supporting documents are locked. Reopen the report
@@ -184,7 +191,7 @@ export function M1SupportingDocsTab({ enterpriseId, readOnly }: Props) {
                 />
                 <Button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={upload.isPending}
+                  disabled={upload.isPending || isOffline}
                   variant="default"
                 >
                   {upload.isPending ? (
