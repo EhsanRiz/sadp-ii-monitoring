@@ -11,11 +11,15 @@
  *   │  └────────────────────────────────────┘ │
  *   └──────────────────────────────────────────┘
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
 } from '@/components/ui/card';
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel,
+  SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,6 +41,18 @@ export function AskPage() {
   const run = useRunCuratedQuery();
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const resultRef = useRef<HTMLDivElement | null>(null);
+
+  // Whenever the user picks a question, smooth-scroll the result panel
+  // into view so they don't have to chase the answer down the page.
+  useEffect(() => {
+    if (!selected) return;
+    // Wait a tick for the result Card to render.
+    const id = window.setTimeout(() => {
+      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [selected]);
 
   const visibleQuestions = useMemo(() => {
     const lower = search.trim().toLowerCase();
@@ -125,6 +141,35 @@ export function AskPage() {
               className="pl-9"
             />
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground mr-1">Quick pick:</span>
+            <div className="min-w-[260px] flex-1">
+              <Select
+                value={selected?.id ?? ''}
+                onValueChange={(id) => {
+                  const q = visibleQuestions.find((x) => x.id === id)
+                        ?? CURATED_QUESTIONS.find((x) => x.id === id);
+                  if (q) runQuestion(q);
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="What do you want to know?" /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(CATEGORY_META) as QuestionCategory[]).map((cat) => {
+                    const items = visibleQuestions.filter((q) => q.category === cat);
+                    if (items.length === 0) return null;
+                    return (
+                      <SelectGroup key={cat}>
+                        <SelectLabel>{CATEGORY_META[cat].emoji} {CATEGORY_META[cat].label}</SelectLabel>
+                        {items.map((q) => (
+                          <SelectItem key={q.id} value={q.id}>{q.title}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             <CategoryChip active={activeCategory === 'all'} label="All categories" onClick={() => setActiveCategory('all')} />
             {(Object.keys(CATEGORY_META) as QuestionCategory[]).map((c) => (
@@ -139,36 +184,9 @@ export function AskPage() {
         </CardContent>
       </Card>
 
-      {visibleQuestions.length === 0 && (
-        <Card><CardContent className="p-6 text-sm text-muted-foreground text-center">
-          No questions match your filter.
-        </CardContent></Card>
-      )}
-
-      {(Object.keys(grouped) as QuestionCategory[]).map((c) => (
-        <section key={c} className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            {CATEGORY_META[c].emoji} {CATEGORY_META[c].label}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {grouped[c].map((q) => (
-              <button
-                key={q.id}
-                onClick={() => runQuestion(q)}
-                className={cn(
-                  'text-left rounded-lg border p-4 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-                  selected?.id === q.id && 'border-primary ring-1 ring-primary/30 bg-tint-success/30',
-                )}
-              >
-                <div className="font-medium leading-tight">{q.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{q.description}</div>
-              </button>
-            ))}
-          </div>
-        </section>
-      ))}
-
-      {/* Result panel */}
+      {/* Result panel — sits at top of content so the answer is
+          always visible without scrolling past the question grid. */}
+      <div ref={resultRef}>
       {selected && (
         <Card className="border-primary/30">
           <CardHeader className="pb-3">
@@ -227,6 +245,37 @@ export function AskPage() {
           </CardContent>
         </Card>
       )}
+      </div>
+
+      {visibleQuestions.length === 0 && (
+        <Card><CardContent className="p-6 text-sm text-muted-foreground text-center">
+          No questions match your filter.
+        </CardContent></Card>
+      )}
+
+      {(Object.keys(grouped) as QuestionCategory[]).map((c) => (
+        <section key={c} className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            {CATEGORY_META[c].emoji} {CATEGORY_META[c].label}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {grouped[c].map((q) => (
+              <button
+                key={q.id}
+                onClick={() => runQuestion(q)}
+                className={cn(
+                  'text-left rounded-lg border p-4 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                  selected?.id === q.id && 'border-primary ring-1 ring-primary/30 bg-tint-success/30',
+                )}
+              >
+                <div className="font-medium leading-tight">{q.title}</div>
+                <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{q.description}</div>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+
     </div>
   );
 }

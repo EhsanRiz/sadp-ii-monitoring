@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 
 export const Select = SelectPrimitive.Root;
 export const SelectGroup = SelectPrimitive.Group;
+export const SelectLabel = (props: React.ComponentProps<typeof SelectPrimitive.Label>) =>
+  <SelectPrimitive.Label {...props} className={"px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground " + (props.className ?? '')} />;
 export const SelectValue = SelectPrimitive.Value;
 
 export const SelectTrigger = forwardRef<
