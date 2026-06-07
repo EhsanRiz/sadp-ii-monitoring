@@ -55,6 +55,18 @@ const idbStorage: AsyncStorage<string> = {
 const persister = experimental_createQueryPersister({
   storage: idbStorage,
   maxAge: 14 * 24 * 60 * 60 * 1000, // 14 days
+  // Skip queries whose result isn't JSON-serializable. Maps + Sets round-trip
+  // through JSON as plain objects/arrays, which then breaks downstream code
+  // that calls `.values()` / `.entries()` / `.has()` etc. on what it thought
+  // was still a Map.
+  filters: {
+    predicate: (query) => {
+      const data = query.state.data;
+      if (data instanceof Map) return false;
+      if (data instanceof Set) return false;
+      return true;
+    },
+  },
 });
 
 /** Hand this to `defaultOptions.queries.persister` on the QueryClient. */

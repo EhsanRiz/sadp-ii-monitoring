@@ -75,22 +75,35 @@ interface SadpOfflineSchema extends DBSchema {
 }
 
 const DB_NAME = 'sadp_offline';
-const DB_VERSION = 1;
+// v2 bump: a bad initial persister wrote Maps to the cache store as plain
+// objects, which broke downstream `.values()` calls. Clear the cache store
+// on upgrade. The QUEUE store is preserved so users don't lose offline saves.
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<SadpOfflineSchema>> | null = null;
 
 function getDb(): Promise<IDBPDatabase<SadpOfflineSchema>> {
   if (!dbPromise) {
     dbPromise = openDB<SadpOfflineSchema>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('queue')) {
+      upgrade(db, oldVersion, _newVersion, tx) {
+        if (oldVersion < 1) {
+          // Initial schema (was DB_VERSION = 1 in Phase 1).
           const store = db.createObjectStore('queue', { keyPath: 'id' });
           store.createIndex('by-status', 'status');
           store.createIndex('by-enterprise', 'enterprise_id');
           store.createIndex('by-enqueued_at', 'enqueued_at');
-        }
-        if (!db.objectStoreNames.contains('cache')) {
           db.createObjectStore('cache', { keyPath: 'cacheKey' });
+        }
+        if (oldVersion < 2) {
+          // v2 migration: purge cache store. The previous persister wrote
+          // queries whose data is a JS Map (e.g. enterprise-lifecycle) into
+          // the cache as plain objects, which then broke `.values()` calls on
+          // re-hydrate. Going forward the persister filter (see
+          // query-persister.ts) skips Maps; this clears any bad entries left
+          // behind from before that filter shipped.
+          if (db.objectStoreNames.contains('cache')) {
+            void tx.objectStore('cache').clear();
+          }
         }
       },
     });
