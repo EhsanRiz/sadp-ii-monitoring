@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-03 (User activity · Period Reports · Borehole tab · Hover animations) · HEAD: `<pending>`
+Last updated: 2026-06-04 (Offline-first stack · Mobile responsive · Dashboard Map crash fix) · HEAD: `33e590a`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -24,131 +24,115 @@ is here or one link away.
 
 ## 2. What changed in this push
 
-**User activity tracking on the Users admin page**
-(`migration 270`,
-`src/types/database.ts`,
-`src/pages/admin/UsersAdminPage.tsx`,
-`src/pages/LoginPage.tsx`)
+**Offline-first data collection + Mobile responsive layout — 7 phases shipped**
 
-- New "Last seen" column on the All-users table with colour-coded recency:
-  green ≤24h, amber ≤7d, gray ≤30d, red older / never. Sub-line shows
-  `5× in 30d · 2 failed`. Sorted so the most recently active user is on top.
-- Action buttons collapsed: **Role / Deactivate / Delete** stay inline; the
-  rest (Resend invite, Reset password, Change organization, View activity)
-  move into a "⋯" kebab menu. Cleaner row, easier to scan.
-- "View activity" opens a right-sliding sheet with:
-  summary tiles (Last seen, Account created, Sign-ins total, Sign-ins 30d,
-  Failed 30d) + the last 50 login events (successes and failures) with
-  timestamp + relative time.
-- New `login_events` table: a Postgres trigger on `auth.users` records every
-  successful sign-in (Supabase only updates `last_sign_in_at` on actual login,
-  not refresh — so this stays clean). Failed sign-ins are captured by a new
-  anon-callable `log_failed_login(p_email)` RPC fired from LoginPage on auth
-  error.
-- New SECURITY DEFINER RPCs `user_admin_list()` and `user_login_history(uid)`,
-  both gated to super_admin. The page now reads via these instead of querying
-  `user_profiles` directly, so it can join in `auth.users.last_sign_in_at`
-  without us exposing the auth schema.
+The whole stack between commits `66b20ce` (Phase 1) and `33e590a` (Phase 7):
+field supervisors can now Take an enterprise Offline, collect data without a
+network, and have everything sync automatically when they reconnect. The app
+also works on a phone now (hamburger drawer + responsive tab strips +
+card-default for the enterprise list).
 
----
+**Phase 1 — IndexedDB queue + online detection + OfflineBadge** (`66b20ce`, `443cc54`)
+(`src/lib/offline-db.ts`, `src/lib/online-status.ts`, `src/components/OfflineBadge.tsx`,
+`src/components/AppShell.tsx`, `src/main.tsx`)
+- New `idb` dependency. Two object stores in `sadp_offline`: **queue** (pending
+  writes) + **cache** (read-side persistence used by Phase 2).
+- Online/offline detection combines navigator.onLine + window events + active
+  probe to `/rest/v1/` with apikey every 30s. Probe accepts any `status < 500`
+  as reachable; falls back to navigator on probe failure (catches CORS quirks).
+- `OfflineBadge` in the app header. Variants: green dot (idle), amber
+  "Offline · N queued", blue "Syncing N…", red "N conflicts — review →",
+  red "N failed".
 
-## 2. What changed in this push
+**Phase 2 — React Query persistence + "Take offline" button** (`62e2ab4`)
+(`src/lib/query-persister.ts`, `src/components/enterprise/PrecacheEnterpriseButton.tsx`)
+- `@tanstack/react-query-persist-client` wired via `experimental_createQueryPersister`.
+  Every successful query result writes to the same IDB cache store. On a cold
+  page load, queries hydrate from IDB instead of refetching.
+- `gcTime` bumped from 5 min → 24h.
+- "Take offline" button on the enterprise detail header prefetches everything
+  needed to view + edit that enterprise without a network: ESSF / EMMP /
+  Inspection / M1 submissions + supporting docs + EMMP template + activity
+  timeline + the shared catalogs (orgs / districts / types / CCs / RCs).
 
-**Period Reports — Monthly / Quarterly / Custom range**
-(`migration 260` + `261`,
-`src/lib/reports.ts`,
-`src/lib/reportExcel.ts`,
-`src/components/reports/PeriodReportPreview.tsx`,
-`src/pdf/PeriodReportPdf.tsx`,
-`src/pages/reports/ReportsHomePage.tsx`,
-`src/pages/reports/ReportsArchivePage.tsx`,
-`src/components/AppShell.tsx`, `src/App.tsx`)
+**Phase 3 — Form-save mutations queue + replay** (`f05a3da`)
+(`src/lib/offline-saves.ts`, `src/lib/offline-replay.ts` + refactored hooks in
+`src/lib/esmp.ts`, `src/lib/m1.ts` + edit page toasts)
+- `saveOrEnqueue<T>({ description, payload, doSave, applyOptimistic })` runs
+  `doSave` when online. When offline, queues + applies an optimistic React
+  Query cache update so the UI looks like the save landed. Returns
+  `{ online: boolean }` so callsites can pick the right toast copy.
+- Canonical apply helpers (`applyEssfDraft / applyEmmpDraft /
+  applyInspectionDraft / applyM1Draft`) live in `offline-replay.ts` so the hook
+  AND the replay engine call the SAME write logic. No drift.
+- `replayQueue()` drains the queue on `online` event (and on app boot). Bounded
+  retries — 5 attempts before an entry is parked as `failed`. Invalidates the
+  relevant React Query keys after each successful replay so the UI auto-refreshes.
+- Toasts updated across all four edit pages: `'Draft saved'` (online) vs
+  `'Saved locally — will sync when online'` (offline).
 
-- New "Reports" sidebar entry. Three tabs (Monthly / Quarterly / Custom range)
-  plus an Archive view. Standard Jan-Dec calendar.
-- Page flow: pick period + scope → Generate → live preview (cover, 8 KPI tiles,
-  district × milestone matrix with cumulative state, ESMP compliance,
-  borehole supervision in-period, M1 financials, new-enterprises list,
-  appendix counter) → Download PDF / Download Excel / Save to archive.
-- Heavy lifting in Postgres: `generate_period_report(p_start, p_end, p_org_id)`
-  returns a single jsonb blob. `p_org_id = NULL` is an all-org report
-  (super-admin only). Function is `SECURITY INVOKER` so partner admins are
-  RLS-scoped naturally.
-- `period_reports` archive table with RLS (super admin sees all, partner admins
-  see only their org's saves). Payload is the full jsonb so saved reports
-  survive schema/data changes — exactly what donors / audit need.
-- PDF uses `@react-pdf/renderer` matching the existing CoverPage / M1 style;
-  Excel via SheetJS with sheets: Summary, Matrix, NewEnterprises, Appendix.
-- Period picker auto-suggests the just-closed period (e.g. on June 3 it
-  defaults Monthly to May 2026, Quarterly to Q1 2026).
+**Phase 4 — Status transitions + enterprise / lifecycle / borehole edits** (`1638b6b`)
+- Extended Phase 3's wrapping to every other mutation a field supervisor hits:
+  `useTransitionEssf / useTransitionEmmp / useTransitionInspection /
+  useTransitionM1` (Submit / Approve / Reopen),
+  `useSaveEnterpriseLifecycle` (lifecycle milestones),
+  and a generic `useSaveEnterprisePatch` that the cover-page editor and
+  `BoreholeSupervisionForm` both use.
+- New `enterprise_patch` queue type for field-agnostic enterprise UPDATEs.
 
----
-
-## 2. What changed in this push
-
-**User activity tracking on the Users admin page**
-(`migration 270`,
-`src/types/database.ts`,
-`src/pages/admin/UsersAdminPage.tsx`,
-`src/pages/LoginPage.tsx`)
-
-- New "Last seen" column on the All-users table with colour-coded recency:
-  green ≤24h, amber ≤7d, gray ≤30d, red older / never. Sub-line shows
-  `5× in 30d · 2 failed`. Sorted so the most recently active user is on top.
-- Action buttons collapsed: **Role / Deactivate / Delete** stay inline; the
-  rest (Resend invite, Reset password, Change organization, View activity)
-  move into a "⋯" kebab menu. Cleaner row, easier to scan.
-- "View activity" opens a right-sliding sheet with:
-  summary tiles (Last seen, Account created, Sign-ins total, Sign-ins 30d,
-  Failed 30d) + the last 50 login events (successes and failures) with
-  timestamp + relative time.
-- New `login_events` table: a Postgres trigger on `auth.users` records every
-  successful sign-in (Supabase only updates `last_sign_in_at` on actual login,
-  not refresh — so this stays clean). Failed sign-ins are captured by a new
-  anon-callable `log_failed_login(p_email)` RPC fired from LoginPage on auth
-  error.
-- New SECURITY DEFINER RPCs `user_admin_list()` and `user_login_history(uid)`,
-  both gated to super_admin. The page now reads via these instead of querying
-  `user_profiles` directly, so it can join in `auth.users.last_sign_in_at`
-  without us exposing the auth schema.
-
----
-
-## 2. What changed in this push
-
-**Borehole Supervision tab** (`migration 250`, `src/forms/boreholeSupervisionSchema.ts`,
-`src/components/enterprise/BoreholeSupervisionForm.tsx`,
+**Phase 5 — Online-only gating for PDF uploads + Extract buttons** (`e004210`)
+(`src/components/forms/M1SupportingDocsTab.tsx`,
+`src/components/enterprise/BackfillFromBinderCard.tsx`,
 `src/pages/enterprises/EnterpriseDetailPage.tsx`)
+- Per architecture choice: PDF uploads (ESMP source, M1 source, supporting docs)
+  and Extract responses + Backfill from binder buttons stay **online-only**.
+  Multi-MB blobs + Anthropic round-trips aren't worth queueing.
+- All upload `<Input type="file">` + Extract / Backfill buttons get
+  `disabled={isOffline}`. `<OnlineRequiredHint feature="…">` shows under each
+  gated control so the user gets a clear "needs connection" message instead
+  of a button that mysteriously won't click.
 
-- New jsonb column `enterprises.borehole_supervision` to track 6 milestones per
-  enterprise: drilling permit, borehole drilling, borehole casing, borehole yield
-  test, borehole drilling report, water use permit.
-- Each milestone has a checkbox + optional completion date. Free-text notes
-  field. Single Save button (avoids 6 round-trips). Stored on the enterprise row
-  the same way `lifecycle_status` is, so the dashboard matrix can join in one read.
-- New tab between **ESMP** and **Milestone 1** on the Enterprise detail page.
-- Reading the schema as the source of truth: `BOREHOLE_MILESTONES[]` in
-  `boreholeSupervisionSchema.ts` is the canonical list — update there and the
-  form regenerates.
+**Phase 6 — Conflict detection + manual review UI** (`e004210`)
+(`src/lib/offline-replay.ts`, `src/pages/SyncConflictsPage.tsx`,
+`src/App.tsx`, `src/components/OfflineBadge.tsx`)
+- Every save / transition / patch hook captures `source_updated_at` at enqueue
+  time (read from the React Query cache via `pickUpdatedAt`).
+- Before applying, the replay engine SELECTs current `updated_at` from the
+  target row. If the server's is later, the entry is parked as `conflict`
+  instead of clobbering — the user resolves manually.
+- New `/sync-conflicts` page (linked from the OfflineBadge when conflict /
+  failed / pending count > 0) lists every queued entry by status with **Use
+  mine** (`resolveConflictUseMine`) / **Discard mine** (`resolveConflictDiscardMine`)
+  buttons.
 
-**Subtle hover animations** (`src/pages/DashboardPage.tsx`,
+**Phase 7 — Mobile responsive AppShell** (`33e590a`)
+(`src/components/AppShell.tsx`,
+`src/pages/enterprises/EnterpriseDetailPage.tsx`,
+`src/pages/enterprises/M1EditPage.tsx`,
 `src/pages/enterprises/EnterprisesListPage.tsx`)
+- AppShell on mobile: hamburger drawer slides over the page with a tappable
+  backdrop. Top header bar holds brand + hamburger + OfflineBadge. Body
+  scroll locks while open. Drawer auto-closes on route change.
+- Nav items get `py-3` on mobile (44px iOS HIG tap target).
+- Enterprise detail tab strip (6 tabs) and M1 edit tab strip (5 tabs)
+  wrapped in `overflow-x-auto` so they scroll horizontally instead of
+  wrapping ugly on a phone.
+- Enterprises list defaults to **card view** on small screens (the
+  11-column lifecycle matrix is unreadable at 375px). Desktop respects the
+  user's last-chosen view via localStorage.
 
-- Chart cards (Type donut, Pipeline bar, District readiness) lift on hover
-  (`hover:shadow-md hover:-translate-y-0.5`) with a 200ms ease.
-- Milestone matrix rows: smooth `transition-colors` + light success-tinted
-  background on hover, plus a sub-`scale-105` on each completion-count chip via
-  a parent `group`/`group-hover` pattern.
-- Enterprises list table rows: success-tinted hover with 150ms colour transition.
-
-**Org-scoped District dropdown** (`src/pages/enterprises/EnterprisesListPage.tsx`)
-
-- When the **Organisation** filter is `4D`, the **District** dropdown only shows
-  4D's districts (Maseru / Berea / Thaba Tseka). When `RSDA`, only RSDA's four
-  (Mafeteng / Mohale's Hoek / Quithing / Qacha's Nek). Implemented client-side:
-  resolve the org code → id from the `useOrganizations` cache, then filter the
-  `useDistricts()` rows by `organization_id`. No new query — the catalog hook
-  already includes `organization_id` on every row.
+**Critical fix mid-stream — Dashboard `t.values is not a function`**
+(`6dfc6a4`, `24ba572`)
+The persister was JSON-serializing JS `Map` values from
+`useEnterpriseLifecycle` / `useUserDisplayNames` into IDB. On hydrate the
+Maps came back as plain objects, breaking `.values()` / `.get()` calls.
+Fixed by:
+- Returning **plain `Record<string, X>`** from both hooks at the source —
+  no more Maps. All call sites updated (`Object.values()`,
+  `cached?.[id]` indexing).
+- IDB `DB_VERSION` bumped 1 → 2 → 3 with cache-store clears on each
+  upgrade so existing browsers carrying bad cache entries get flushed
+  automatically.
 
 ---
 
@@ -620,6 +604,20 @@ migration; just three INSERT batches.
 ## 3. Recent commits (most recent first)
 
 ```
+33e590a  feat(mobile): Phase 7 — responsive AppShell + tab strip scroll + cards default
+24ba572  fix(offline): return plain Records (not Maps) so persister round-trip is lossless
+e004210  feat(offline): Phase 5 + Phase 6 — online-only gating + conflict detection
+1638b6b  feat(offline): Phase 4 — status transitions + enterprise/lifecycle/borehole edits
+6dfc6a4  fix(offline): skip Maps/Sets in persister + clear stale cache on v2 upgrade
+f05a3da  feat(offline): Phase 3 — form-save mutations queue + replay
+62e2ab4  feat(offline): Phase 2 — React Query persistence + 'Take offline' button
+443cc54  fix(offline): probe uses /rest/v1/ + apikey, falls back to navigator.onLine
+66b20ce  feat(offline): Phase 1 — IndexedDB queue + online detection + OfflineBadge
+43ecf01  fix(rls): correct JWT role-claim path in 260+270 (hotfix migration 271)
+54a6895  feat(admin/users): per-user activity log + Last-seen column + kebab cleanup
+a072515  feat(reports): Monthly/Quarterly/Custom period reports with PDF + Excel + archive
+e603a0d  feat(enterprise): borehole supervision tab + dashboard hover animations + org-scoped district filter
+1197605  docs: refresh PROGRESS.md — auth set-password flow + dashboard org label
 9df3c8e  feat(auth): set-password flow for invitees + recovery (invite-user-v2 + corrected invite.html)
 d11c282  ux(dashboard): show actual org name for non-super-admin users
 58b956b  docs: refresh PROGRESS.md + commit branded email templates
@@ -930,19 +928,153 @@ SETUP.md                                      # new-machine bootstrap
 ## 10. How to onboard a fresh Claude session
 
 > "Read PROGRESS.md top-to-bottom and continue from where the last session
-> left off. As of commit `9df3c8e`, the app is feature-complete for
-> Phase 3 — M1 module (all phases), Backfill from M1 binder, enterprise
-> timeline / History, full user management, branded emails, and the
-> set-password flow for invitees + recovery. Phase 4 (Business Plan
-> module) is the next major build. The current edge function slugs are
-> `extract-esmp-pdf-v4`, `extract-m1-pdf-v4`, `extract-m1-binder-v2`,
-> `invite-user-v2`, and `manage-user-v1` — any new extractor or
-> re-deploy needs a fresh suffix per the §6 stuck-slug pattern. The PAT
-> used in earlier commits is compromised — use `gh auth login` for
-> pushes from this machine."
+> left off. As of commit `33e590a`, the offline-first stack is fully
+> shipped (Phases 1–7) plus mobile-responsive AppShell. Field supervisors
+> can pre-cache an enterprise, work fully offline, and have writes
+> auto-sync on reconnect with conflict detection. The dashboard `t.values`
+> crash is fixed (Maps replaced with plain Records). The current edge
+> function slugs are `extract-esmp-pdf-v4`, `extract-m1-pdf-v4`,
+> `extract-m1-binder-v2`, `invite-user-v2`, `manage-user-v1` — any new
+> extractor or re-deploy needs a fresh suffix per the §6 stuck-slug
+> pattern. The PAT used in earlier commits is compromised — use
+> `gh auth login` for pushes from this machine. The Business Plan module
+> for Phase 4 farmers is the next major build (see memory
+> `sadp-bp-structure`). The testing playbook for the offline + mobile
+> work is §11."
 
 Claude will absorb the architecture decisions (3-table ESMP, item.id key
 scheme, no-self-approval, computed-status views, cashbook column mapping,
 DD/MM/YYYY date inputs, stuck-slug edge function workaround,
 backfill = Option B, Progress tab first, history aggregated via SQL
-view) without needing them re-explained.
+view, offline = IDB queue + replay with apply* helpers shared between
+hook and replay, Records-not-Maps for any query that goes through the
+persister) without needing them re-explained.
+
+---
+
+## 11. Testing playbook — offline-first + mobile (2026-06-04)
+
+Walk these in order on whichever machine you're testing from. Each
+section is independent so you can skip pieces if you've already verified
+them.
+
+### A. Setup — confirm the new build is live
+
+1. Hard-refresh https://sadp-ii-monitoring.onrender.com (⌘⇧R on Mac,
+   Ctrl+F5 on Windows). The current HEAD on `main` should be `33e590a`
+   or later.
+2. Open DevTools → **Application** → **IndexedDB**. You should see a
+   `sadp_offline` database with two object stores: `queue` and `cache`.
+   If you see version 3, the migration is applied.
+3. The browser may show a one-time `IDBVersionChangeEvent`-related
+   console warning the first time the upgrade runs. That's expected.
+
+### B. Dashboard renders cleanly across refreshes
+
+1. Sign in. Dashboard loads.
+2. Hard refresh. Dashboard loads again — no `TypeError: t.values is
+   not a function`.
+3. Soft refresh (just F5) a third time. Still clean.
+
+If it crashes, manually delete the `sadp_offline` database once
+(Application → IndexedDB → right-click → Delete database) and refresh.
+From then on it stays stable.
+
+### C. Mobile responsive layout
+
+Test in Chrome DevTools device emulation (toggle device toolbar,
+choose iPhone SE / 375×667) OR on a real phone.
+
+1. **Top header bar** visible on mobile only: hamburger button left,
+   brand center, OfflineBadge right.
+2. **Tap the hamburger** → drawer slides in from left over the page
+   with a dim backdrop. The 6 nav items have generous tap targets.
+3. **Tap any nav item** → drawer auto-closes, you land on that page.
+4. **Tap the backdrop** (outside the drawer) → drawer closes without
+   navigation.
+5. **Enterprise list** defaults to **card view** on mobile — easier to
+   read than the 11-column matrix. Desktop respects your last-chosen
+   view via localStorage.
+6. **Open an enterprise** → six tabs (Progress · Details · ESMP ·
+   Borehole · M1 · History) stay on one row and scroll horizontally
+   instead of wrapping.
+7. **Open M1** → its 5 tabs (Narrative · Cashbook · FR · BR · Supporting
+   Docs) also scroll horizontally.
+
+### D. Pre-cache an enterprise for offline
+
+1. **Online**, pick an enterprise (e.g. Hansen Farming). Click the
+   **Take offline** button in the header (next to Cover-page PDF).
+2. The button briefly shows "Caching for offline…" then flips to
+   ✓ **Cached for offline** (green check).
+3. DevTools → Application → IndexedDB → `sadp_offline` → `cache` store
+   should now contain ~20 entries keyed `rq:tanstack-query-["essf",…]`
+   etc., one per submission type plus catalogs.
+
+### E. Go offline + collect data
+
+1. DevTools → **Application** → **Service workers** → check **Offline**.
+   (Or: Network panel → Throttling dropdown → Offline.)
+2. Within ~30s the OfflineBadge ticks to amber **"Offline"**.
+3. Navigate around the cached enterprise — Progress, ESMP → Review
+   ESSF / Review EMMP, Milestone 1, History. **All tabs render** with
+   cached data instead of throwing network errors. Refresh the page
+   while offline; it still works.
+4. **Type into a form** (e.g. add a value in ESSF Section 1) and hit
+   **Save draft**. Toast: **"Saved locally — will sync when online"**.
+   The form retains the new value (optimistic cache update).
+5. **OfflineBadge** ticks to amber **"Offline · 1 queued"**.
+6. Make 2–3 more saves across different forms (EMMP, M1 narrative).
+   Badge counter increments.
+7. **Status transitions** while offline: try **Submit** on the ESSF.
+   Toast: **"Submit queued — will sync when online"**. Badge count
+   bumps again.
+8. **Lifecycle milestone** while offline: Progress tab → click a Yes/No
+   on any milestone → **Save lifecycle**. Same offline toast.
+9. **Try uploading a PDF or clicking Extract responses or Backfill** →
+   the button is **disabled** and an **"Online required"** hint sits
+   under it. This is by design (Phase 5).
+
+### F. Reconnect + watch the replay drain
+
+1. DevTools → uncheck **Offline**.
+2. Within seconds, OfflineBadge transitions to **blue "Syncing N…"**
+   (very brief), then back to **green** ✓.
+3. Open IDB `queue` store — empty.
+4. React Query auto-invalidated affected keys, so the forms now show
+   the canonical server state. Forms render the values you saved.
+
+### G. Conflict detection (two browsers needed)
+
+1. **Browser A (Chrome, online)**: open Hansen → ESSF. Click **Take
+   offline**, then switch DevTools to **Offline**.
+2. **Browser B (e.g. Safari, online)**: open the same Hansen → ESSF.
+   Make a different ESSF edit and hit Save. Server now has B's data.
+3. **Browser A (still offline)**: make a DIFFERENT ESSF edit. Hit
+   Save. Toast: "Saved locally".
+4. **Browser A**: switch off Offline. The replay tries to apply A's
+   change but sees that the server's `updated_at` is newer (because
+   of B's edit). It parks the entry as **conflict** instead of clobbering.
+5. **Browser A** OfflineBadge: red **"1 conflict — review →"**.
+   Click it.
+6. `/sync-conflicts` page opens with one card per conflict.
+   Two buttons per card:
+   - **Use mine** — A's change overwrites B's on the server.
+   - **Discard mine** — A's queued change is dropped; B's stays.
+7. Pick one, see the result reflected on the ESSF page.
+
+### H. Other-machine handoff checklist
+
+Before testing on the OTHER machine:
+
+- [ ] Pull latest: `git pull origin main`. HEAD should be `33e590a`
+  or later.
+- [ ] `npm install` (the offline phases added `idb` and
+  `@tanstack/react-query-persist-client`).
+- [ ] `npx tsc -b` to confirm types still pass.
+- [ ] `npm run build` to confirm Vite + Workbox build OK.
+- [ ] If you see a stale dashboard crash, delete the `sadp_offline`
+  IDB once.
+
+After testing, capture any findings in this doc under a new
+"§12 Test findings" section so the next session can pick them up.
