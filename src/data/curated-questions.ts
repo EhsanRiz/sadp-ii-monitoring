@@ -31,6 +31,11 @@ export interface CuratedQuestion {
   columns?: CuratedColumn[];
   /** When true, hide this question from non-super-admin users (it joins data they can't read). */
   requiresSuperAdmin?: boolean;
+  /** When true, the SQL contains an ORG_FILTER placeholder (the literal string
+   *  slash-star-ORG_FILTER-star-slash) which the Ask page substitutes to TRUE for
+   *  All-orgs or to `o.code = '4D'` etc for a selected partner. Questions without
+   *  the placeholder are listed but ignore the scope picker. */
+  scopable?: boolean;
 }
 
 export const CURATED_QUESTIONS: CuratedQuestion[] = [
@@ -39,6 +44,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   // ============================================================================
   {
     id: 'p-district-m1-completion',
+    scopable: true,
     title: 'Districts ranked by M1 submission rate',
     description: 'Lowest-completion districts at the top — where to push for submissions.',
     category: 'progress',
@@ -55,6 +61,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       FROM districts d
       JOIN organizations o ON o.id = d.organization_id
       LEFT JOIN enterprises e ON e.district_id = d.id
+      WHERE /*ORG_FILTER*/
       GROUP BY d.name, o.code
       ORDER BY pct_done NULLS FIRST, total_enterprises DESC
     `,
@@ -68,11 +75,17 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'p-bottleneck-milestone',
+    scopable: true,
     title: 'Which milestone is stuck the most?',
     description: 'Counts how many enterprises are NOT done on each of the 11 milestones.',
     category: 'progress',
     sql: `
-      WITH ent AS (SELECT lifecycle_status FROM enterprises)
+      WITH ent AS (
+        SELECT e.lifecycle_status
+        FROM enterprises e
+        JOIN organizations o ON o.id = e.organization_id
+        WHERE /*ORG_FILTER*/
+      )
       SELECT m.label, count(*) FILTER (WHERE (ent.lifecycle_status->>m.key) IS DISTINCT FROM 'done') AS stuck
       FROM ent
       CROSS JOIN (VALUES
@@ -98,6 +111,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'p-stale-enterprises',
+    scopable: true,
     title: 'Enterprises with no activity in 30+ days',
     description: 'Oldest at the top. Updates include any field edit — lifecycle, ESMP, borehole, etc.',
     category: 'progress',
@@ -114,6 +128,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       LEFT JOIN districts d ON d.id = e.district_id
       LEFT JOIN enterprise_types et ON et.id = e.enterprise_type_id
       WHERE e.updated_at < now() - interval '30 days'
+        AND /*ORG_FILTER*/
       ORDER BY e.updated_at ASC
     `,
     columns: [
@@ -127,6 +142,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'p-district-avg-progress',
+    scopable: true,
     title: 'Average milestones completed per district',
     description: 'Out of 11. Higher = further along the lifecycle.',
     category: 'progress',
@@ -134,6 +150,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       WITH per_ent AS (
         SELECT
           e.district_id,
+          e.organization_id,
           (
             (CASE WHEN lifecycle_status->>'esmp'                    = 'done' THEN 1 ELSE 0 END) +
             (CASE WHEN lifecycle_status->>'m1_submitted'            = 'done' THEN 1 ELSE 0 END) +
@@ -148,13 +165,18 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
             (CASE WHEN lifecycle_status->>'procurement'             = 'done' THEN 1 ELSE 0 END)
           ) AS milestones_done
         FROM enterprises e
+      ),
+      scoped AS (
+        SELECT p.* FROM per_ent p
+        JOIN organizations o ON o.id = p.organization_id
+        WHERE /*ORG_FILTER*/
       )
       SELECT
         d.name AS district,
         count(p.district_id) AS enterprises,
         round(avg(p.milestones_done)::numeric, 1) AS avg_done
       FROM districts d
-      LEFT JOIN per_ent p ON p.district_id = d.id
+      LEFT JOIN scoped p ON p.district_id = d.id
       GROUP BY d.name
       ORDER BY avg_done DESC NULLS LAST
     `,
@@ -166,6 +188,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'p-no-esmp-no-m1',
+    scopable: true,
     title: 'Enterprises with neither ESMP nor M1 done',
     description: 'Earliest stage. Useful for "who needs the most help" lists.',
     category: 'progress',
@@ -184,6 +207,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       LEFT JOIN enterprise_types et ON et.id = e.enterprise_type_id
       WHERE coalesce(e.lifecycle_status->>'esmp', '') <> 'done'
         AND coalesce(e.lifecycle_status->>'m1_submitted', '') <> 'done'
+        AND /*ORG_FILTER*/
       ORDER BY e.created_at DESC
     `,
     columns: [
@@ -201,6 +225,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   // ============================================================================
   {
     id: 'f-top-budget-enterprises',
+    scopable: true,
     title: 'Top 25 enterprises by total project cost',
     description: 'Biggest planned investments. Useful for stakeholder reviews.',
     category: 'financials',
@@ -217,6 +242,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       LEFT JOIN districts d ON d.id = e.district_id
       LEFT JOIN enterprise_types et ON et.id = e.enterprise_type_id
       WHERE coalesce(e.budget_lsl, e.total_project_cost_lsl, 0) > 0
+        AND /*ORG_FILTER*/
       ORDER BY coalesce(e.budget_lsl, e.total_project_cost_lsl, 0) DESC
     `,
     columns: [
@@ -230,6 +256,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'f-budget-by-partner',
+    scopable: true,
     title: 'Budget + grant totals by partner',
     description: 'Sum of total_project_cost_lsl and total_grant_lsl per partner.',
     category: 'financials',
@@ -241,6 +268,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
         coalesce(sum(e.total_grant_lsl), 0) AS grant_lsl
       FROM organizations o
       LEFT JOIN enterprises e ON e.organization_id = o.id
+      WHERE /*ORG_FILTER*/
       GROUP BY o.code
       ORDER BY budget_lsl DESC
     `,
@@ -253,6 +281,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'f-m1-incurred-vs-planned',
+    scopable: true,
     title: 'M1 financial report — incurred vs planned',
     description: 'Across every submitted M1 report. Items rolled up by category.',
     category: 'financials',
@@ -261,7 +290,9 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
         SELECT m.id,
                jsonb_array_elements(coalesce(m.financial_report->'items','[]'::jsonb)) AS item
         FROM m1_submissions m
+        JOIN organizations o ON o.id = m.organization_id
         WHERE m.status IN ('submitted','approved')
+          AND /*ORG_FILTER*/
       )
       SELECT
         coalesce(item->>'category', '(none)') AS category,
@@ -286,6 +317,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'f-budget-by-district',
+    scopable: true,
     title: 'Total budget per district',
     description: 'Sum of total_project_cost_lsl per district, with enterprise count.',
     category: 'financials',
@@ -299,6 +331,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       FROM districts d
       JOIN organizations o ON o.id = d.organization_id
       LEFT JOIN enterprises e ON e.district_id = d.id
+      WHERE /*ORG_FILTER*/
       GROUP BY d.name, o.code
       ORDER BY budget_lsl DESC
     `,
@@ -312,6 +345,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'f-grant-payments-received',
+    scopable: true,
     title: 'Enterprises that have received current grant payment',
     description: 'current_grant_payment_lsl > 0. Use for cashflow reporting.',
     category: 'financials',
@@ -327,6 +361,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       LEFT JOIN organizations o ON o.id = e.organization_id
       LEFT JOIN districts d ON d.id = e.district_id
       WHERE coalesce(e.current_grant_payment_lsl, 0) > 0
+        AND /*ORG_FILTER*/
       ORDER BY e.cgp_received_date DESC NULLS LAST, e.current_grant_payment_lsl DESC
     `,
     columns: [
@@ -344,6 +379,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   // ============================================================================
   {
     id: 'c-essf-submission-rate-by-district',
+    scopable: true,
     title: 'ESSF submission rate by district',
     description: 'Districts where the safeguards form lags. Approved + submitted both count.',
     category: 'compliance',
@@ -357,8 +393,10 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
                / nullif(count(DISTINCT e.id), 0)
         , 1) AS pct
       FROM districts d
+      JOIN organizations o ON o.id = d.organization_id
       LEFT JOIN enterprises e ON e.district_id = d.id
       LEFT JOIN essf_submissions s ON s.enterprise_id = e.id
+      WHERE /*ORG_FILTER*/
       GROUP BY d.name
       ORDER BY pct NULLS FIRST
     `,
@@ -371,6 +409,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'c-overdue-inspections',
+    scopable: true,
     title: 'Enterprises with no inspection in 90+ days',
     description: 'Includes enterprises that have NEVER been inspected. Sorted by longest gap.',
     category: 'compliance',
@@ -392,7 +431,8 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       LEFT JOIN districts d ON d.id = e.district_id
       LEFT JOIN enterprise_types et ON et.id = e.enterprise_type_id
       LEFT JOIN last_visit lv ON lv.enterprise_id = e.id
-      WHERE lv.last_date IS NULL OR lv.last_date < now() - interval '90 days'
+      WHERE (lv.last_date IS NULL OR lv.last_date < now() - interval '90 days')
+        AND /*ORG_FILTER*/
       ORDER BY days_since DESC
     `,
     columns: [
@@ -406,6 +446,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'c-pending-approvals',
+    scopable: true,
     title: 'Forms waiting for approval',
     description: 'ESSF / EMMP / Inspection submissions currently in submitted state.',
     category: 'compliance',
@@ -413,17 +454,23 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       SELECT 'ESSF' AS kind, e.beneficiary_short_name AS enterprise, s.submitted_at::date AS submitted_on
       FROM essf_submissions s
       JOIN enterprises e ON e.id = s.enterprise_id
+      JOIN organizations o ON o.id = e.organization_id
       WHERE s.status = 'submitted'
+        AND /*ORG_FILTER*/
       UNION ALL
       SELECT 'EMMP', e.beneficiary_short_name, s.submitted_at::date
       FROM emmp_submissions s
       JOIN enterprises e ON e.id = s.enterprise_id
+      JOIN organizations o ON o.id = e.organization_id
       WHERE s.status = 'submitted'
+        AND /*ORG_FILTER*/
       UNION ALL
       SELECT 'Inspection', e.beneficiary_short_name, v.submitted_at::date
       FROM inspection_visits v
       JOIN enterprises e ON e.id = v.enterprise_id
+      JOIN organizations o ON o.id = e.organization_id
       WHERE v.status = 'submitted'
+        AND /*ORG_FILTER*/
       ORDER BY submitted_on
     `,
     columns: [
@@ -434,6 +481,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'c-inspections-by-month',
+    scopable: true,
     title: 'Inspection visits per month — last 12 months',
     description: 'Count of inspection_visits grouped by visit_date.',
     category: 'compliance',
@@ -441,8 +489,10 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       SELECT
         to_char(date_trunc('month', visit_date), 'YYYY-MM') AS month,
         count(*) AS visits
-      FROM inspection_visits
+      FROM inspection_visits iv
+      JOIN organizations o ON o.id = iv.organization_id
       WHERE visit_date >= (now() - interval '12 months')::date
+        AND /*ORG_FILTER*/
       GROUP BY date_trunc('month', visit_date)
       ORDER BY date_trunc('month', visit_date) DESC
     `,
@@ -453,11 +503,17 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'c-borehole-progress',
+    scopable: true,
     title: 'Borehole supervision progress per district',
     description: 'For each district, how many enterprises completed each of the 6 borehole milestones.',
     category: 'compliance',
     sql: `
-      WITH ent AS (SELECT district_id, borehole_supervision AS bs FROM enterprises)
+      WITH ent AS (
+        SELECT e.district_id, e.borehole_supervision AS bs
+        FROM enterprises e
+        JOIN organizations o ON o.id = e.organization_id
+        WHERE /*ORG_FILTER*/
+      )
       SELECT
         d.name AS district,
         count(*) FILTER (WHERE (bs->'drilling_permit'->>'done')='true')          AS drilling_permit,
@@ -487,6 +543,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   // ============================================================================
   {
     id: 'q-missing-signatures',
+    scopable: true,
     title: 'Enterprises missing principal-applicant signature',
     description: 'principal_applicant_signature_url is null — cover page can\'t be issued.',
     category: 'data-quality',
@@ -501,6 +558,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       LEFT JOIN organizations o ON o.id = e.organization_id
       LEFT JOIN districts d ON d.id = e.district_id
       WHERE e.principal_applicant_signature_url IS NULL
+        AND /*ORG_FILTER*/
       ORDER BY e.created_at DESC
     `,
     columns: [
@@ -513,6 +571,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'q-missing-classifications',
+    scopable: true,
     title: 'Enterprises missing district, RC, or type',
     description: 'Any enterprise where one of the classification FKs is null. Often import artifacts.',
     category: 'data-quality',
@@ -525,7 +584,8 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
         CASE WHEN e.enterprise_type_id IS NULL THEN 'YES' ELSE '' END AS missing_type
       FROM enterprises e
       LEFT JOIN organizations o ON o.id = e.organization_id
-      WHERE e.district_id IS NULL OR e.resource_center_id IS NULL OR e.enterprise_type_id IS NULL
+      WHERE (e.district_id IS NULL OR e.resource_center_id IS NULL OR e.enterprise_type_id IS NULL)
+        AND /*ORG_FILTER*/
       ORDER BY o.code, e.beneficiary_short_name
     `,
     columns: [
@@ -538,6 +598,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'q-budget-no-progress',
+    scopable: true,
     title: 'Enterprises with budget set but zero lifecycle milestones',
     description: 'Suggests they\'re on the books but no work has been recorded yet.',
     category: 'data-quality',
@@ -553,6 +614,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
       LEFT JOIN districts d ON d.id = e.district_id
       WHERE coalesce(e.budget_lsl, e.total_project_cost_lsl, 0) > 0
         AND coalesce(e.lifecycle_status, '{}'::jsonb) = '{}'::jsonb
+        AND /*ORG_FILTER*/
       ORDER BY budget_lsl DESC
     `,
     columns: [
@@ -565,6 +627,7 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
   },
   {
     id: 'q-duplicate-names',
+    scopable: true,
     title: 'Possible duplicate enterprise names',
     description: 'Same beneficiary_short_name appearing more than once — investigate.',
     category: 'data-quality',
@@ -576,7 +639,9 @@ export const CURATED_QUESTIONS: CuratedQuestion[] = [
           SELECT code FROM organizations o WHERE o.id = e.organization_id
         ), ', ') AS partners
       FROM enterprises e
+      JOIN organizations o ON o.id = e.organization_id
       WHERE beneficiary_short_name IS NOT NULL
+        AND /*ORG_FILTER*/
       GROUP BY lower(btrim(beneficiary_short_name))
       HAVING count(*) > 1
       ORDER BY count DESC, normalized_name

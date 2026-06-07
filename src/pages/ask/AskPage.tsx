@@ -36,6 +36,7 @@ export function AskPage() {
   const { isSuperAdmin } = useAuth();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<QuestionCategory | 'all'>('all');
+  const [scope, setScope] = useState<'all' | '4D' | 'RSDA'>('all');
   const [selected, setSelected] = useState<CuratedQuestion | null>(null);
   const [showSql, setShowSql] = useState(false);
   const run = useRunCuratedQuery();
@@ -75,11 +76,17 @@ export function AskPage() {
     return groups;
   }, [visibleQuestions]);
 
+  function applyScope(sql: string, q: CuratedQuestion): string {
+    if (!q.scopable) return sql;
+    const filter = scope === 'all' ? 'TRUE' : `o.code = '${scope}'`;
+    return sql.replace(/\/\*ORG_FILTER\*\//g, filter);
+  }
+
   function runQuestion(q: CuratedQuestion) {
     setSelected(q);
     setSortKey(null);
     setShowSql(false);
-    run.mutate(q.sql, {
+    run.mutate(applyScope(q.sql, q), {
       onError: (e: unknown) => {
         toast.error('Query failed', {
           description: e instanceof Error ? e.message : 'unknown error',
@@ -87,6 +94,14 @@ export function AskPage() {
       },
     });
   }
+
+  // Re-run the active question whenever the scope changes.
+  useEffect(() => {
+    if (selected) {
+      run.mutate(applyScope(selected.sql, selected));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);
 
   function downloadCsv() {
     if (!selected || !run.data) return;
@@ -141,6 +156,22 @@ export function AskPage() {
               className="pl-9"
             />
           </div>
+          {isSuperAdmin && (
+            <div className="flex flex-wrap items-center gap-2 pb-1 border-b">
+              <span className="text-xs text-muted-foreground mr-1">Scope:</span>
+              <div className="min-w-[200px]">
+                <Select value={scope} onValueChange={(v) => setScope(v as 'all'|'4D'|'RSDA')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All organisations</SelectItem>
+                    <SelectItem value="4D">4D only</SelectItem>
+                    <SelectItem value="RSDA">RSDA only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <span className="text-[11px] text-muted-foreground">Filters every scopable question. Re-runs immediately.</span>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground mr-1">Quick pick:</span>
             <div className="min-w-[260px] flex-1">
@@ -192,8 +223,18 @@ export function AskPage() {
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <CardTitle className="text-base flex items-center gap-2">
+                <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                   {selected.title}
+                  {selected.scopable && scope !== 'all' && (
+                    <span className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                      Scope: {scope}
+                    </span>
+                  )}
+                  {!selected.scopable && scope !== 'all' && isSuperAdmin && (
+                    <span className="text-[10px] uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                      Scope ignored — not scopable
+                    </span>
+                  )}
                 </CardTitle>
                 <CardDescription>{selected.description}</CardDescription>
               </div>
