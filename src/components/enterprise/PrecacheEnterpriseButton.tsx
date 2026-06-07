@@ -19,12 +19,13 @@
  * NOTE: this does NOT pre-cache PDFs or supporting-doc Blobs — those are
  * online-only by design (see Phase 5 in PROGRESS.md).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Download, Loader2, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getCacheStateFor, setCacheStateRows } from '@/lib/offline-db';
 
 interface Props {
   enterpriseId: string;
@@ -39,6 +40,17 @@ export function PrecacheEnterpriseButton({
 }: Props) {
   const qc = useQueryClient();
   const [state, setState] = useState<'idle' | 'fetching' | 'done' | 'error'>('idle');
+  const [lastCachedAt, setLastCachedAt] = useState<string | null>(null);
+
+  // On mount, check if this enterprise has been auto-cached already so the
+  // button shows the right label without the user having to click first.
+  useEffect(() => {
+    let cancelled = false;
+    void getCacheStateFor(enterpriseId).then((row) => {
+      if (!cancelled && row) setLastCachedAt(row.cached_at);
+    });
+    return () => { cancelled = true; };
+  }, [enterpriseId]);
 
   async function run() {
     setState('fetching');
@@ -232,6 +244,11 @@ export function PrecacheEnterpriseButton({
       }
 
       await Promise.all([...catalogJobs, ...enterpriseJobs]);
+      // Persist that this enterprise is cached so the button + list badge
+      // show the right state on next page load.
+      const cached_at = new Date().toISOString();
+      await setCacheStateRows([{ enterprise_id: enterpriseId, cached_at, source_updated_at: null }]);
+      setLastCachedAt(cached_at);
       setState('done');
       toast.success('Ready for offline', {
         description:
@@ -245,23 +262,31 @@ export function PrecacheEnterpriseButton({
     }
   }
 
+  const isCached = state === 'done' || !!lastCachedAt;
+
   return (
     <Button
       variant="outline"
       size="sm"
       onClick={run}
       disabled={state === 'fetching'}
-      title="Pre-fetch everything needed to view + edit this enterprise without a network connection."
+      title={isCached
+        ? `Refresh the offline copy of this enterprise. Last cached: ${lastCachedAt ? new Date(lastCachedAt).toLocaleString() : 'just now'}.`
+        : 'Pre-fetch everything needed to view + edit this enterprise without a network connection.'
+      }
     >
       {state === 'fetching' ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Caching for offline…
+          Caching…
         </>
-      ) : state === 'done' ? (
+      ) : isCached ? (
         <>
           <CheckCircle2 className="mr-2 h-4 w-4 text-success" />
-          Cached for offline
+          <span>Offline ready</span>
+          <span className="ml-2 text-[10px] opacity-70 hidden sm:inline">
+            · {lastCachedAt ? relTimeShort(lastCachedAt) : 'just now'} · Refresh
+          </span>
         </>
       ) : (
         <>
@@ -271,4 +296,14 @@ export function PrecacheEnterpriseButton({
       )}
     </Button>
   );
+}
+
+function relTimeShort(iso: string): string {
+  const dMin = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (dMin < 1)   return 'just now';
+  if (dMin < 60)  return `${dMin}m ago`;
+  const dH = Math.floor(dMin / 60);
+  if (dH < 24)    return `${dH}h ago`;
+  const dD = Math.floor(dH / 24);
+  return `${dD}d ago`;
 }

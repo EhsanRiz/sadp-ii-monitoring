@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-04 (Offline-first stack · Mobile responsive · Dashboard Map crash fix) · HEAD: `33e590a`
+Last updated: 2026-06-07 (Auto-cache for offline · zero-touch field readiness) · HEAD: `<pending>`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -19,6 +19,62 @@ is here or one link away.
 | **Owner** | Ehsan Rizvi · 4D Climate Solutions · super admin of the app |
 | **Hosting** | Render Static Site, auto-redeploys on push to `main` |
 | **Stack** | Vite + React 18 + TypeScript + Tailwind + shadcn/ui PWA, backed by Supabase (Postgres + Auth + Storage + Edge Functions + RLS) |
+
+---
+
+## 2. What changed in this push
+
+**Zero-touch offline auto-sync** — supervisors can no longer be stranded by forgetting to click "Take offline"
+(`src/lib/auto-cache.ts`,
+`src/lib/offline-db.ts` (v3 → v4),
+`src/components/CacheStatusPill.tsx`,
+`src/components/AppShell.tsx`,
+`src/components/enterprise/PrecacheEnterpriseButton.tsx`,
+`src/pages/enterprises/EnterprisesListPage.tsx`)
+
+**The problem we solved.**  The previous offline rollout required users to
+proactively click *Take offline* before going to a remote site.  If they
+forgot, they were stranded — no enterprise data, no form, wasted trip.
+
+**How it works now.**
+- The moment a user logs in (and on every offline → online transition), the
+  app silently pulls every enterprise in their RLS scope plus all related
+  submissions in 12 bulk queries (one per table), and writes them into the
+  React Query IDB cache via `setQueryData`.  Refresh runs again every 30
+  minutes while the tab is foreground.
+- For a Mafeteng field supervisor, this is ~25 enterprises and 2-3 MB of
+  metadata.  Imperceptible on wifi; small enough on cellular to be a
+  reasonable trade against the "stranded" risk.  Per the design call:
+  *always auto-sync regardless of connection*.
+- A new IDB store `cache_state` (v4 schema bump) tracks per-enterprise
+  `cached_at` and `source_updated_at` so the UI can show "47 ready · synced
+  5m ago" and a small offline indicator on each cached enterprise without
+  losing state across reloads.
+
+**New UI affordances.**
+- `CacheStatusPill` in the app header next to OfflineBadge.  States: green
+  *"N ready · synced 5m ago"* (idle, click to refresh now); blue spinner
+  *"Caching N…"* (in-flight); red *"Cache failed · Retry"* (error); muted
+  *"Setting up offline copy…"* (first sync after login).
+- Enterprise list (both card and matrix views) shows a small `WifiOff` icon
+  next to the name on cached enterprises.  Glance and know which are ready.
+- *Take offline* button is now *Offline ready · 2h ago · Refresh* once
+  cached.  State persists across reloads (was lost in local `useState`
+  before).
+
+**Architecture notes.**
+- Sync uses **bulk queries**, not per-enterprise loops.  ~12 round-trips
+  total regardless of N enterprises.  RLS scopes results automatically; no
+  client-side filtering required.
+- Cache writes flow through React Query's existing IDB persister — the
+  same store the rest of the app reads from.  No duplicate caching layer.
+- Still **online-only by design**: PDF uploads, supporting-doc Blobs, the
+  Extract / Backfill-from-binder buttons.  Multi-MB blobs + Anthropic
+  round-trips aren't worth queueing (Phase 5 architecture unchanged).
+- The mounted-once orchestrator (`useAutoCache()` in `AppShell`) runs on
+  initial mount, watches the `online-status` store, and re-fires on every
+  reconnect transition.  Module-level state means multiple subscribers
+  (the pill + the list badges) see identical progress.
 
 ---
 

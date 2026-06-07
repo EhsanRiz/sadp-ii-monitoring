@@ -58,6 +58,16 @@ export interface CacheEntry {
   fetched_at: string;
 }
 
+export interface CacheStateRow {
+  /** Enterprise UUID — the IDB key. */
+  enterprise_id: string;
+  /** ISO timestamp of the last successful auto-cache sync for this enterprise. */
+  cached_at: string;
+  /** updated_at of the enterprise row at the moment of caching — used for
+   *  staleness detection (compare with the server's current updated_at). */
+  source_updated_at: string | null;
+}
+
 interface SadpOfflineSchema extends DBSchema {
   queue: {
     key: string;
@@ -72,6 +82,10 @@ interface SadpOfflineSchema extends DBSchema {
     key: string;
     value: CacheEntry;
   };
+  cache_state: {
+    key: string;
+    value: CacheStateRow;
+  };
 }
 
 const DB_NAME = 'sadp_offline';
@@ -81,7 +95,7 @@ const DB_NAME = 'sadp_offline';
 // `.values()` / `.get()` on rehydrate. The fix is two-pronged: change
 // those hooks to return plain Records at the source (commit), AND clear
 // the cache one more time for users who already have the bad data.
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBPDatabase<SadpOfflineSchema>> | null = null;
 
@@ -115,6 +129,14 @@ function getDb(): Promise<IDBPDatabase<SadpOfflineSchema>> {
           // one more time to flush the bad entries.
           if (db.objectStoreNames.contains('cache')) {
             void tx.objectStore('cache').clear();
+          }
+        }
+        if (oldVersion < 4) {
+          // v4 — track per-enterprise auto-cache state so we can show
+          // "cached" indicators in the list and last-sync timestamps in the
+          // pre-cache button without losing state across reloads.
+          if (!db.objectStoreNames.contains('cache_state')) {
+            db.createObjectStore('cache_state', { keyPath: 'enterprise_id' });
           }
         }
       },
@@ -296,3 +318,38 @@ export function useQueueEntries(): QueueEntry[] {
   }, []);
   return entries;
 }
+
+// ---------------------------------------------------------------------------
+// Cache-state helpers (v4 onwards) — tiny key/value layer over the
+// cache_state object store. The shape mirrors `CacheStateRow` above. We
+// expose this via simple functions instead of React Query so it can be
+// read from a layout component without subscribing to a query.
+// ---------------------------------------------------------------------------
+export async function getAllCacheState(): Promise<CacheStateRow[]> {
+  const db = await getDb();
+  return (await db.getAll('cache_state')) as CacheStateRow[];
+}
+
+export async function getCacheStateFor(enterpriseId: string): Promise<CacheStateRow | undefined> {
+  const db = await getDb();
+  return (await db.get('cache_state', enterpriseId)) as CacheStateRow | undefined;
+}
+
+export async function setCacheStateRows(rows: CacheStateRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const db = await getDb();
+  const tx = db.transaction('cache_state', 'readwrite');
+  await Promise.all(rows.map((r) => tx.objectStore('cache_state').put(r)));
+  await tx.done;
+}
+
+export async function clearCacheStateFor(enterpriseId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('cache_state', enterpriseId);
+}
+
+export async function clearAllCacheState(): Promise<void> {
+  const db = await getDb();
+  await db.clear('cache_state');
+}
+

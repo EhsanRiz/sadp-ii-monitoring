@@ -4,6 +4,8 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { OfflineBadge } from '@/components/OfflineBadge';
+import { CacheStatusPill } from '@/components/CacheStatusPill';
+import { useAutoCache } from '@/lib/auto-cache';
 import {
   LogOut,
   LayoutDashboard,
@@ -45,6 +47,10 @@ const items: NavItem[] = [
  * mobile app instead of leaving the overlay open.
  */
 export function AppShell() {
+  // Kick off background auto-sync of every accessible enterprise.
+  // Runs once at mount, every 30 min while online + visible, and on
+  // every offline → online transition. See src/lib/auto-cache.ts.
+  useAutoCache();
   const { user, role, isSuperAdmin, signOut } = useAuth();
   const visible = items.filter((i) => !i.superAdminOnly || isSuperAdmin);
 
@@ -140,7 +146,10 @@ export function AppShell() {
                 SADP-II
               </span>
             </div>
-            <OfflineBadge />
+            <div className="flex items-center gap-2">
+              <CacheStatusPill />
+              <OfflineBadge />
+            </div>
           </div>
         </header>
 
@@ -148,7 +157,8 @@ export function AppShell() {
         <main className="p-4 md:p-8 max-w-6xl">
           {/* Desktop top strip — only shown on md+, hidden on mobile where the
               OfflineBadge already lives in the header. */}
-          <div className="hidden md:flex justify-end mb-4">
+          <div className="hidden md:flex justify-end items-center gap-3 mb-4">
+            <CacheStatusPill />
             <OfflineBadge />
           </div>
           <Outlet />

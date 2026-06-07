@@ -22,6 +22,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Plus, FileText, LayoutGrid, List, Sprout, ChevronRight } from 'lucide-react';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import { cn } from '@/lib/utils';
+import { useCachedEnterpriseIds } from '@/lib/auto-cache';
+import { WifiOff } from 'lucide-react';
 
 const ESMP_LABEL: Record<string, string> = {
   not_started: 'Not started',
@@ -137,6 +139,7 @@ export function EnterprisesListPage() {
   const { isSuperAdmin } = useAuth();
   const { data: organizations } = useOrganizations();
   const { data: districts } = useDistricts();
+  const cachedIds = useCachedEnterpriseIds();
   // When an Org filter is set, scope the District dropdown to that org only.
   // Non-super-admins are already RLS-scoped server-side; the catalog query
   // still returns everything, so we filter client-side here for UI clarity.
@@ -394,8 +397,11 @@ export function EnterprisesListPage() {
                         <Icon className={cn('h-5 w-5', v.iconColor)} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate" title={e.beneficiary_short_name}>
-                          {e.beneficiary_short_name}
+                        <div className="font-medium truncate flex items-center gap-1.5" title={e.beneficiary_short_name}>
+                          <span className="truncate">{e.beneficiary_short_name}</span>
+                          {cachedIds.has(e.id) && (
+                            <WifiOff className="h-3 w-3 text-success shrink-0" aria-label="Available offline" />
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
                           {t?.name ?? '—'} · R{e.round_id} ·{' '}
@@ -463,7 +469,12 @@ export function EnterprisesListPage() {
                               <Icon className={cn('h-3 w-3', v.iconColor)} />
                             </div>
                             <div className="min-w-0">
-                              <div className="truncate">{e.beneficiary_short_name}</div>
+                              <div className="truncate flex items-center gap-1.5">
+                                <span className="truncate">{e.beneficiary_short_name}</span>
+                                {cachedIds.has(e.id) && (
+                                  <WifiOff className="h-3 w-3 text-success shrink-0" aria-label="Available offline" />
+                                )}
+                              </div>
                               <div className="text-[10px] text-muted-foreground truncate">{t?.name ?? '—'}</div>
                             </div>
                           </Link>
