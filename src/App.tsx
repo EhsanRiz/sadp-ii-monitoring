@@ -28,6 +28,7 @@ import { ResourceCentersAdminPage } from '@/pages/admin/ResourceCentersAdminPage
 import { EnterpriseTypesAdminPage } from '@/pages/admin/EnterpriseTypesAdminPage';
 import { ReportsHomePage } from '@/pages/reports/ReportsHomePage';
 import { ReportsArchivePage } from '@/pages/reports/ReportsArchivePage';
+import { AskPage } from '@/pages/ask/AskPage';
 
 /**
  * Top-level route table. RBAC matrix (PHASE_1_DESIGN.md §4):
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="/reports" element={<ReportsHomePage />} />
         <Route path="/reports/:kind" element={<ReportsHomePage />} />
         <Route path="/reports/archive" element={<ReportsArchivePage />} />
+        <Route path="/ask" element={<AskPage />} />
 
         {/* Phase 6 — offline queue conflict review */}
         <Route path="/sync-conflicts" element={<SyncConflictsPage />} />

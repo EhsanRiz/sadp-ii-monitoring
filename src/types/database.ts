@@ -890,6 +890,7 @@ export interface Database {
         occurred_at: string;
       }> };
       log_failed_login: { Args: { p_email: string }; Returns: undefined };
+      run_safe_query: { Args: { p_sql: string }; Returns: Json };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

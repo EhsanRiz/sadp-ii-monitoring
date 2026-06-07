@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-07 (Auto-cache for offline · zero-touch field readiness) · HEAD: `<pending>`
+Last updated: 2026-06-07 (Ask the data L1 · auto-cache durability fix) · HEAD: `<pending>`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -19,6 +19,40 @@ is here or one link away.
 | **Owner** | Ehsan Rizvi · 4D Climate Solutions · super admin of the app |
 | **Hosting** | Render Static Site, auto-redeploys on push to `main` |
 | **Stack** | Vite + React 18 + TypeScript + Tailwind + shadcn/ui PWA, backed by Supabase (Postgres + Auth + Storage + Edge Functions + RLS) |
+
+---
+
+## 2. What changed in this push
+
+**Ask the data — Layer 1 (curated questions library)**
+(`migration 280`,
+`src/data/curated-questions.ts`,
+`src/lib/ask.ts`,
+`src/pages/ask/AskPage.tsx`,
+`src/components/AppShell.tsx`, `src/App.tsx`)
+
+- New "Ask the data" sidebar entry between Reports and Users. Sparkles icon.
+- 20 hand-written SQL questions across 4 categories — Progress & bottlenecks
+  (5), Financials (5), Compliance & ESMP (5), Data quality (5).
+- Each question card shows title + description. Click → runs the SQL via the
+  new `run_safe_query()` PG function (migration 280) and renders a sortable
+  result table with CSV export.
+- A "Show SQL" toggle reveals the exact query — important for transparency
+  and so analysts can copy + tweak.
+- `run_safe_query()` is **SECURITY INVOKER** — caller's RLS scope applies
+  automatically. 4D users see 4D data, RSDA staff see RSDA data, no special
+  casing in the UI.
+- Safety guards in the PG function: SELECT/WITH only (regex), no `;` inside
+  the query, blacklist of dangerous keywords (INSERT/UPDATE/DELETE/DROP/...),
+  5-second statement timeout, result set bounded to LIMIT 500 in a wrapper
+  subquery so even an open-ended SELECT can't blow up.
+- One question (`q-inactive-users`) is flagged `requiresSuperAdmin` and only
+  shows for super admins because it joins `user_admin_list()` which is super-
+  admin gated.
+
+**Foundation for Layer 2.** The next push (free-form "Ask anything" box) will
+reuse `run_safe_query()` — just adds an edge function that asks Claude to
+generate the SQL, then shows it to the user for review before execution.
 
 ---
 
@@ -75,6 +109,40 @@ forgot, they were stranded — no enterprise data, no form, wasted trip.
   initial mount, watches the `online-status` store, and re-fires on every
   reconnect transition.  Module-level state means multiple subscribers
   (the pill + the list badges) see identical progress.
+
+---
+
+## 2. What changed in this push
+
+**Ask the data — Layer 1 (curated questions library)**
+(`migration 280`,
+`src/data/curated-questions.ts`,
+`src/lib/ask.ts`,
+`src/pages/ask/AskPage.tsx`,
+`src/components/AppShell.tsx`, `src/App.tsx`)
+
+- New "Ask the data" sidebar entry between Reports and Users. Sparkles icon.
+- 20 hand-written SQL questions across 4 categories — Progress & bottlenecks
+  (5), Financials (5), Compliance & ESMP (5), Data quality (5).
+- Each question card shows title + description. Click → runs the SQL via the
+  new `run_safe_query()` PG function (migration 280) and renders a sortable
+  result table with CSV export.
+- A "Show SQL" toggle reveals the exact query — important for transparency
+  and so analysts can copy + tweak.
+- `run_safe_query()` is **SECURITY INVOKER** — caller's RLS scope applies
+  automatically. 4D users see 4D data, RSDA staff see RSDA data, no special
+  casing in the UI.
+- Safety guards in the PG function: SELECT/WITH only (regex), no `;` inside
+  the query, blacklist of dangerous keywords (INSERT/UPDATE/DELETE/DROP/...),
+  5-second statement timeout, result set bounded to LIMIT 500 in a wrapper
+  subquery so even an open-ended SELECT can't blow up.
+- One question (`q-inactive-users`) is flagged `requiresSuperAdmin` and only
+  shows for super admins because it joins `user_admin_list()` which is super-
+  admin gated.
+
+**Foundation for Layer 2.** The next push (free-form "Ask anything" box) will
+reuse `run_safe_query()` — just adds an edge function that asks Claude to
+generate the SQL, then shows it to the user for review before execution.
 
 ---
 
