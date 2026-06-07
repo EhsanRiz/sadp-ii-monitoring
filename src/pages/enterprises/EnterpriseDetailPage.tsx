@@ -287,16 +287,21 @@ export function EnterpriseDetailPage() {
       </div>
 
       <Tabs value={currentTab} onValueChange={handleTabChange}>
-        <TabsList>
-          {/* Progress is the default landing tab AND the leftmost tab — the
-              first thing a user sees should match what's pre-selected. */}
-          <TabsTrigger value="progress">Progress</TabsTrigger>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="esmp">ESMP</TabsTrigger>
-          <TabsTrigger value="borehole">Borehole</TabsTrigger>
-          <TabsTrigger value="m1">Milestone 1</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-        </TabsList>
+        {/* Wrap the tab strip in an overflow-x-auto container so six tabs
+            stay one row on a phone (they'd otherwise wrap badly). The
+            inline-flex on TabsList means it sizes to its children. */}
+        <div className="overflow-x-auto -mx-1 px-1">
+          <TabsList className="w-max">
+            {/* Progress is the default landing tab AND the leftmost tab — the
+                first thing a user sees should match what's pre-selected. */}
+            <TabsTrigger value="progress">Progress</TabsTrigger>
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="esmp">ESMP</TabsTrigger>
+            <TabsTrigger value="borehole">Borehole</TabsTrigger>
+            <TabsTrigger value="m1">Milestone 1</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="details" className="space-y-4">
           <Card>

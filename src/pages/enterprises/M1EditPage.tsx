@@ -226,13 +226,15 @@ export function M1EditPage() {
       )}
 
       <Tabs defaultValue="narrative">
-        <TabsList>
-          <TabsTrigger value="narrative">Narrative</TabsTrigger>
-          <TabsTrigger value="cashbook">Cashbook</TabsTrigger>
-          <TabsTrigger value="financial">Financial Report</TabsTrigger>
-          <TabsTrigger value="reconciliation">Bank Reconciliation</TabsTrigger>
-          <TabsTrigger value="supporting">Supporting Docs</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <TabsList className="w-max">
+            <TabsTrigger value="narrative">Narrative</TabsTrigger>
+            <TabsTrigger value="cashbook">Cashbook</TabsTrigger>
+            <TabsTrigger value="financial">Financial Report</TabsTrigger>
+            <TabsTrigger value="reconciliation">Bank Reconciliation</TabsTrigger>
+            <TabsTrigger value="supporting">Supporting Docs</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="narrative" className="space-y-4 mt-4">
           <M1NarrativeFormRenderer

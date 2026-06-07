@@ -122,7 +122,12 @@ export function EnterprisesListPage() {
   const [activityId, setActivityId] = useState<LifecycleMilestoneId | '__all'>('__all');
   const [activityValue, setActivityValue] = useState<'yes' | 'no' | 'n_a' | 'not_tracked' | '__any'>('__any');
   const [view, setView] = useState<'table' | 'cards'>(() => {
-    return (localStorage.getItem('enterprises-view') as 'table' | 'cards') ?? 'cards';
+    // Default to cards on small screens — the 11-column matrix is unreadable
+    // on a phone. Desktop respects the user's last choice.
+    const stored = localStorage.getItem('enterprises-view') as 'table' | 'cards' | null;
+    if (stored) return stored;
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return 'cards';
+    return 'cards';
   });
   const setViewPersisted = (v: 'table' | 'cards') => {
     setView(v);
