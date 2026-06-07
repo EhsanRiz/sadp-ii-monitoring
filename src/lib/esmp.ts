@@ -22,6 +22,9 @@ import {
   applyEssfDraft,
   applyEmmpDraft,
   applyInspectionDraft,
+  applyEssfTransition,
+  applyEmmpTransition,
+  applyInspectionTransition,
 } from '@/lib/offline-replay';
 import type {
   Database,
@@ -96,18 +99,35 @@ export function useSaveEssfDraft(enterpriseId: string) {
 export function useTransitionEssf(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { to: SubmissionStatus; userId: string }) => {
-      const patch: Database['public']['Tables']['essf_submissions']['Update'] = { status: input.to };
-      if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
-      if (input.to === 'approved') {
-        patch.approved_at = new Date().toISOString();
-        patch.approved_by = input.userId;
-      }
-      const { error } = await supabase
-        .from('essf_submissions')
-        .update(patch)
-        .eq('enterprise_id', enterpriseId);
-      if (error) throw error;
+    mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: `ESSF transition → ${input.to}`,
+        payload: {
+          saveType: 'essf_transition',
+          enterprise_id: enterpriseId,
+          to: input.to,
+          user_id: input.userId,
+        },
+        doSave: () =>
+          applyEssfTransition({
+            saveType: 'essf_transition',
+            enterprise_id: enterpriseId,
+            to: input.to,
+            user_id: input.userId,
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['essf', enterpriseId], (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            const patch: Record<string, unknown> = { status: input.to };
+            if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
+            if (input.to === 'approved') {
+              patch.approved_at = new Date().toISOString();
+              patch.approved_by = input.userId;
+            }
+            return { ...(old as Record<string, unknown>), ...patch };
+          });
+        },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['essf', enterpriseId] });
@@ -198,18 +218,35 @@ export function useSaveEmmpDraft(enterpriseId: string, templateId: string | unde
 export function useTransitionEmmp(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { to: SubmissionStatus; userId: string }) => {
-      const patch: Database['public']['Tables']['emmp_submissions']['Update'] = { status: input.to };
-      if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
-      if (input.to === 'approved') {
-        patch.approved_at = new Date().toISOString();
-        patch.approved_by = input.userId;
-      }
-      const { error } = await supabase
-        .from('emmp_submissions')
-        .update(patch)
-        .eq('enterprise_id', enterpriseId);
-      if (error) throw error;
+    mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: `EMMP transition → ${input.to}`,
+        payload: {
+          saveType: 'emmp_transition',
+          enterprise_id: enterpriseId,
+          to: input.to,
+          user_id: input.userId,
+        },
+        doSave: () =>
+          applyEmmpTransition({
+            saveType: 'emmp_transition',
+            enterprise_id: enterpriseId,
+            to: input.to,
+            user_id: input.userId,
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['emmp', enterpriseId], (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            const patch: Record<string, unknown> = { status: input.to };
+            if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
+            if (input.to === 'approved') {
+              patch.approved_at = new Date().toISOString();
+              patch.approved_by = input.userId;
+            }
+            return { ...(old as Record<string, unknown>), ...patch };
+          });
+        },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emmp', enterpriseId] });
@@ -332,15 +369,37 @@ export function useSaveInspectionDraft(visitId: string, enterpriseId?: string | 
 export function useTransitionInspection(visitId: string, enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { to: SubmissionStatus; userId: string }) => {
-      const patch: Database['public']['Tables']['inspection_visits']['Update'] = { status: input.to };
-      if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
-      if (input.to === 'approved') {
-        patch.approved_at = new Date().toISOString();
-        patch.approved_by = input.userId;
-      }
-      const { error } = await supabase.from('inspection_visits').update(patch).eq('id', visitId);
-      if (error) throw error;
+    mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: `Inspection transition → ${input.to}`,
+        payload: {
+          saveType: 'inspection_transition',
+          visit_id: visitId,
+          enterprise_id: enterpriseId,
+          to: input.to,
+          user_id: input.userId,
+        },
+        doSave: () =>
+          applyInspectionTransition({
+            saveType: 'inspection_transition',
+            visit_id: visitId,
+            enterprise_id: enterpriseId,
+            to: input.to,
+            user_id: input.userId,
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['inspection-visit', visitId], (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            const patch: Record<string, unknown> = { status: input.to };
+            if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
+            if (input.to === 'approved') {
+              patch.approved_at = new Date().toISOString();
+              patch.approved_by = input.userId;
+            }
+            return { ...(old as Record<string, unknown>), ...patch };
+          });
+        },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inspection-visit', visitId] });

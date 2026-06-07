@@ -23,10 +23,15 @@ import {
 import { getOnlineState, onConnectionChange } from '@/lib/online-status';
 import type {
   EmmpDraftPayload,
+  EmmpTransitionPayload,
+  EnterprisePatchPayload,
   EssfDraftPayload,
+  EssfTransitionPayload,
   FormSavePayload,
   InspectionDraftPayload,
+  InspectionTransitionPayload,
   M1DraftPayload,
+  M1TransitionPayload,
 } from '@/lib/offline-saves';
 import type { Database, Json } from '@/types/database';
 
@@ -147,12 +152,92 @@ export async function applyM1Draft(p: M1DraftPayload): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 4 — status transitions and enterprise patches
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the patch sent for a transition. Mirrors the inline logic that lived
+ * inside each useTransition* hook so the queue stores the SAME shape and the
+ * replay applies the SAME write.
+ */
+function buildTransitionPatch(to: 'draft' | 'submitted' | 'approved', userId: string): {
+  status: 'draft' | 'submitted' | 'approved';
+  submitted_at?: string;
+  approved_at?: string;
+  approved_by?: string;
+} {
+  const patch: ReturnType<typeof buildTransitionPatch> = { status: to };
+  if (to === 'submitted') patch.submitted_at = new Date().toISOString();
+  if (to === 'approved') {
+    patch.approved_at = new Date().toISOString();
+    patch.approved_by = userId;
+  }
+  return patch;
+}
+
+export async function applyEssfTransition(p: EssfTransitionPayload): Promise<void> {
+  const patch = buildTransitionPatch(p.to, p.user_id);
+  const { error } = await supabase
+    .from('essf_submissions')
+    .update(patch)
+    .eq('enterprise_id', p.enterprise_id);
+  if (error) throw error;
+}
+
+export async function applyEmmpTransition(p: EmmpTransitionPayload): Promise<void> {
+  const patch = buildTransitionPatch(p.to, p.user_id);
+  const { error } = await supabase
+    .from('emmp_submissions')
+    .update(patch)
+    .eq('enterprise_id', p.enterprise_id);
+  if (error) throw error;
+}
+
+export async function applyInspectionTransition(p: InspectionTransitionPayload): Promise<void> {
+  const patch = buildTransitionPatch(p.to, p.user_id);
+  const { error } = await supabase
+    .from('inspection_visits')
+    .update(patch)
+    .eq('id', p.visit_id);
+  if (error) throw error;
+}
+
+export async function applyM1Transition(p: M1TransitionPayload): Promise<void> {
+  const patch = buildTransitionPatch(p.to, p.user_id);
+  const { error } = await supabase
+    .from('m1_submissions')
+    .update(patch)
+    .eq('enterprise_id', p.enterprise_id);
+  if (error) throw error;
+}
+
+/**
+ * Generic UPDATE on the enterprises row. Used for cover-page field edits,
+ * lifecycle milestone updates, and borehole supervision saves. The hook
+ * picks the field name; the queue + replay are field-agnostic.
+ */
+export async function applyEnterprisePatch(p: EnterprisePatchPayload): Promise<void> {
+  // The Database type union doesn't allow arbitrary partial updates without
+  // a cast; we trust the caller to pass column names that exist on the row.
+  const { error } = await supabase
+    .from('enterprises')
+    .update(p.patch as unknown as Database['public']['Tables']['enterprises']['Update'])
+    .eq('id', p.enterprise_id);
+  if (error) throw error;
+}
+
 async function dispatch(payload: FormSavePayload): Promise<void> {
   switch (payload.saveType) {
-    case 'essf_draft':       return applyEssfDraft(payload);
-    case 'emmp_draft':       return applyEmmpDraft(payload);
-    case 'inspection_draft': return applyInspectionDraft(payload);
-    case 'm1_draft':         return applyM1Draft(payload);
+    case 'essf_draft':            return applyEssfDraft(payload);
+    case 'emmp_draft':            return applyEmmpDraft(payload);
+    case 'inspection_draft':      return applyInspectionDraft(payload);
+    case 'm1_draft':              return applyM1Draft(payload);
+    case 'essf_transition':       return applyEssfTransition(payload);
+    case 'emmp_transition':       return applyEmmpTransition(payload);
+    case 'inspection_transition': return applyInspectionTransition(payload);
+    case 'm1_transition':         return applyM1Transition(payload);
+    case 'enterprise_patch':      return applyEnterprisePatch(payload);
   }
 }
 
@@ -198,6 +283,37 @@ function invalidateAfterSync(entry: QueueEntry): void {
       qc.invalidateQueries({ queryKey: ['m1', p.enterprise_id] });
       qc.invalidateQueries({ queryKey: ['enterprise-m1-status', p.enterprise_id] });
       qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
+      break;
+    case 'essf_transition':
+      qc.invalidateQueries({ queryKey: ['essf', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-esmp-status', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
+      break;
+    case 'emmp_transition':
+      qc.invalidateQueries({ queryKey: ['emmp', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-esmp-status', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
+      break;
+    case 'inspection_transition':
+      qc.invalidateQueries({ queryKey: ['inspection-visit', p.visit_id] });
+      qc.invalidateQueries({ queryKey: ['inspection-visits', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
+      break;
+    case 'm1_transition':
+      qc.invalidateQueries({ queryKey: ['m1', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-m1-status', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
+      break;
+    case 'enterprise_patch':
+      qc.invalidateQueries({ queryKey: ['enterprise', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprises'] });
+      qc.invalidateQueries({ queryKey: ['enterprise-history', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
+      qc.invalidateQueries({ queryKey: ['esmp-pdf-meta', p.enterprise_id] });
       break;
   }
 }

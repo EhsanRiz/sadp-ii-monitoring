@@ -4,9 +4,8 @@
  * round-trips). Progress strip at top counts completed milestones.
  */
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { useSaveEnterprisePatch } from '@/lib/enterprises';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,7 +27,6 @@ interface Props {
 }
 
 export function BoreholeSupervisionForm({ enterpriseId, initial, readOnly = false }: Props) {
-  const qc = useQueryClient();
   const [draft, setDraft] = useState<BoreholeSupervisionResponses>({});
   const [dirty, setDirty] = useState(false);
 
@@ -37,21 +35,29 @@ export function BoreholeSupervisionForm({ enterpriseId, initial, readOnly = fals
     setDirty(false);
   }, [initial, enterpriseId]);
 
-  const save = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase
-        .from('enterprises')
-        .update({ borehole_supervision: draft as unknown as never })
-        .eq('id', enterpriseId);
-      if (error) throw error;
+  const patchMut = useSaveEnterprisePatch(enterpriseId);
+  // Local adapter so the rest of the component keeps using `save.mutate()` /
+  // `save.isPending` without knowing about the underlying patch helper.
+  const save = {
+    isPending: patchMut.isPending,
+    mutate: () => {
+      patchMut.mutate(
+        {
+          description: 'Save borehole supervision',
+          patch: { borehole_supervision: draft as unknown as never },
+        },
+        {
+          onSuccess: (result) => {
+            toast.success(
+              result.online ? 'Borehole supervision saved' : 'Saved locally — will sync when online',
+            );
+            setDirty(false);
+          },
+          onError: (e: Error) => toast.error('Save failed', { description: e.message }),
+        },
+      );
     },
-    onSuccess: () => {
-      toast.success('Borehole supervision saved');
-      setDirty(false);
-      qc.invalidateQueries({ queryKey: ['enterprise', enterpriseId] });
-    },
-    onError: (e: Error) => toast.error('Save failed', { description: e.message }),
-  });
+  };
 
   function patchMilestone(id: BoreholeMilestoneId, patch: { done?: boolean; date?: string }) {
     setDraft((d) => {

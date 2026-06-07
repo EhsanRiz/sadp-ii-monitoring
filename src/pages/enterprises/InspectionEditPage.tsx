@@ -237,7 +237,7 @@ export function InspectionEditPage() {
                     transition.mutate(
                       { to: 'submitted', userId: user!.id },
                       {
-                        onSuccess: () => toast.success('Inspection submitted for approval'),
+                        onSuccess: (result) => toast.success(result.online ? 'Inspection submitted for approval' : 'Submit queued — will sync when online'),
                         onError: (e: Error) => {
                           setEditError(e.message);
                           toast.error('Submission failed', { description: e.message });
@@ -262,7 +262,7 @@ export function InspectionEditPage() {
               transition.mutate(
                 { to: 'approved', userId: user!.id },
                 {
-                  onSuccess: () => toast.success('Inspection approved'),
+                  onSuccess: (result) => toast.success(result.online ? 'Inspection approved' : 'Approval queued — will sync when online'),
                   onError: (e: Error) => {
                     setEditError(e.message);
                     toast.error('Approval failed', { description: e.message });

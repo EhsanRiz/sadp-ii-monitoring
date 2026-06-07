@@ -120,7 +120,7 @@ export function M1EditPage() {
     transition.mutate(
       { to: 'draft', userId: user!.id },
       {
-        onSuccess: () => toast.success('M1 reopened for editing'),
+        onSuccess: (result) => toast.success(result.online ? 'M1 reopened for editing' : 'Reopen queued — will sync when online'),
         onError: (e: Error) => {
           setError(e.message);
           toast.error('Could not reopen', { description: e.message });
@@ -355,7 +355,7 @@ export function M1EditPage() {
                     transition.mutate(
                       { to: 'submitted', userId: user!.id },
                       {
-                        onSuccess: () => toast.success('M1 submitted for approval'),
+                        onSuccess: (result) => toast.success(result.online ? 'M1 submitted for approval' : 'Submit queued — will sync when online'),
                         onError: (e: Error) => {
                           setError(e.message);
                           toast.error('Submission failed', { description: e.message });
@@ -380,7 +380,7 @@ export function M1EditPage() {
               transition.mutate(
                 { to: 'approved', userId: user!.id },
                 {
-                  onSuccess: () => toast.success('M1 approved'),
+                  onSuccess: (result) => toast.success(result.online ? 'M1 approved' : 'Approval queued — will sync when online'),
                   onError: (e: Error) => {
                     setError(e.message);
                     toast.error('Approval failed', { description: e.message });

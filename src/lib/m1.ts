@@ -12,9 +12,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { AppRole } from '@/lib/auth';
 import { saveOrEnqueue, type OfflineSaveResult } from '@/lib/offline-saves';
-import { applyM1Draft } from '@/lib/offline-replay';
+import { applyM1Draft, applyM1Transition } from '@/lib/offline-replay';
 import type {
-  Database,
   Json,
   M1DocKind,
   M1SubmissionRow,
@@ -115,18 +114,35 @@ export function useSaveM1Draft(enterpriseId: string) {
 export function useTransitionM1(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { to: SubmissionStatus; userId: string }) => {
-      const patch: Database['public']['Tables']['m1_submissions']['Update'] = { status: input.to };
-      if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
-      if (input.to === 'approved') {
-        patch.approved_at = new Date().toISOString();
-        patch.approved_by = input.userId;
-      }
-      const { error } = await supabase
-        .from('m1_submissions')
-        .update(patch)
-        .eq('enterprise_id', enterpriseId);
-      if (error) throw error;
+    mutationFn: async (input: { to: SubmissionStatus; userId: string }): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: `M1 transition → ${input.to}`,
+        payload: {
+          saveType: 'm1_transition',
+          enterprise_id: enterpriseId,
+          to: input.to,
+          user_id: input.userId,
+        },
+        doSave: () =>
+          applyM1Transition({
+            saveType: 'm1_transition',
+            enterprise_id: enterpriseId,
+            to: input.to,
+            user_id: input.userId,
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['m1', enterpriseId], (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            const patch: Record<string, unknown> = { status: input.to };
+            if (input.to === 'submitted') patch.submitted_at = new Date().toISOString();
+            if (input.to === 'approved') {
+              patch.approved_at = new Date().toISOString();
+              patch.approved_by = input.userId;
+            }
+            return { ...(old as Record<string, unknown>), ...patch };
+          });
+        },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['m1', enterpriseId] });

@@ -47,7 +47,7 @@ import { BoreholeSupervisionForm } from '@/components/enterprise/BoreholeSupervi
 import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSchema';
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
 import { PrecacheEnterpriseButton } from '@/components/enterprise/PrecacheEnterpriseButton';
-import { useEnterpriseLifecycle } from '@/lib/enterprises';
+import { useEnterpriseLifecycle, useSaveEnterprisePatch } from '@/lib/enterprises';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
 import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2 } from 'lucide-react';
@@ -141,27 +141,30 @@ export function EnterpriseDetailPage() {
     if (enterprise) setDraft(enterprise);
   }, [enterprise]);
 
-  const save = useMutation({
-    mutationFn: async () => {
-      if (!enterprise) throw new Error('No enterprise');
+  // useSaveEnterprisePatch wraps the UPDATE so it queues when offline and
+  // replays automatically when the device reconnects (Phase 4 of the
+  // offline stack).
+  const savePatch = useSaveEnterprisePatch(enterprise?.id ?? '');
+  const save = {
+    isPending: savePatch.isPending,
+    mutate: () => {
+      if (!enterprise) return;
       const merged = { ...enterprise, ...draft };
       const ready = isCoverPageReady(merged as EnterpriseRow);
-      const { error: err } = await supabase
-        .from('enterprises')
-        .update({
-          ...draft,
-          registration_completeness: ready ? 'cover_page_ready' : 'minimal',
-        })
-        .eq('id', enterprise.id);
-      if (err) throw err;
+      savePatch.mutate(
+        {
+          description: 'Save enterprise details',
+          patch: {
+            ...draft,
+            registration_completeness: ready ? 'cover_page_ready' : 'minimal',
+          },
+        },
+        {
+          onError: (e: Error) => setSaveError(e.message),
+        },
+      );
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['enterprise', id] });
-      qc.invalidateQueries({ queryKey: ['enterprise-history', id] });
-      qc.invalidateQueries({ queryKey: ['enterprises'] });
-    },
-    onError: (e: Error) => setSaveError(e.message),
-  });
+  };
 
   const uploadEsmp = useMutation({
     mutationFn: async (file: File) => {

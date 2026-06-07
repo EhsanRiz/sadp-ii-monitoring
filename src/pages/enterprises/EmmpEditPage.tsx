@@ -63,7 +63,7 @@ export function EmmpEditPage() {
     transition.mutate(
       { to: 'draft', userId: user!.id },
       {
-        onSuccess: () => toast.success('EMMP reopened for editing'),
+        onSuccess: (result) => toast.success(result.online ? 'EMMP reopened for editing' : 'Reopen queued — will sync when online'),
         onError: (e: Error) => {
           setError(e.message);
           toast.error('Could not reopen', { description: e.message });
@@ -261,7 +261,7 @@ export function EmmpEditPage() {
                     transition.mutate(
                       { to: 'submitted', userId: user!.id },
                       {
-                        onSuccess: () => toast.success('EMMP submitted for approval'),
+                        onSuccess: (result) => toast.success(result.online ? 'EMMP submitted for approval' : 'Submit queued — will sync when online'),
                         onError: (e: Error) => {
                           setError(e.message);
                           toast.error('Submission failed', { description: e.message });
@@ -286,7 +286,7 @@ export function EmmpEditPage() {
               transition.mutate(
                 { to: 'approved', userId: user!.id },
                 {
-                  onSuccess: () => toast.success('EMMP approved'),
+                  onSuccess: (result) => toast.success(result.online ? 'EMMP approved' : 'Approval queued — will sync when online'),
                   onError: (e: Error) => {
                     setError(e.message);
                     toast.error('Approval failed', { description: e.message });

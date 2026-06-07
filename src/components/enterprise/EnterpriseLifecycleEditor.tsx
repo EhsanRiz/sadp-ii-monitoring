@@ -66,8 +66,8 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
 
   function onSave() {
     save.mutate(draft as Record<string, 'yes' | 'no' | 'n_a'>, {
-      onSuccess: () => {
-        toast.success('Lifecycle saved');
+      onSuccess: (result) => {
+        toast.success(result.online ? 'Lifecycle saved' : 'Saved locally — will sync when online');
         setDirty(false);
       },
       onError: (e: Error) => {

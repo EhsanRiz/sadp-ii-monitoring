@@ -66,7 +66,7 @@ export function EssfEditPage() {
     transition.mutate(
       { to: 'draft', userId: user!.id },
       {
-        onSuccess: () => toast.success('ESSF reopened for editing'),
+        onSuccess: (result) => toast.success(result.online ? 'ESSF reopened for editing' : 'Reopen queued — will sync when online'),
         onError: (e: Error) => {
           setError(e.message);
           toast.error('Could not reopen', { description: e.message });
@@ -243,7 +243,7 @@ export function EssfEditPage() {
                     transition.mutate(
                       { to: 'submitted', userId: user!.id },
                       {
-                        onSuccess: () => toast.success('ESSF submitted for approval'),
+                        onSuccess: (result) => toast.success(result.online ? 'ESSF submitted for approval' : 'Submit queued — will sync when online'),
                         onError: (e: Error) => {
                           setError(e.message);
                           toast.error('Submission failed', { description: e.message });
@@ -268,7 +268,7 @@ export function EssfEditPage() {
               transition.mutate(
                 { to: 'approved', userId: user!.id },
                 {
-                  onSuccess: () => toast.success('ESSF approved'),
+                  onSuccess: (result) => toast.success(result.online ? 'ESSF approved' : 'Approval queued — will sync when online'),
                   onError: (e: Error) => {
                     setError(e.message);
                     toast.error('Approval failed', { description: e.message });

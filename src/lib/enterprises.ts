@@ -4,6 +4,8 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { saveOrEnqueue, type OfflineSaveResult } from '@/lib/offline-saves';
+import { applyEnterprisePatch } from '@/lib/offline-replay';
 import type {
   AuditLogRow,
   DrillingStatus,
@@ -258,16 +260,73 @@ export function useEnterpriseLifecycle() {
 export function useSaveEnterpriseLifecycle(enterpriseId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (next: Record<string, 'yes' | 'no' | 'n_a'>) => {
-      const { error } = await supabase
-        .from('enterprises')
-        .update({ lifecycle_status: next as unknown as Json })
-        .eq('id', enterpriseId);
-      if (error) throw error;
+    mutationFn: async (next: Record<string, 'yes' | 'no' | 'n_a'>): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: 'Save lifecycle milestones',
+        payload: {
+          saveType: 'enterprise_patch',
+          enterprise_id: enterpriseId,
+          patch: { lifecycle_status: next as unknown as Json },
+        },
+        doSave: () =>
+          applyEnterprisePatch({
+            saveType: 'enterprise_patch',
+            enterprise_id: enterpriseId,
+            patch: { lifecycle_status: next as unknown as Json },
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['enterprise', enterpriseId], (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            return { ...(old as Record<string, unknown>), lifecycle_status: next };
+          });
+        },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
       qc.invalidateQueries({ queryKey: ['enterprise', enterpriseId] });
+    },
+  });
+}
+
+/**
+ * Generic enterprise UPDATE — used by the cover-page editor and the borehole
+ * supervision form. Wraps `applyEnterprisePatch` with the offline queue so
+ * field edits made offline replay automatically when online.
+ */
+export function useSaveEnterprisePatch(enterpriseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      description: string;
+      patch: Record<string, unknown>;
+    }): Promise<OfflineSaveResult> => {
+      return saveOrEnqueue({
+        description: input.description,
+        payload: {
+          saveType: 'enterprise_patch',
+          enterprise_id: enterpriseId,
+          patch: input.patch,
+        },
+        doSave: () =>
+          applyEnterprisePatch({
+            saveType: 'enterprise_patch',
+            enterprise_id: enterpriseId,
+            patch: input.patch,
+          }),
+        applyOptimistic: () => {
+          qc.setQueryData(['enterprise', enterpriseId], (old: unknown) => {
+            if (!old || typeof old !== 'object') return old;
+            return { ...(old as Record<string, unknown>), ...input.patch };
+          });
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['enterprise', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprises'] });
+      qc.invalidateQueries({ queryKey: ['enterprise-history', enterpriseId] });
+      qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
     },
   });
 }

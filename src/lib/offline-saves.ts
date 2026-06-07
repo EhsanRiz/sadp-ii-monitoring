@@ -18,7 +18,59 @@ export type FormSaveType =
   | 'essf_draft'
   | 'emmp_draft'
   | 'inspection_draft'
-  | 'm1_draft';
+  | 'm1_draft'
+  | 'essf_transition'
+  | 'emmp_transition'
+  | 'inspection_transition'
+  | 'm1_transition'
+  | 'enterprise_patch';
+
+/** Transitions follow the submission workflow: draft → submitted → approved → draft (reopen). */
+export type SubmissionTransition = 'draft' | 'submitted' | 'approved';
+
+export interface EssfTransitionPayload {
+  saveType: 'essf_transition';
+  enterprise_id: string;
+  to: SubmissionTransition;
+  user_id: string;
+}
+
+export interface EmmpTransitionPayload {
+  saveType: 'emmp_transition';
+  enterprise_id: string;
+  to: SubmissionTransition;
+  user_id: string;
+}
+
+export interface InspectionTransitionPayload {
+  saveType: 'inspection_transition';
+  visit_id: string;
+  enterprise_id: string;
+  to: SubmissionTransition;
+  user_id: string;
+}
+
+export interface M1TransitionPayload {
+  saveType: 'm1_transition';
+  enterprise_id: string;
+  to: SubmissionTransition;
+  user_id: string;
+}
+
+/**
+ * Generic enterprise UPDATE — covers cover-page edits, lifecycle milestone
+ * updates, borehole supervision, and any other field-level write that
+ * targets the enterprises row.
+ *
+ * The patch is applied as-is; columns the app shouldn't touch (id,
+ * organization_id, audit columns) just shouldn't be in the patch. This
+ * keeps the offline queue agnostic to which fields the user edited.
+ */
+export interface EnterprisePatchPayload {
+  saveType: 'enterprise_patch';
+  enterprise_id: string;
+  patch: Record<string, unknown>;
+}
 
 export interface EssfDraftPayload {
   saveType: 'essf_draft';
@@ -65,7 +117,12 @@ export type FormSavePayload =
   | EssfDraftPayload
   | EmmpDraftPayload
   | InspectionDraftPayload
-  | M1DraftPayload;
+  | M1DraftPayload
+  | EssfTransitionPayload
+  | EmmpTransitionPayload
+  | InspectionTransitionPayload
+  | M1TransitionPayload
+  | EnterprisePatchPayload;
 
 export interface OfflineSaveResult {
   /** True when the save was applied online; false when it was queued. */
