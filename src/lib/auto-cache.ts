@@ -151,49 +151,71 @@ export async function runAutoCacheSync(qc: QueryClient): Promise<void> {
     const docsByEnt = indexByEnterprise((docsRes.data ?? []) as Row[]);
 
     // Distribute into per-enterprise React Query keys.
+    //
+    // IMPORTANT: we use `prefetchQuery` (not `setQueryData`) on purpose.
+    // The IDB persister (`@tanstack/react-query-persist-client`) only writes
+    // queries that go through the fetch path — `setQueryData` populates the
+    // in-memory cache but never reaches IDB, so a tab close would lose
+    // everything we just seeded. With `prefetchQuery({ queryFn: () => Promise.resolve(data) })`
+    // the persister sees a normal query lifecycle and writes the result to
+    // IDB, which is the entire point of auto-cache.
+    //
+    // `staleTime: 0` means the next observer (a useQuery in a page) will
+    // still revalidate against the server — we don't want to mask staleness.
+    // The IDB copy is what survives a tab close and rehydrates on next boot.
+    const prefetch = <T>(queryKey: unknown[], data: T) =>
+      qc.prefetchQuery({
+        queryKey,
+        queryFn: () => Promise.resolve(data),
+        staleTime: 0,
+      });
+
+    // Per-enterprise writes — bulk through a single Promise.all so they
+    // pipeline through the persister together.
+    const perEnterpriseJobs: Promise<unknown>[] = [];
     for (const e of enterprises) {
-      qc.setQueryData(['enterprise', e.id], e);
-      qc.setQueryData(['essf', e.id],       firstOrNull(essfByEnt[e.id]));
-      qc.setQueryData(['emmp', e.id],       firstOrNull(emmpByEnt[e.id]));
-      qc.setQueryData(['m1',   e.id],       firstOrNull(m1ByEnt[e.id]));
-      qc.setQueryData(['inspection-visits',     e.id], inspByEnt[e.id] ?? []);
-      qc.setQueryData(['m1-supporting-docs',    e.id], docsByEnt[e.id] ?? []);
+      perEnterpriseJobs.push(prefetch(['enterprise', e.id],            e));
+      perEnterpriseJobs.push(prefetch(['essf', e.id],                  firstOrNull(essfByEnt[e.id])));
+      perEnterpriseJobs.push(prefetch(['emmp', e.id],                  firstOrNull(emmpByEnt[e.id])));
+      perEnterpriseJobs.push(prefetch(['m1',   e.id],                  firstOrNull(m1ByEnt[e.id])));
+      perEnterpriseJobs.push(prefetch(['inspection-visits',  e.id],    inspByEnt[e.id] ?? []));
+      perEnterpriseJobs.push(prefetch(['m1-supporting-docs', e.id],    docsByEnt[e.id] ?? []));
     }
 
     // Shared catalogs — same keys as the existing useOrganizations / etc. hooks.
-    qc.setQueryData(['organizations'],    orgsRes.data  ?? []);
-    qc.setQueryData(['districts'],        distsRes.data ?? []);
-    qc.setQueryData(['enterprise-types'], typesRes.data ?? []);
-    // CCs / RCs are normally fetched per-district; persist the full lists
-    // under the conventional cache keys so per-district reads can hydrate
-    // from in-memory and we don't refetch.
-    qc.setQueryData(['community_councils', 'all'], ccsRes.data ?? []);
-    qc.setQueryData(['resource_centers',   'all'], rcsRes.data ?? []);
+    const catalogJobs: Promise<unknown>[] = [
+      prefetch(['organizations'],    orgsRes.data  ?? []),
+      prefetch(['districts'],        distsRes.data ?? []),
+      prefetch(['enterprise-types'], typesRes.data ?? []),
+      prefetch(['community_councils', 'all'], ccsRes.data ?? []),
+      prefetch(['resource_centers',   'all'], rcsRes.data ?? []),
+    ];
+
+    // Per-district CC / RC slices — the form hooks key by district_id.
+    const ccByDist: Record<string, Array<{ district_id: string }>> = {};
     for (const cc of (ccsRes.data ?? []) as Array<{ district_id: string }>) {
-      // populate the per-district cache list too — cheap, makes the form's
-      // existing queries hydrate instantly without re-hitting the network.
-      const all = ccsRes.data ?? [];
-      qc.setQueryData(
-        ['community_councils', cc.district_id],
-        (all as Array<{ district_id: string }>).filter((r) => r.district_id === cc.district_id),
-      );
+      (ccByDist[cc.district_id] ??= []).push(cc);
     }
+    for (const [districtId, rows] of Object.entries(ccByDist)) {
+      catalogJobs.push(prefetch(['community_councils', districtId], rows));
+    }
+    const rcByDist: Record<string, Array<{ district_id: string }>> = {};
     for (const rc of (rcsRes.data ?? []) as Array<{ district_id: string }>) {
-      const all = rcsRes.data ?? [];
-      qc.setQueryData(
-        ['resource_centers', rc.district_id],
-        (all as Array<{ district_id: string }>).filter((r) => r.district_id === rc.district_id),
-      );
+      (rcByDist[rc.district_id] ??= []).push(rc);
+    }
+    for (const [districtId, rows] of Object.entries(rcByDist)) {
+      catalogJobs.push(prefetch(['resource_centers', districtId], rows));
     }
 
     // EMMP templates — index by enterprise_type for the form to find quickly.
     const templates = (tmplRes.data ?? []) as Array<{ id: string; enterprise_type_ids: number[] | null }>;
     for (const t of templates) {
-      const types = t.enterprise_type_ids ?? [];
-      for (const type_id of types) {
-        qc.setQueryData(['emmp-template-for-type', type_id], t);
+      for (const type_id of t.enterprise_type_ids ?? []) {
+        catalogJobs.push(prefetch(['emmp-template-for-type', type_id], t));
       }
     }
+
+    await Promise.all([...perEnterpriseJobs, ...catalogJobs]);
 
     // Persist per-enterprise cache state
     const cached_at = new Date().toISOString();
