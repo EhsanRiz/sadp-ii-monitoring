@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-07 (Ask the data L1 · auto-cache durability fix) · HEAD: `<pending>`
+Last updated: 2026-06-07 (Ask the data: scope picker + UX polish · auto-cache durability fix) · HEAD: `e2e2fe4`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -49,6 +49,37 @@ is here or one link away.
 - One question (`q-inactive-users`) is flagged `requiresSuperAdmin` and only
   shows for super admins because it joins `user_admin_list()` which is super-
   admin gated.
+
+**UX polish after first ship** (`a7da62b`)
+- Originally the result panel sat below the question grid, so picking
+  a question meant scrolling down to see the answer. Rebalanced:
+  - **Quick-pick dropdown** at the top of the filter row, grouped by
+    category. Useful for power users who don't want their eyes to leave
+    the result table while switching questions.
+  - Result panel moved **above** the card grid. Cards stay below as a
+    visual browse mode.
+  - `useEffect` watches `selected` and calls `scrollIntoView({behavior:
+    'smooth'})` on the result panel so whichever way you pick, the answer
+    comes to you, not the other way around.
+  - Added `SelectLabel` to `src/components/ui/select.tsx` to support
+    grouped section headers in the dropdown.
+
+**Super-admin org scope picker** (`e2e2fe4`)
+- For super admins, the page now exposes a **"Scope"** select (All /
+  4D / RSDA). Hidden for partner staff (RLS already gives them their
+  org's data).
+- 19 of 20 curated queries carry an embedded `ORG_FILTER` placeholder in
+  their WHERE clauses. The Ask page substitutes it with `TRUE` (scope=All)
+  or `o.code = '4D'` / `o.code = 'RSDA'` before the SQL is sent to
+  `run_safe_query()`. Each scopable query was rewritten to either already
+  join `organizations o` or had that join added.
+- Changing scope auto re-runs the active question. Result panel header
+  shows a small badge: **"Scope: 4D"** when active, or **"Scope ignored —
+  not scopable"** for the one query (users-who-never-logged-in) that
+  internally calls a SECURITY DEFINER fn.
+- A subtle gotcha for future contributors: the JSDoc literally containing
+  `/*ORG_FILTER*/` prematurely closes the `/** … */` block comment. Use
+  prose like *"the literal slash-star-ORG_FILTER-star-slash"* instead.
 
 **Foundation for Layer 2.** The next push (free-form "Ask anything" box) will
 reuse `run_safe_query()` — just adds an edge function that asks Claude to
@@ -110,6 +141,18 @@ forgot, they were stranded — no enterprise data, no form, wasted trip.
   reconnect transition.  Module-level state means multiple subscribers
   (the pill + the list badges) see identical progress.
 
+**Post-ship fix — durability bug** (`464eb4f`).  End-to-end check found that
+auto-cache was populating React Query's in-memory store via `setQueryData`,
+but the IDB persister (`@tanstack/react-query-persist-client`) only writes
+queries that have an observer.  Result: a 273-row IDB `cache_state` table
+but only ~2 enterprises actually persisted to the `cache` store.  Tab
+close = losing 271/273.  Fix is mechanical — replace each
+`qc.setQueryData(key, data)` with `qc.prefetchQuery({ queryKey: key,
+queryFn: () => Promise.resolve(data), staleTime: 0 })`.  `prefetchQuery`
+goes through the normal fetch lifecycle so the persister picks it up.
+Verified post-deploy: IDB rows jumped 40 → 1,675 for a 273-enterprise
+super admin scope.  Stranded-supervisor scenario actually solved.
+
 ---
 
 ## 2. What changed in this push
@@ -139,6 +182,37 @@ forgot, they were stranded — no enterprise data, no form, wasted trip.
 - One question (`q-inactive-users`) is flagged `requiresSuperAdmin` and only
   shows for super admins because it joins `user_admin_list()` which is super-
   admin gated.
+
+**UX polish after first ship** (`a7da62b`)
+- Originally the result panel sat below the question grid, so picking
+  a question meant scrolling down to see the answer. Rebalanced:
+  - **Quick-pick dropdown** at the top of the filter row, grouped by
+    category. Useful for power users who don't want their eyes to leave
+    the result table while switching questions.
+  - Result panel moved **above** the card grid. Cards stay below as a
+    visual browse mode.
+  - `useEffect` watches `selected` and calls `scrollIntoView({behavior:
+    'smooth'})` on the result panel so whichever way you pick, the answer
+    comes to you, not the other way around.
+  - Added `SelectLabel` to `src/components/ui/select.tsx` to support
+    grouped section headers in the dropdown.
+
+**Super-admin org scope picker** (`e2e2fe4`)
+- For super admins, the page now exposes a **"Scope"** select (All /
+  4D / RSDA). Hidden for partner staff (RLS already gives them their
+  org's data).
+- 19 of 20 curated queries carry an embedded `ORG_FILTER` placeholder in
+  their WHERE clauses. The Ask page substitutes it with `TRUE` (scope=All)
+  or `o.code = '4D'` / `o.code = 'RSDA'` before the SQL is sent to
+  `run_safe_query()`. Each scopable query was rewritten to either already
+  join `organizations o` or had that join added.
+- Changing scope auto re-runs the active question. Result panel header
+  shows a small badge: **"Scope: 4D"** when active, or **"Scope ignored —
+  not scopable"** for the one query (users-who-never-logged-in) that
+  internally calls a SECURITY DEFINER fn.
+- A subtle gotcha for future contributors: the JSDoc literally containing
+  `/*ORG_FILTER*/` prematurely closes the `/** … */` block comment. Use
+  prose like *"the literal slash-star-ORG_FILTER-star-slash"* instead.
 
 **Foundation for Layer 2.** The next push (free-form "Ask anything" box) will
 reuse `run_safe_query()` — just adds an edge function that asks Claude to
