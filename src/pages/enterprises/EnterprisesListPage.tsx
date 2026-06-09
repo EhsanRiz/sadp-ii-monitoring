@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useEnterprises, useEnterpriseLifecycle, type EnterpriseListFilters } from '@/lib/enterprises';
 import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleMilestoneId, type LifecycleValue } from '@/lib/lifecycle';
 import type { DrillingStatus, EnterpriseRow, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
@@ -108,6 +108,14 @@ export function EnterprisesListPage() {
   // restores the exact filtered view. URL-driven state also makes filtered
   // results shareable / bookmarkable.
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
+  // Passed via Link `state` so the enterprise detail page can render a
+  // visible "← Back to filtered list" chip. Saved as the full URL (path +
+  // query) so the back-link restores exactly which filter the user was in.
+  // Bookmarked / shared / refreshed detail pages won't have this state,
+  // and the detail header just hides the chip in that case.
+  const linkState = { from: location.pathname + location.search };
 
   // Derive filters from URL on every render — single source of truth.
   const filters = useMemo<EnterpriseListFilters>(
@@ -442,6 +450,7 @@ export function EnterprisesListPage() {
               <Link
                 key={e.id}
                 to={`/enterprises/${e.id}`}
+                state={linkState}
                 className="group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
               >
                 <Card className="h-full transition-all group-hover:shadow-md group-hover:-translate-y-0.5 group-hover:border-primary/30">
@@ -510,7 +519,7 @@ export function EnterprisesListPage() {
                     return (
                       <tr key={e.id} className="border-b transition-colors duration-150 hover:bg-tint-success/30">
                         <td className="py-1.5 pl-2 pr-3 font-medium sticky left-0 bg-background z-10">
-                          <Link to={`/enterprises/${e.id}`} className="flex items-center gap-2 hover:text-primary">
+                          <Link to={`/enterprises/${e.id}`} state={linkState} className="flex items-center gap-2 hover:text-primary">
                             <div className={cn('flex h-6 w-6 items-center justify-center rounded shrink-0', v.tileBg)}>
                               <Icon className={cn('h-3 w-3', v.iconColor)} />
                             </div>
@@ -542,7 +551,7 @@ export function EnterprisesListPage() {
                         })}
                         <td className="py-1.5 px-2 text-right">
                           <Button asChild variant="ghost" size="sm" className="h-7 px-2">
-                            <Link to={`/enterprises/${e.id}`}>
+                            <Link to={`/enterprises/${e.id}`} state={linkState}>
                               <FileText className="h-3 w-3" />
                             </Link>
                           </Button>

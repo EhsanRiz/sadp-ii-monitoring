@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -53,7 +53,7 @@ import { useOnlineStatus } from '@/lib/online-status';
 import { OnlineRequiredHint } from '@/components/OfflineBadge';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
-import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2, MapPin, Crosshair } from 'lucide-react';
+import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, ChevronLeft, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2, MapPin, Crosshair } from 'lucide-react';
 import { formatDateDMY, formatLSL, cn } from '@/lib/utils';
 
 /** Colored left-edge border that matches a submission's status. */
@@ -86,6 +86,16 @@ const COMPUTED_LABEL: Record<string, string> = {
 
 export function EnterpriseDetailPage() {
   const { id } = useParams<{ id: string }>();
+  // location.state.from is set by EnterprisesListPage's Link when the user
+  // clicks into a card or table row. It carries the FULL filtered URL
+  // (pathname + ?district=…&rc=…&type=…) so the "← Back to filtered list"
+  // chip in the header takes the user straight back to their search. When
+  // the page is loaded via a direct URL / bookmark / page refresh, this is
+  // undefined and we hide the chip.
+  const location = useLocation();
+  const backFrom = (location.state as { from?: string } | null)?.from;
+  const isFilteredBack = !!backFrom && backFrom.includes('?');
+
   const { data: enterprise, isLoading, error } = useEnterprise(id);
   const { data: types } = useEnterpriseTypes();
   const { data: districts } = useDistricts();
@@ -245,6 +255,20 @@ export function EnterpriseDetailPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      {/* "← Back to filtered list" chip — only renders when the user
+          arrived here via a Link from EnterprisesListPage (so `from`
+          state is set). Goes back to the exact filtered URL the user was
+          viewing, not a generic /enterprises. Bookmarked or refreshed
+          pages won't have this state and the chip is hidden. */}
+      {backFrom && (
+        <Button asChild variant="ghost" size="sm" className="-ml-2 -mb-2 h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
+          <Link to={backFrom}>
+            <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+            {isFilteredBack ? 'Back to filtered enterprises' : 'Back to enterprises'}
+          </Link>
+        </Button>
+      )}
+
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
           <div className={cn('flex h-12 w-12 items-center justify-center rounded-lg shrink-0', visual.tileBg)}>
