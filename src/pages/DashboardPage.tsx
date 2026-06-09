@@ -466,12 +466,9 @@ function LifecycleMatrix({
                     key={m.id}
                     className="text-center py-2 px-1 align-bottom font-medium"
                     style={{ minWidth: 64 }}
-                    title={m.label + (m.source === 'derived' ? ' (auto-derived)' : '')}
+                    title={m.label}
                   >
                     <div className="text-[10px] leading-tight">{m.short}</div>
-                    {m.source === 'derived' && (
-                      <div className="text-muted-foreground/60 text-[9px]">auto</div>
-                    )}
                   </th>
                 ))}
               </tr>

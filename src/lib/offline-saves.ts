@@ -23,7 +23,8 @@ export type FormSaveType =
   | 'emmp_transition'
   | 'inspection_transition'
   | 'm1_transition'
-  | 'enterprise_patch';
+  | 'enterprise_patch'
+  | 'monitoring_visit_draft';
 
 /** Transitions follow the submission workflow: draft → submitted → approved → draft (reopen). */
 export type SubmissionTransition = 'draft' | 'submitted' | 'approved';
@@ -113,6 +114,29 @@ export interface M1DraftPayload {
   };
 }
 
+/**
+ * Monitoring visit save — combines both create + update + submit.
+ *
+ * Client generates the `visit_id` UUID upfront so the same id can be used
+ * across draft saves and the final submit click. Replay decides insert vs
+ * update by trying SELECT first.
+ *
+ * `patch` carries only the fields the user touched on THIS save so the
+ * replay engine doesn't unintentionally clobber concurrent updates from
+ * another device. The `to_status` field lives outside the patch so the
+ * "Submit visit" button can pass status=submitted + a fresh submitted_at
+ * without the caller having to assemble the timestamp.
+ */
+export interface MonitoringVisitDraftPayload {
+  saveType: 'monitoring_visit_draft';
+  visit_id: string;
+  enterprise_id: string;
+  /** Field-level patch — see monitoring_visits table for column list. */
+  patch: Record<string, unknown>;
+  /** When set, flips status (+ submitted_at if 'submitted'). */
+  to_status?: 'draft' | 'submitted';
+}
+
 export type FormSavePayload =
   | EssfDraftPayload
   | EmmpDraftPayload
@@ -122,7 +146,8 @@ export type FormSavePayload =
   | EmmpTransitionPayload
   | InspectionTransitionPayload
   | M1TransitionPayload
-  | EnterprisePatchPayload;
+  | EnterprisePatchPayload
+  | MonitoringVisitDraftPayload;
 
 export interface OfflineSaveResult {
   /** True when the save was applied online; false when it was queued. */

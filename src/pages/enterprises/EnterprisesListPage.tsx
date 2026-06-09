@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEnterprises, useEnterpriseLifecycle, type EnterpriseListFilters } from '@/lib/enterprises';
 import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleMilestoneId, type LifecycleValue } from '@/lib/lifecycle';
@@ -22,8 +22,6 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Plus, FileText, LayoutGrid, List, Sprout, ChevronRight } from 'lucide-react';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import { cn } from '@/lib/utils';
-import { useCachedEnterpriseIds } from '@/lib/auto-cache';
-import { WifiOff } from 'lucide-react';
 
 const ESMP_LABEL: Record<string, string> = {
   not_started: 'Not started',
@@ -105,24 +103,77 @@ function ProgressDots({ e }: { e: EnterpriseRow }) {
 }
 
 export function EnterprisesListPage() {
-  const [searchParams] = useSearchParams();
-  const initialFilters = useMemo<EnterpriseListFilters>(
+  // Filter state is held in the URL via useSearchParams (not local state) so
+  // that clicking into an enterprise and then hitting the browser back button
+  // restores the exact filtered view. URL-driven state also makes filtered
+  // results shareable / bookmarkable.
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Derive filters from URL on every render — single source of truth.
+  const filters = useMemo<EnterpriseListFilters>(
     () => ({
-      organizationCode: searchParams.get('orgCode') ?? null,
-      esmpStatus: (searchParams.get('esmp') as EsmpStatus) ?? null,
-      milestone1Status: (searchParams.get('m1') as Milestone1ReportStatus) ?? null,
-      drillingStatus: (searchParams.get('drilling') as DrillingStatus) ?? null,
-      completeness:
-        (searchParams.get('completeness') as 'minimal' | 'cover_page_ready') ?? null,
+      search:            searchParams.get('q') ?? '',
+      organizationCode:  searchParams.get('orgCode') ?? null,
+      districtId:        searchParams.get('district') ?? null,
+      resourceCenterId:  searchParams.get('rc') ?? null,
+      enterpriseTypeId:  searchParams.get('type') ? Number(searchParams.get('type')) : null,
+      esmpStatus:       (searchParams.get('esmp')      as EsmpStatus               | null) ?? null,
+      milestone1Status: (searchParams.get('m1')        as Milestone1ReportStatus   | null) ?? null,
+      drillingStatus:   (searchParams.get('drilling')  as DrillingStatus           | null) ?? null,
+      completeness:     (searchParams.get('completeness') as 'minimal' | 'cover_page_ready' | null) ?? null,
     }),
-    // Only seed once from URL; user can clear afterwards
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [searchParams],
   );
-  const [filters, setFilters] = useState<EnterpriseListFilters>(initialFilters);
-  // Activity filter is client-side — operates on the lifecycle map.
-  const [activityId, setActivityId] = useState<LifecycleMilestoneId | '__all'>('__all');
-  const [activityValue, setActivityValue] = useState<'yes' | 'no' | 'n_a' | 'not_tracked' | '__any'>('__any');
+
+  // Activity filter is client-side — operates on the lifecycle map. Also
+  // round-tripped through the URL so back button restores it.
+  const activityId = (searchParams.get('activity') as LifecycleMilestoneId | '__all' | null) ?? '__all';
+  const activityValue = (searchParams.get('activityValue') as 'yes' | 'no' | 'n_a' | 'not_tracked' | '__any' | null) ?? '__any';
+
+  /**
+   * Patch the URL with the given key/value pairs. `null` removes the key.
+   * Uses `replace: true` so filter tweaks don't pollute browser history —
+   * the back button still returns to whatever page brought us here.
+   */
+  const patchParams = useCallback(
+    (patch: Record<string, string | number | null | undefined>) => {
+      const next = new URLSearchParams(searchParams);
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === undefined || v === '' || v === '__all' || v === '__any') {
+          next.delete(k);
+        } else {
+          next.set(k, String(v));
+        }
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  // Shim that mimics the old setFilters(...) signature — accepts a full
+  // EnterpriseListFilters object and patches the URL keys in one go. Keeps
+  // the body of this component unchanged below.
+  const setFilters = useCallback(
+    (next: EnterpriseListFilters) => {
+      patchParams({
+        q:            next.search ?? null,
+        orgCode:      next.organizationCode ?? null,
+        district:     next.districtId ?? null,
+        rc:           next.resourceCenterId ?? null,
+        type:         next.enterpriseTypeId ?? null,
+        esmp:         next.esmpStatus ?? null,
+        m1:           next.milestone1Status ?? null,
+        drilling:     next.drillingStatus ?? null,
+        completeness: next.completeness ?? null,
+      });
+    },
+    [patchParams],
+  );
+
+  const setActivityValue = useCallback(
+    (v: 'yes' | 'no' | 'n_a' | 'not_tracked' | '__any') => patchParams({ activityValue: v }),
+    [patchParams],
+  );
   const [view, setView] = useState<'table' | 'cards'>(() => {
     // Default to cards on small screens — the 11-column matrix is unreadable
     // on a phone. Desktop respects the user's last choice.
@@ -139,7 +190,6 @@ export function EnterprisesListPage() {
   const { isSuperAdmin } = useAuth();
   const { data: organizations } = useOrganizations();
   const { data: districts } = useDistricts();
-  const cachedIds = useCachedEnterpriseIds();
   // When an Org filter is set, scope the District dropdown to that org only.
   // Non-super-admins are already RLS-scoped server-side; the catalog query
   // still returns everything, so we filter client-side here for UI clarity.
@@ -315,10 +365,14 @@ export function EnterprisesListPage() {
               <Select
                 value={activityId}
                 onValueChange={(v) => {
-                  setActivityId(v as LifecycleMilestoneId | '__all');
-                  // reset value when switching activity so the result set is meaningful
-                  if (v === '__all') setActivityValue('__any');
-                  else if (activityValue === '__any') setActivityValue('yes');
+                  // Both `activity` and `activityValue` need to change together
+                  // when switching activity — patch the URL in one call so the
+                  // second key doesn't clobber the first.
+                  const nextActivityValue =
+                    v === '__all' ? '__any'
+                    : activityValue === '__any' ? 'yes'
+                    : activityValue;
+                  patchParams({ activity: v, activityValue: nextActivityValue });
                 }}
               >
                 <SelectTrigger><SelectValue placeholder="Any activity" /></SelectTrigger>
@@ -397,11 +451,8 @@ export function EnterprisesListPage() {
                         <Icon className={cn('h-5 w-5', v.iconColor)} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate flex items-center gap-1.5" title={e.beneficiary_short_name}>
-                          <span className="truncate">{e.beneficiary_short_name}</span>
-                          {cachedIds.has(e.id) && (
-                            <WifiOff className="h-3 w-3 text-success shrink-0" aria-label="Available offline" />
-                          )}
+                        <div className="font-medium truncate" title={e.beneficiary_short_name}>
+                          {e.beneficiary_short_name}
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
                           {t?.name ?? '—'} · R{e.round_id} ·{' '}
@@ -442,14 +493,9 @@ export function EnterprisesListPage() {
                         key={m.id}
                         className="py-2 px-1 text-center font-medium align-bottom"
                         style={{ minWidth: 64, maxWidth: 90 }}
-                        title={m.label + (m.source === 'derived' ? ' (auto-derived)' : '')}
+                        title={m.label}
                       >
-                        <div className="text-[10px] leading-tight">
-                          {m.short}
-                          {m.source === 'derived' && (
-                            <span className="block text-muted-foreground/60 text-[9px]">auto</span>
-                          )}
-                        </div>
+                        <div className="text-[10px] leading-tight">{m.short}</div>
                       </th>
                     ))}
                     <th className="py-2 px-2"></th>
@@ -469,12 +515,7 @@ export function EnterprisesListPage() {
                               <Icon className={cn('h-3 w-3', v.iconColor)} />
                             </div>
                             <div className="min-w-0">
-                              <div className="truncate flex items-center gap-1.5">
-                                <span className="truncate">{e.beneficiary_short_name}</span>
-                                {cachedIds.has(e.id) && (
-                                  <WifiOff className="h-3 w-3 text-success shrink-0" aria-label="Available offline" />
-                                )}
-                              </div>
+                              <div className="truncate">{e.beneficiary_short_name}</div>
                               <div className="text-[10px] text-muted-foreground truncate">{t?.name ?? '—'}</div>
                             </div>
                           </Link>
@@ -517,7 +558,7 @@ export function EnterprisesListPage() {
               <span><span className="inline-block h-2 w-2 rounded-sm bg-destructive mr-1"></span>No</span>
               <span><span className="inline-block h-2 w-2 rounded-sm bg-muted mr-1"></span>N/A</span>
               <span><span className="text-muted-foreground/40 mr-1">–</span>Not yet tracked</span>
-              <span className="ml-auto italic">"auto" columns are derived from existing data</span>
+              <span className="ml-auto italic">All milestones are marked manually — Upload pill on ESMP / M1 jumps to that module.</span>
             </div>
           </CardContent>
         </Card>

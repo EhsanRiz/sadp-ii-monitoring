@@ -2,23 +2,17 @@
  * 11-milestone enterprise lifecycle tracker.
  *
  * Mirrors the columns on RSDA's Master Sheet so 4D + RSDA share one tracking
- * vocabulary. Six milestones are MANUAL (stored in `enterprises.lifecycle_status`
- * jsonb), five are DERIVED on the server side from existing data (joined via
- * the `enterprise_lifecycle` view).
+ * vocabulary. After migration 282 all 11 milestones are MANUAL (stored in
+ * `enterprises.lifecycle_status` jsonb). The "Upload" pill on the ESMP and M1
+ * rows is a navigation action (deep-link into the relevant module's tab),
+ * NOT a value — the user still has to mark Yes/No themselves once they've
+ * uploaded / submitted.
  *
- * Storage shape (jsonb):
- *   {
- *     contract_available:     "yes" | "no" | "n_a",
- *     beneficiary_contributed:"yes" | "no" | "n_a",
- *     verified_borehole_site: "yes" | "no" | "n_a",
- *     budget_transfer:        "yes" | "no" | "n_a",
- *     supervision:            "yes" | "no" | "n_a",
- *     procurement:            "yes" | "no" | "n_a",
- *   }
+ * Storage shape (jsonb): one key per milestone id, value 'yes' | 'no' | 'n_a'.
  * Missing keys mean "not yet tracked" — shown as a blank cell, not a ✗.
  *
  * Read shape (from enterprise_lifecycle view): one row per enterprise with all
- * 11 columns hydrated.
+ * 11 columns hydrated (`'yes' | 'no' | 'n_a' | null`).
  */
 
 export type LifecycleValue = 'yes' | 'no' | 'n_a';
@@ -31,10 +25,16 @@ export interface LifecycleMilestone {
   label: string;
   /** short label for tight contexts (mobile, dashboard) */
   short: string;
-  /** how the value is produced: derived (read-only) or manual (editable) */
-  source: 'derived' | 'manual';
-  /** when derived, a hint explaining how */
-  derived_from?: string;
+  /** All milestones are manual after migration 282. */
+  source: 'manual';
+  /**
+   * Optional deep-link target. When set, the editor renders an "Upload"
+   * pill alongside Yes/No/N/A that navigates to this URL (relative to the
+   * current enterprise detail page). Used by ESMP + M1 so the user can jump
+   * straight from the Progress tab into the module where they'd actually
+   * upload or finish the work.
+   */
+  upload_link?: { label: string; href: (enterpriseId: string) => string };
 }
 
 export type LifecycleMilestoneId =
@@ -52,77 +52,38 @@ export type LifecycleMilestoneId =
 
 /** Canonical milestone list in RSDA column order. */
 export const LIFECYCLE_MILESTONES: LifecycleMilestone[] = [
-  {
-    id: 'contracts_signed',
-    label: 'Contracts signed',
-    short: 'Contract',
-    source: 'manual',
-  },
-  {
-    id: 'contract_available',
-    label: 'Contract available',
-    short: 'Contract PDF',
-    source: 'manual',
-  },
-  {
-    id: 'beneficiary_contributed',
-    label: 'Beneficiary contributed',
-    short: 'Benef. $',
-    source: 'manual',
-  },
-  {
-    id: 'sadp_contributed',
-    label: 'SADP contributed',
-    short: 'SADP $',
-    source: 'manual',
-  },
-  {
-    id: 'business_plan',
-    label: 'Business plan',
-    short: 'BP',
-    source: 'manual',
-  },
+  { id: 'contracts_signed',        label: 'Contracts signed',                       short: 'Contract',     source: 'manual' },
+  { id: 'contract_available',      label: 'Contract available',                     short: 'Contract PDF', source: 'manual' },
+  { id: 'beneficiary_contributed', label: 'Beneficiary contributed',                short: 'Benef. $',     source: 'manual' },
+  { id: 'sadp_contributed',        label: 'SADP contributed',                       short: 'SADP $',       source: 'manual' },
+  { id: 'business_plan',           label: 'Business plan',                          short: 'BP',           source: 'manual' },
   {
     id: 'esmp',
     label: 'ESMP',
     short: 'ESMP',
-    source: 'derived',
-    derived_from: 'Both ESSF and EMMP submissions are approved.',
-  },
-  {
-    id: 'verified_borehole_site',
-    label: 'Verified site borehole selection',
-    short: 'Site verif.',
     source: 'manual',
+    upload_link: {
+      label: 'Upload',
+      href: (id) => `/enterprises/${id}?tab=esmp`,
+    },
   },
-  {
-    id: 'budget_transfer',
-    label: 'Budget and transfer (M1 budget)',
-    short: 'M1 budget',
-    source: 'manual',
-  },
-  {
-    id: 'supervision',
-    label: 'Supervision (drilling + site clearing)',
-    short: 'Supervision',
-    source: 'manual',
-  },
-  {
-    id: 'procurement',
-    label: 'Procurement (equipment + materials)',
-    short: 'Procurement',
-    source: 'manual',
-  },
+  { id: 'verified_borehole_site',  label: 'Verified site borehole selection',       short: 'Site verif.',  source: 'manual' },
+  { id: 'budget_transfer',         label: 'Budget and transfer (M1 budget)',        short: 'M1 budget',    source: 'manual' },
+  { id: 'supervision',             label: 'Supervision (drilling + site clearing)', short: 'Supervision',  source: 'manual' },
+  { id: 'procurement',             label: 'Procurement (equipment + materials)',    short: 'Procurement',  source: 'manual' },
   {
     id: 'm1_submitted',
     label: 'Submission of M1 report',
     short: 'M1',
-    source: 'derived',
-    derived_from: 'M1 submission status is "submitted" or "approved".',
+    source: 'manual',
+    upload_link: {
+      label: 'Upload',
+      href: (id) => `/enterprises/${id}?tab=m1`,
+    },
   },
 ];
 
-/** Milestone ids that the user edits. The view derives the rest. */
+/** Milestone ids that the user edits (all of them, after migration 282). */
 export const MANUAL_MILESTONE_IDS: LifecycleMilestoneId[] = LIFECYCLE_MILESTONES
   .filter((m) => m.source === 'manual')
   .map((m) => m.id);
@@ -150,12 +111,12 @@ export interface EnterpriseLifecycleRow {
   beneficiary_contributed:  LifecycleValue | null;
   sadp_contributed:         LifecycleValue | null;
   business_plan:            LifecycleValue | null;
-  esmp:                     LifecycleValue;
+  esmp:                     LifecycleValue | null;
   verified_borehole_site:   LifecycleValue | null;
   budget_transfer:          LifecycleValue | null;
   supervision:              LifecycleValue | null;
   procurement:              LifecycleValue | null;
-  m1_submitted:             LifecycleValue;
+  m1_submitted:             LifecycleValue | null;
 }
 
 /**

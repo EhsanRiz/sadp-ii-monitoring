@@ -1,24 +1,25 @@
 /**
  * 11-row editor for the enterprise lifecycle tracker.
  *
- * Manual milestones (6): editable ✓/×/N/A pill triplet.
- * Derived milestones (5): read-only badge showing the current computed value,
- *   with a tooltip explaining the derivation rule.
+ * After migration 282 all milestones are manual — each shows the
+ * Yes / No / N/A pill triplet. Two rows (ESMP, M1) additionally render an
+ * "Upload" navigation pill that deep-links into the relevant module's tab
+ * so users can jump from Progress straight to where they'd actually finish
+ * the work, without losing their place.
  *
  * Saves are debounced/explicit (user clicks "Save lifecycle") rather than on
  * each pill click — keeps the UI snappy and avoids 11 round-trips when the
  * user is updating multiple rows in a row.
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StatusPill } from '@/components/ui/status-pill';
-import { Save, Sparkles, AlertCircle } from 'lucide-react';
+import { Save, AlertCircle, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import {
   LIFECYCLE_MILESTONES,
-  lifecycleGlyph,
   MANUAL_MILESTONE_IDS,
   type EnterpriseLifecycleRow,
   type LifecycleValue,
@@ -83,10 +84,10 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
           <div>
             <CardTitle className="text-base">Enterprise lifecycle</CardTitle>
             <CardDescription>
-              11 milestones tracked across both partners. Six are edited here; five
-              are <span className="font-medium">auto-derived</span> from existing data
-              (signatures, business plan status, ESMP approvals, grant payment, M1
-              submission). Saved as a single jsonb on the enterprise row.
+              11 milestones tracked across both partners — all manually marked Yes/No/N/A.
+              ESMP and M1 rows have an <span className="font-medium">Upload</span> shortcut
+              that jumps you to that module's tab so you can finish the work, then come
+              back and mark the milestone Yes.
             </CardDescription>
           </div>
           {dirty && !readOnly && (
@@ -99,45 +100,45 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
       <CardContent className="space-y-2">
         <ul className="divide-y">
           {LIFECYCLE_MILESTONES.map((m) => {
-            const derivedValue = lifecycle?.[m.id] as LifecycleValue | null | undefined;
-            const isManual = m.source === 'manual';
             const currentManual = draft[m.id];
             return (
               <li key={m.id} className="py-2 flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium flex items-center gap-2">
-                    {m.label}
-                    {m.source === 'derived' && (
-                      <span
-                        className="inline-flex items-center gap-0.5 rounded bg-info/10 text-info text-[10px] px-1.5 py-0.5"
-                        title={m.derived_from}
-                      >
-                        <Sparkles className="h-2.5 w-2.5" /> auto
-                      </span>
-                    )}
-                  </div>
-                  {m.source === 'derived' && (
-                    <p className="text-xs text-muted-foreground">{m.derived_from}</p>
-                  )}
+                  <div className="text-sm font-medium">{m.label}</div>
                 </div>
-                {isManual ? (
-                  <div className="flex gap-1.5 shrink-0">
-                    <StatusPill
-                      tone="success"
-                      active={currentManual === 'yes'}
-                      disabled={readOnly}
-                      onSelect={() => setManual(m.id, currentManual === 'yes' ? null : 'yes')}
+                <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
+                  <StatusPill
+                    tone="success"
+                    active={currentManual === 'yes'}
+                    disabled={readOnly}
+                    onSelect={() => setManual(m.id, currentManual === 'yes' ? null : 'yes')}
+                  >
+                    Yes
+                  </StatusPill>
+                  <StatusPill
+                    tone="destructive"
+                    active={currentManual === 'no'}
+                    disabled={readOnly}
+                    onSelect={() => setManual(m.id, currentManual === 'no' ? null : 'no')}
+                  >
+                    No
+                  </StatusPill>
+                  {m.upload_link ? (
+                    // Upload pill is a NAV action, not a state. Renders as a
+                    // Link styled to match the StatusPill so the row reads
+                    // visually like the others.
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
                     >
-                      Yes
-                    </StatusPill>
-                    <StatusPill
-                      tone="destructive"
-                      active={currentManual === 'no'}
-                      disabled={readOnly}
-                      onSelect={() => setManual(m.id, currentManual === 'no' ? null : 'no')}
-                    >
-                      No
-                    </StatusPill>
+                      <Link to={m.upload_link.href(enterpriseId)}>
+                        <Upload className="h-3 w-3 mr-1" />
+                        {m.upload_link.label}
+                      </Link>
+                    </Button>
+                  ) : (
                     <StatusPill
                       tone="neutral"
                       active={currentManual === 'n_a'}
@@ -146,10 +147,8 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
                     >
                       N/A
                     </StatusPill>
-                  </div>
-                ) : (
-                  <ReadOnlyValueBadge value={derivedValue ?? null} />
-                )}
+                  )}
+                </div>
               </li>
             );
           })}
@@ -164,23 +163,5 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function ReadOnlyValueBadge({ value }: { value: LifecycleValue | null }) {
-  const { glyph, tone, label } = lifecycleGlyph(value);
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center justify-center h-6 min-w-[28px] px-2 rounded text-xs font-bold',
-        tone === 'success' && 'bg-success/15 text-success',
-        tone === 'destructive' && 'bg-destructive/10 text-destructive',
-        tone === 'muted' && 'bg-muted text-muted-foreground text-[10px]',
-        tone === 'empty' && 'text-muted-foreground/40',
-      )}
-      title={label}
-    >
-      {glyph}
-    </span>
   );
 }

@@ -19,6 +19,7 @@ import { EssfEditPage } from '@/pages/enterprises/EssfEditPage';
 import { EmmpEditPage } from '@/pages/enterprises/EmmpEditPage';
 import { InspectionEditPage } from '@/pages/enterprises/InspectionEditPage';
 import { M1EditPage } from '@/pages/enterprises/M1EditPage';
+import { MonitoringVisitEditPage } from '@/pages/enterprises/MonitoringVisitEditPage';
 import { M1PdfRoute } from '@/pages/enterprises/M1PdfRoute';
 import { OrganizationsAdminPage } from '@/pages/admin/OrganizationsAdminPage';
 import { UsersAdminPage } from '@/pages/admin/UsersAdminPage';
@@ -26,9 +27,9 @@ import { DistrictsAdminPage } from '@/pages/admin/DistrictsAdminPage';
 import { CommunityCouncilsAdminPage } from '@/pages/admin/CommunityCouncilsAdminPage';
 import { ResourceCentersAdminPage } from '@/pages/admin/ResourceCentersAdminPage';
 import { EnterpriseTypesAdminPage } from '@/pages/admin/EnterpriseTypesAdminPage';
+import { AdminGeographyPage } from '@/pages/admin/AdminGeographyPage';
 import { ReportsHomePage } from '@/pages/reports/ReportsHomePage';
 import { ReportsArchivePage } from '@/pages/reports/ReportsArchivePage';
-import { AskPage } from '@/pages/ask/AskPage';
 
 /**
  * Top-level route table. RBAC matrix (PHASE_1_DESIGN.md §4):
@@ -86,12 +87,19 @@ export default function App() {
         <Route path="/enterprises/:id/inspections/new" element={<InspectionEditPage />} />
         <Route path="/enterprises/:id/inspections/:visitId" element={<InspectionEditPage />} />
         <Route path="/enterprises/:id/m1" element={<M1EditPage />} />
+        <Route
+          path="/enterprises/:id/monitoring-visits/new"
+          element={<MonitoringVisitEditPage />}
+        />
+        <Route
+          path="/enterprises/:id/monitoring-visits/:visitId"
+          element={<MonitoringVisitEditPage />}
+        />
 
         {/* Reports */}
         <Route path="/reports" element={<ReportsHomePage />} />
         <Route path="/reports/:kind" element={<ReportsHomePage />} />
         <Route path="/reports/archive" element={<ReportsArchivePage />} />
-        <Route path="/ask" element={<AskPage />} />
 
         {/* Phase 6 — offline queue conflict review */}
         <Route path="/sync-conflicts" element={<SyncConflictsPage />} />
@@ -137,6 +145,7 @@ export default function App() {
         <Route path="/admin/community-councils" element={<CommunityCouncilsAdminPage />} />
         <Route path="/admin/resource-centers" element={<ResourceCentersAdminPage />} />
         <Route path="/admin/enterprise-types" element={<EnterpriseTypesAdminPage />} />
+        <Route path="/admin/geography" element={<AdminGeographyPage />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

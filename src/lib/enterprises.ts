@@ -108,7 +108,7 @@ export interface EnterpriseTimelineRow {
   id: string;
   enterprise_id: string;
   occurred_at: string;
-  category: 'enterprise' | 'essf' | 'emmp' | 'inspection' | 'm1' | 'm1_doc';
+  category: 'enterprise' | 'essf' | 'emmp' | 'inspection' | 'm1' | 'm1_doc' | 'monitoring';
   event_type: 'created' | 'submitted' | 'approved' | 'pdf_uploaded' | 'uploaded';
   actor_id: string | null;
   source_pdf_path: string | null;

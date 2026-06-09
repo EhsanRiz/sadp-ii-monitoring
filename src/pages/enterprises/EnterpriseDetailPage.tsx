@@ -48,11 +48,12 @@ import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSc
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
 import { PrecacheEnterpriseButton } from '@/components/enterprise/PrecacheEnterpriseButton';
 import { useEnterpriseLifecycle, useSaveEnterprisePatch } from '@/lib/enterprises';
+import { useMonitoringVisits } from '@/lib/monitoring-visits';
 import { useOnlineStatus } from '@/lib/online-status';
 import { OnlineRequiredHint } from '@/components/OfflineBadge';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
-import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2 } from 'lucide-react';
+import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2, MapPin, Crosshair } from 'lucide-react';
 import { formatDateDMY, formatLSL, cn } from '@/lib/utils';
 
 /** Colored left-edge border that matches a submission's status. */
@@ -130,7 +131,7 @@ export function EnterpriseDetailPage() {
   // `replace: true` keeps tab switches out of browser history so the back
   // button still returns to the previous *page*, not the previous tab.
   const [searchParams, setSearchParams] = useSearchParams();
-  const allowedTabs = ['details', 'progress', 'esmp', 'borehole', 'm1', 'history'] as const;
+  const allowedTabs = ['details', 'progress', 'esmp', 'borehole', 'm1', 'monitoring', 'history'] as const;
   type TabId = (typeof allowedTabs)[number];
   const tabFromUrl = searchParams.get('tab');
   const currentTab: TabId = (allowedTabs as readonly string[]).includes(tabFromUrl ?? '')
@@ -299,6 +300,7 @@ export function EnterpriseDetailPage() {
             <TabsTrigger value="esmp">ESMP</TabsTrigger>
             <TabsTrigger value="borehole">Borehole</TabsTrigger>
             <TabsTrigger value="m1">Milestone 1</TabsTrigger>
+            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
         </div>
@@ -410,6 +412,113 @@ export function EnterpriseDetailPage() {
                   onChange={(e) => set('location_detail', e.target.value || null)}
                 />
               </Field>
+
+              {/* GPS coordinates — captured at the enterprise site. Spans both
+                  columns so the inputs and "Use my current location" button sit
+                  one beside the other on desktop. Saves on the main Save
+                  changes button (writes through useSaveEnterprisePatch via
+                  the cover-page editor's existing wiring). */}
+              <div className="md:col-span-2 border-t pt-4 mt-2 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div>
+                    <div className="text-sm font-medium flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-primary" />
+                      GPS coordinates
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Captured at the enterprise site. WGS84 decimal degrees.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (!('geolocation' in navigator)) {
+                        toast.error('Geolocation is not supported on this device');
+                        return;
+                      }
+                      const id = toast.loading('Reading your location…');
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          toast.dismiss(id);
+                          set('gps_lat', Number(pos.coords.latitude.toFixed(6)));
+                          set('gps_lng', Number(pos.coords.longitude.toFixed(6)));
+                          set('gps_captured_at', new Date().toISOString());
+                          toast.success(`Captured ±${Math.round(pos.coords.accuracy)} m — click Save changes to persist`);
+                        },
+                        (err) => {
+                          toast.dismiss(id);
+                          toast.error('Could not read location', { description: err.message });
+                        },
+                        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+                      );
+                    }}
+                  >
+                    <Crosshair className="mr-1.5 h-3.5 w-3.5" />
+                    Use my current location
+                  </Button>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Latitude (°)">
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      placeholder="e.g. -29.310245"
+                      value={draft.gps_lat ?? ''}
+                      onChange={(e) =>
+                        set('gps_lat', e.target.value === '' ? null : Number(e.target.value))
+                      }
+                    />
+                  </Field>
+                  <Field label="Longitude (°)">
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      placeholder="e.g. 27.482167"
+                      value={draft.gps_lng ?? ''}
+                      onChange={(e) =>
+                        set('gps_lng', e.target.value === '' ? null : Number(e.target.value))
+                      }
+                    />
+                  </Field>
+                </div>
+                {draft.gps_captured_at && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Last set: {formatDateDMY(draft.gps_captured_at)}
+                  </p>
+                )}
+
+                {/* RC's own coords — read-only display, with a deep-link
+                    to the admin geography page where they can be edited. Only
+                    shown when a RC is selected for this enterprise. */}
+                {(() => {
+                  const selectedRcId = draft.resource_center_id ?? enterprise.resource_center_id;
+                  if (!selectedRcId) return null;
+                  const rc = rcs?.find((r) => r.id === selectedRcId);
+                  if (!rc) return null;
+                  const rcHasCoords = rc.gps_lat != null && rc.gps_lng != null;
+                  return (
+                    <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="font-medium">Resource Center: {rc.name}</div>
+                        <Button asChild size="sm" variant="ghost" className="h-6 px-2 text-[11px]">
+                          <Link to="/admin/geography">Edit on /admin/geography →</Link>
+                        </Button>
+                      </div>
+                      {rcHasCoords ? (
+                        <div className="text-muted-foreground tabular-nums">
+                          {rc.gps_lat?.toFixed(6)}°, {rc.gps_lng?.toFixed(6)}°
+                        </div>
+                      ) : (
+                        <div className="text-muted-foreground italic">
+                          No coordinates recorded for this RC yet.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
             </CardContent>
           </Card>
 
@@ -1463,6 +1572,10 @@ export function EnterpriseDetailPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="monitoring" className="space-y-4">
+          <MonitoringTabContent enterpriseId={enterprise.id} />
+        </TabsContent>
+
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader>
@@ -1553,6 +1666,7 @@ const TIMELINE_CATEGORY_VISUALS: Record<
   inspection: { Icon: ClipboardCheck,  label: 'Inspection',   bg: 'bg-warning/10',     fg: 'text-warning' },
   m1:         { Icon: ClipboardList,   label: 'Milestone 1',  bg: 'bg-primary/10',     fg: 'text-primary' },
   m1_doc:     { Icon: Paperclip,       label: 'Supporting',   bg: 'bg-muted',          fg: 'text-muted-foreground' },
+  monitoring: { Icon: MapPin,          label: 'Monitoring',   bg: 'bg-info/10',        fg: 'text-info' },
 };
 
 /** Badge text + icon for each event_type. */
@@ -1615,6 +1729,100 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label>{label}</Label>
       {children}
     </div>
+  );
+}
+
+// ============================================================================
+// Monitoring tab — list of monitoring visits + "New visit" button.
+// Light component kept inline so it can read the same enterprise context.
+// ============================================================================
+
+function MonitoringTabContent({ enterpriseId }: { enterpriseId: string }) {
+  const visits = useMonitoringVisits(enterpriseId);
+  const VISIT_TYPE_LABEL: Record<string, string> = {
+    routine: 'Routine',
+    follow_up: 'Follow-up',
+    complaint: 'Complaint',
+    opportunistic: 'Opportunistic',
+  };
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-primary" />
+                Monitoring visits
+              </CardTitle>
+              <CardDescription>
+                Field-visit records. Lightweight observations + photos + GPS. Distinct from
+                the structured ESMP compliance Inspection (which lives on the ESMP tab).
+              </CardDescription>
+            </div>
+            <Button asChild size="sm">
+              <Link to={`/enterprises/${enterpriseId}/monitoring-visits/new`}>
+                <Plus className="mr-1 h-3.5 w-3.5" /> New visit
+              </Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {visits.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : !visits.data || visits.data.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No monitoring visits recorded yet. Click <em>New visit</em> to log one.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {visits.data.map((v) => (
+                <li key={v.id} className="py-2 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {formatDateDMY(v.visit_date)}{' '}
+                      <span className="text-muted-foreground font-normal">
+                        · {v.conducted_by_name}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground flex flex-wrap gap-1.5 mt-0.5 items-center">
+                      <Badge variant="outline" className="text-[10px]">
+                        {VISIT_TYPE_LABEL[v.visit_type] ?? v.visit_type}
+                      </Badge>
+                      <Badge
+                        variant={v.status === 'submitted' ? 'default' : 'secondary'}
+                        className="text-[10px]"
+                      >
+                        {v.status}
+                      </Badge>
+                      {v.owner_present === true && (
+                        <span className="text-success">Owner present</span>
+                      )}
+                      {v.owner_present === false && (
+                        <span className="text-destructive">Owner absent</span>
+                      )}
+                      {v.photo_count > 0 && (
+                        <span>
+                          📷 {v.photo_count} photo{v.photo_count === 1 ? '' : 's'}
+                        </span>
+                      )}
+                      {v.signal_major_issues === true && (
+                        <span className="text-destructive">⚠ Issues flagged</span>
+                      )}
+                    </div>
+                  </div>
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/enterprises/${enterpriseId}/monitoring-visits/${v.id}`}>
+                      Open <ChevronRight className="ml-1 h-3 w-3" />
+                    </Link>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 

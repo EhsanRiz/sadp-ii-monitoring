@@ -4,14 +4,11 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { OfflineBadge } from '@/components/OfflineBadge';
-import { CacheStatusPill } from '@/components/CacheStatusPill';
-import { useAutoCache } from '@/lib/auto-cache';
 import {
   LogOut,
   LayoutDashboard,
   Sprout,
   FileBarChart,
-  Sparkles,
   Users2,
   MapPin,
   ShieldCheck,
@@ -31,9 +28,12 @@ const items: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/enterprises', label: 'Enterprises', icon: Sprout },
   { to: '/reports/monthly', label: 'Reports', icon: FileBarChart },
-  { to: '/ask', label: 'Ask the data', icon: Sparkles },
   { to: '/admin/users', label: 'Users', icon: Users2, superAdminOnly: true },
-  { to: '/admin/districts', label: 'Geography', icon: MapPin, superAdminOnly: true },
+  // Geography = RC coordinate editor (migration 280); Districts = catalog of
+  // district records (admin name editing). Keeping both visible so the super
+  // admin can manage either independently.
+  { to: '/admin/geography', label: 'Geography', icon: MapPin, superAdminOnly: true },
+  { to: '/admin/districts', label: 'Districts', icon: MapPin, superAdminOnly: true },
   { to: '/admin/organizations', label: 'Organizations', icon: ShieldCheck, superAdminOnly: true },
 ];
 
@@ -49,10 +49,6 @@ const items: NavItem[] = [
  * mobile app instead of leaving the overlay open.
  */
 export function AppShell() {
-  // Kick off background auto-sync of every accessible enterprise.
-  // Runs once at mount, every 30 min while online + visible, and on
-  // every offline → online transition. See src/lib/auto-cache.ts.
-  useAutoCache();
   const { user, role, isSuperAdmin, signOut } = useAuth();
   const visible = items.filter((i) => !i.superAdminOnly || isSuperAdmin);
 
@@ -148,10 +144,7 @@ export function AppShell() {
                 SADP-II
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <CacheStatusPill />
-              <OfflineBadge />
-            </div>
+            <OfflineBadge />
           </div>
         </header>
 
@@ -159,8 +152,7 @@ export function AppShell() {
         <main className="p-4 md:p-8 max-w-6xl">
           {/* Desktop top strip — only shown on md+, hidden on mobile where the
               OfflineBadge already lives in the header. */}
-          <div className="hidden md:flex justify-end items-center gap-3 mb-4">
-            <CacheStatusPill />
+          <div className="hidden md:flex justify-end mb-4">
             <OfflineBadge />
           </div>
           <Outlet />

@@ -32,6 +32,7 @@ import type {
   InspectionTransitionPayload,
   M1DraftPayload,
   M1TransitionPayload,
+  MonitoringVisitDraftPayload,
 } from '@/lib/offline-saves';
 import type { Database, Json } from '@/types/database';
 
@@ -93,6 +94,14 @@ async function readServerUpdatedAt(p: FormSavePayload): Promise<string | null> {
           .from('enterprises')
           .select('updated_at')
           .eq('id', p.enterprise_id)
+          .maybeSingle();
+        return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
+      }
+      case 'monitoring_visit_draft': {
+        const r = await supabase
+          .from('monitoring_visits')
+          .select('updated_at')
+          .eq('id', p.visit_id)
           .maybeSingle();
         return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
       }
@@ -306,17 +315,61 @@ export async function applyEnterprisePatch(p: EnterprisePatchPayload): Promise<v
   if (error) throw error;
 }
 
+/**
+ * Insert-or-update a monitoring visit row. Client generates the `visit_id`
+ * upfront so we can detect "does it already exist" via SELECT and choose
+ * insert vs update accordingly.
+ *
+ * `to_status` is collapsed into the patch — when 'submitted' we also stamp
+ * submitted_at so the replay produces the same row shape as a server-side
+ * "submit" click.
+ */
+export async function applyMonitoringVisitDraft(p: MonitoringVisitDraftPayload): Promise<void> {
+  const existing = await supabase
+    .from('monitoring_visits')
+    .select('id')
+    .eq('id', p.visit_id)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+
+  const patch: Record<string, unknown> = { ...p.patch };
+  if (p.to_status) {
+    patch.status = p.to_status;
+    if (p.to_status === 'submitted') {
+      patch.submitted_at = new Date().toISOString();
+    }
+  }
+
+  if (existing.data) {
+    const { error } = await supabase
+      .from('monitoring_visits')
+      .update(patch as unknown as Database['public']['Tables']['monitoring_visits']['Update'])
+      .eq('id', p.visit_id);
+    if (error) throw error;
+  } else {
+    // First save — we must seed the columns the table requires.
+    const insertRow = {
+      id: p.visit_id,
+      enterprise_id: p.enterprise_id,
+      ...patch,
+    } as unknown as Database['public']['Tables']['monitoring_visits']['Insert'];
+    const { error } = await supabase.from('monitoring_visits').insert(insertRow);
+    if (error) throw error;
+  }
+}
+
 async function dispatch(payload: FormSavePayload): Promise<void> {
   switch (payload.saveType) {
-    case 'essf_draft':            return applyEssfDraft(payload);
-    case 'emmp_draft':            return applyEmmpDraft(payload);
-    case 'inspection_draft':      return applyInspectionDraft(payload);
-    case 'm1_draft':              return applyM1Draft(payload);
-    case 'essf_transition':       return applyEssfTransition(payload);
-    case 'emmp_transition':       return applyEmmpTransition(payload);
-    case 'inspection_transition': return applyInspectionTransition(payload);
-    case 'm1_transition':         return applyM1Transition(payload);
-    case 'enterprise_patch':      return applyEnterprisePatch(payload);
+    case 'essf_draft':              return applyEssfDraft(payload);
+    case 'emmp_draft':              return applyEmmpDraft(payload);
+    case 'inspection_draft':        return applyInspectionDraft(payload);
+    case 'm1_draft':                return applyM1Draft(payload);
+    case 'essf_transition':         return applyEssfTransition(payload);
+    case 'emmp_transition':         return applyEmmpTransition(payload);
+    case 'inspection_transition':   return applyInspectionTransition(payload);
+    case 'm1_transition':           return applyM1Transition(payload);
+    case 'enterprise_patch':        return applyEnterprisePatch(payload);
+    case 'monitoring_visit_draft':  return applyMonitoringVisitDraft(payload);
   }
 }
 
@@ -393,6 +446,11 @@ function invalidateAfterSync(entry: QueueEntry): void {
       qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
       qc.invalidateQueries({ queryKey: ['enterprise-lifecycle'] });
       qc.invalidateQueries({ queryKey: ['esmp-pdf-meta', p.enterprise_id] });
+      break;
+    case 'monitoring_visit_draft':
+      qc.invalidateQueries({ queryKey: ['monitoring-visits', p.enterprise_id] });
+      qc.invalidateQueries({ queryKey: ['monitoring-visit', p.visit_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
       break;
   }
 }

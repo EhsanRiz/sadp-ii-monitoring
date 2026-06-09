@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-07 (Ask the data: scope picker + UX polish · auto-cache durability fix) · HEAD: `e2e2fe4`
+Last updated: 2026-06-09 (URL filters · ESMP/M1 manual · Monitoring visits · GPS coords) · HEAD: `<bump on commit>`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -19,6 +19,85 @@ is here or one link away.
 | **Owner** | Ehsan Rizvi · 4D Climate Solutions · super admin of the app |
 | **Hosting** | Render Static Site, auto-redeploys on push to `main` |
 | **Stack** | Vite + React 18 + TypeScript + Tailwind + shadcn/ui PWA, backed by Supabase (Postgres + Auth + Storage + Edge Functions + RLS) |
+
+---
+
+## 2. What changed in this push
+
+**2026-06-09: Field-supervisor usability bundle** — four orthogonal improvements
+in one push. Latest section; older "Ask the data" + offline + mobile sections
+preserved below.
+
+**A. URL-driven filters on the Enterprises list**
+(`src/pages/enterprises/EnterprisesListPage.tsx`)
+- Filter state (search, org, district, RC, type, activity, activity-value,
+  esmp/m1/drilling/completeness) now lives in the URL via `useSearchParams` +
+  `setSearchParams({ replace: true })` instead of local `useState`.
+- Click into an enterprise → browser back button restores the same filtered
+  view. Filtered URLs are now shareable / bookmarkable.
+
+**B. ESMP + M1 lifecycle rows become manual** (migration
+`282_lifecycle_drop_derivation_esmp_m1.sql`, `src/lib/lifecycle.ts`,
+`src/components/enterprise/EnterpriseLifecycleEditor.tsx`)
+- All 11 milestones on the Progress tab are now manually marked Yes/No.
+  `LIFECYCLE_MILESTONES.source` is uniformly `'manual'`.
+- ESMP + M1 rows render an **Upload** pill (a navigation action, not a state
+  value) that deep-links into `?tab=esmp` / `?tab=m1` so the user can jump to
+  where they'd finish the work, then come back and mark the milestone Yes
+  themselves.
+- View rewritten to read every column from `enterprises.lifecycle_status`
+  jsonb. Stale "auto" indicators removed from Dashboard + Enterprises list
+  table headers; footer legend updated.
+
+**C. New "Monitoring" tab + lightweight visit records** (migration
+`281_monitoring_visits.sql`, `src/lib/monitoring-visits.ts`,
+`src/pages/enterprises/MonitoringVisitEditPage.tsx`, new tab inside
+`EnterpriseDetailPage.tsx`, migration `283_timeline_with_monitoring_visits.sql`)
+- Distinct from the heavy 21-aspect Inspection visit on the ESMP tab. This is
+  the casual, frequent "popped by, here's what I saw, here are photos" record.
+  Many per enterprise.
+- Schema captures: visit_date (defaults today, editable), conducted_by_name,
+  visit_type (routine / follow_up / complaint / opportunistic),
+  enterprise_phase, owner_present, others_present, 5 quick yes/no signal
+  checks (activity-on-track / inputs-supplied / records-maintained /
+  site-safe / major-issues), observations + issues + actions_agreed +
+  actions_due_date + next_visit_planned + weather, gps_lat/lng, photo_count.
+  Status: draft → submitted (no approval workflow).
+- Photos in new `monitoring-visit-photos` bucket (10 MB, jpeg/png/webp/heic).
+  Path layout `{enterprise_id}/{visit_id}/{photo_id}.{ext}` so the same
+  RLS-by-split_part pattern as `m1-supporting-docs` works.
+- Fully offline-capable for everything except photo upload (online-only —
+  multi-MB blobs aren't queue-friendly). New `monitoring_visit_draft`
+  payload type added to the offline queue + replay engine.
+- New tab between Milestone 1 and History on EnterpriseDetailPage. Reverse-
+  chronological list with date, conductor, visit type, owner-present pill,
+  photo count, and a flag if `signal_major_issues=true`. Timeline view
+  extended (migration 283) so History surfaces monitoring events.
+
+**D. GPS coordinates on enterprises + Resource Centers** (migration
+`280_gps_coordinates.sql`, `src/pages/admin/AdminGeographyPage.tsx`, GPS
+section added to the Location card on `EnterpriseDetailPage`)
+- New nullable `gps_lat` (numeric, range -90..90), `gps_lng` (range -180..180),
+  `gps_captured_at` (timestamptz) on both `enterprises` and `resource_centers`.
+- Enterprise Details → Location card gains a GPS subsection with lat/lng
+  inputs + **"Use my current location"** button (calls `navigator.geolocation`,
+  six decimal precision, captures accuracy in a toast). Saves through the
+  existing offline-aware `useSaveEnterprisePatch` so field captures work
+  offline.
+- Below the GPS inputs: read-only display of the selected RC's coords +
+  an "Edit on /admin/geography →" link.
+- New `/admin/geography` page (super-admin only) — RC rows grouped by district
+  with per-row lat/lng + capture button + Save. Coverage badge at the top
+  ("N / total RCs have coordinates").
+- Sidebar `Geography` item now points at `/admin/geography`; existing
+  districts admin page relabelled "Districts".
+
+**Note on migration numbering:** 280 happens to be reused — `280_run_safe_query`
+shipped 2026-06-07, `280_gps_coordinates` shipped today. They touch different
+objects (PG function vs. column adds) so they coexist; the Supabase
+schema_migrations log records both, applied in their actual timestamp order.
+Numbering convention will go 290+ from here so we don't repeat the
+collision.
 
 ---
 

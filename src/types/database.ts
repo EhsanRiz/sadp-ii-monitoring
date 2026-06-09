@@ -209,6 +209,9 @@ export interface Database {
           district_id: string;
           organization_id: string;
           name: string;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          gps_captured_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -216,6 +219,9 @@ export interface Database {
           district_id: string;
           organization_id?: string;
           name: string;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          gps_captured_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -223,6 +229,9 @@ export interface Database {
           district_id?: string;
           organization_id?: string;
           name?: string;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          gps_captured_at?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -315,6 +324,9 @@ export interface Database {
           borehole_supervision: Json;
           drilling_status: DrillingStatus;
           budget_lsl: number | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          gps_captured_at: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -359,6 +371,9 @@ export interface Database {
           borehole_supervision?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          gps_captured_at?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -402,6 +417,9 @@ export interface Database {
           borehole_supervision?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          gps_captured_at?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -759,6 +777,141 @@ export interface Database {
         };
         Relationships: [];
       };
+      monitoring_visits: {
+        Row: {
+          id: string;
+          enterprise_id: string;
+          organization_id: string;
+          visit_date: string;
+          conducted_by_user_id: string | null;
+          conducted_by_name: string;
+          visit_type: MonitoringVisitType;
+          enterprise_phase: MonitoringEnterprisePhase;
+          owner_present: boolean | null;
+          others_present: string | null;
+          signal_activity_on_track: boolean | null;
+          signal_inputs_supplied: boolean | null;
+          signal_records_maintained: boolean | null;
+          signal_site_safe: boolean | null;
+          signal_major_issues: boolean | null;
+          observations: string | null;
+          issues_noted: string | null;
+          actions_agreed: string | null;
+          actions_due_date: string | null;
+          next_visit_planned: string | null;
+          weather: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          photo_count: number;
+          status: MonitoringVisitStatus;
+          submitted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          enterprise_id: string;
+          organization_id?: string;
+          visit_date?: string;
+          conducted_by_user_id?: string | null;
+          conducted_by_name: string;
+          visit_type?: MonitoringVisitType;
+          enterprise_phase?: MonitoringEnterprisePhase;
+          owner_present?: boolean | null;
+          others_present?: string | null;
+          signal_activity_on_track?: boolean | null;
+          signal_inputs_supplied?: boolean | null;
+          signal_records_maintained?: boolean | null;
+          signal_site_safe?: boolean | null;
+          signal_major_issues?: boolean | null;
+          observations?: string | null;
+          issues_noted?: string | null;
+          actions_agreed?: string | null;
+          actions_due_date?: string | null;
+          next_visit_planned?: string | null;
+          weather?: string | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          photo_count?: number;
+          status?: MonitoringVisitStatus;
+          submitted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          enterprise_id?: string;
+          organization_id?: string;
+          visit_date?: string;
+          conducted_by_user_id?: string | null;
+          conducted_by_name?: string;
+          visit_type?: MonitoringVisitType;
+          enterprise_phase?: MonitoringEnterprisePhase;
+          owner_present?: boolean | null;
+          others_present?: string | null;
+          signal_activity_on_track?: boolean | null;
+          signal_inputs_supplied?: boolean | null;
+          signal_records_maintained?: boolean | null;
+          signal_site_safe?: boolean | null;
+          signal_major_issues?: boolean | null;
+          observations?: string | null;
+          issues_noted?: string | null;
+          actions_agreed?: string | null;
+          actions_due_date?: string | null;
+          next_visit_planned?: string | null;
+          weather?: string | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          photo_count?: number;
+          status?: MonitoringVisitStatus;
+          submitted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      monitoring_visit_photos: {
+        Row: {
+          id: string;
+          visit_id: string;
+          enterprise_id: string;
+          organization_id: string;
+          storage_path: string;
+          caption: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          taken_at: string | null;
+          uploaded_at: string;
+          uploaded_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          visit_id: string;
+          enterprise_id: string;
+          organization_id?: string;
+          storage_path: string;
+          caption?: string | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          taken_at?: string | null;
+          uploaded_at?: string;
+          uploaded_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          visit_id?: string;
+          enterprise_id?: string;
+          organization_id?: string;
+          storage_path?: string;
+          caption?: string | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          taken_at?: string | null;
+          uploaded_at?: string;
+          uploaded_by?: string | null;
+        };
+        Relationships: [];
+      };
       period_reports: {
         Row: {
           id: string;
@@ -815,12 +968,12 @@ export interface Database {
           beneficiary_contributed: 'yes' | 'no' | 'n_a' | null;
           sadp_contributed: 'yes' | 'no' | 'n_a' | null;
           business_plan: 'yes' | 'no' | 'n_a' | null;
-          esmp: 'yes' | 'no';
+          esmp: 'yes' | 'no' | 'n_a' | null;
           verified_borehole_site: 'yes' | 'no' | 'n_a' | null;
           budget_transfer: 'yes' | 'no' | 'n_a' | null;
           supervision: 'yes' | 'no' | 'n_a' | null;
           procurement: 'yes' | 'no' | 'n_a' | null;
-          m1_submitted: 'yes' | 'no';
+          m1_submitted: 'yes' | 'no' | 'n_a' | null;
         };
         Relationships: [];
       };
@@ -890,6 +1043,9 @@ export interface Database {
         occurred_at: string;
       }> };
       log_failed_login: { Args: { p_email: string }; Returns: undefined };
+      // run_safe_query — SECURITY INVOKER wrapper for the "Ask the data"
+      // curated SQL questions (added in migration 280_run_safe_query). Kept
+      // here so src/lib/ask.ts typechecks against this regenerated types file.
       run_safe_query: { Args: { p_sql: string }; Returns: Json };
     };
     Enums: { [_ in never]: never };
@@ -918,3 +1074,23 @@ export type M1SupportingDocumentRow = Database['public']['Tables']['m1_supportin
 export type EnterpriseM1StatusRow = Database['public']['Views']['enterprise_m1_status']['Row'];
 export type EnterpriseM1ReadyRow = Database['public']['Views']['enterprise_m1_ready']['Row'];
 export type EnterpriseLifecycleRow = Database['public']['Views']['enterprise_lifecycle']['Row'];
+
+// ---------------------------------------------------------------------------
+// monitoring_visits — added in migration 281
+// ---------------------------------------------------------------------------
+export type MonitoringVisitType =
+  | 'routine'
+  | 'follow_up'
+  | 'complaint'
+  | 'opportunistic';
+
+export type MonitoringEnterprisePhase =
+  | 'pre_construction'
+  | 'construction'
+  | 'operation'
+  | 'unknown';
+
+export type MonitoringVisitStatus = 'draft' | 'submitted';
+
+export type MonitoringVisitRow = Database['public']['Tables']['monitoring_visits']['Row'];
+export type MonitoringVisitPhotoRow = Database['public']['Tables']['monitoring_visit_photos']['Row'];

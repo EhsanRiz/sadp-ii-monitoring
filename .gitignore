@@ -70,3 +70,4 @@ ESMP forms/
 extracted_catalog/
 
 vite.config.ts.timestamp-*
+node_modules
