@@ -49,6 +49,10 @@ import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBind
 import { PrecacheEnterpriseButton } from '@/components/enterprise/PrecacheEnterpriseButton';
 import { useEnterpriseLifecycle, useSaveEnterprisePatch } from '@/lib/enterprises';
 import { useMonitoringVisits } from '@/lib/monitoring-visits';
+// The UnsavedChangesProvider wraps this route in App.tsx so this page +
+// EnterpriseLifecycleEditor can both register their dirty flag and share
+// one navigation prompt.
+import { useRegisterDirty } from '@/lib/use-unsaved-changes-guard';
 import { useOnlineStatus } from '@/lib/online-status';
 import { OnlineRequiredHint } from '@/components/OfflineBadge';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
@@ -128,6 +132,11 @@ export function EnterpriseDetailPage() {
   const [lastM1Extract, setLastM1Extract] = useState<ExtractM1Result | null>(null);
 
   const [draft, setDraft] = useState<Partial<EnterpriseRow>>({});
+  // Details-tab dirty flag, reported up to the UnsavedChangesProvider so the
+  // page-level guard prompts before navigating away with unsaved edits.
+  // Set true by the `set<K>()` helper, cleared on successful save / load.
+  const [detailsDirty, setDetailsDirty] = useState(false);
+  useRegisterDirty('details', detailsDirty);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showLegacy, setShowLegacy] = useState(false);
   const [lastExtract, setLastExtract] = useState<ExtractPdfResult | null>(null);
@@ -156,7 +165,13 @@ export function EnterpriseDetailPage() {
   };
 
   useEffect(() => {
-    if (enterprise) setDraft(enterprise);
+    if (enterprise) {
+      setDraft(enterprise);
+      // Re-hydrating from the server resets the dirty flag — any
+      // optimistic local edits the user had are now part of the server
+      // state (or were superseded by it).
+      setDetailsDirty(false);
+    }
   }, [enterprise]);
 
   // useSaveEnterprisePatch wraps the UPDATE so it queues when offline and
@@ -179,6 +194,11 @@ export function EnterpriseDetailPage() {
         },
         {
           onError: (e: Error) => setSaveError(e.message),
+          onSuccess: () => {
+            // Save landed (or was queued offline) — drop the dirty flag so
+            // the unsaved-changes guard stops blocking navigation.
+            setDetailsDirty(false);
+          },
         },
       );
     },
@@ -247,6 +267,8 @@ export function EnterpriseDetailPage() {
 
   function set<K extends keyof EnterpriseRow>(key: K, value: EnterpriseRow[K] | null) {
     setDraft((d) => ({ ...d, [key]: value }));
+    // Mark Details dirty so the unsaved-changes guard kicks in.
+    setDetailsDirty(true);
   }
 
   const typeInfo = types?.find((t) => t.id === enterprise.enterprise_type_id);
@@ -1769,6 +1791,29 @@ function MonitoringTabContent({ enterpriseId }: { enterpriseId: string }) {
     complaint: 'Complaint',
     opportunistic: 'Opportunistic',
   };
+
+  /**
+   * Headline summary: last visit date + "N days ago". Visits already arrive
+   * ordered by visit_date desc from useMonitoringVisits, so list[0] is the
+   * most recent. Red tone if > 60 days since the last visit — useful for
+   * spotting neglected enterprises at a glance.
+   */
+  const summary = (() => {
+    const list = visits.data;
+    if (!list || list.length === 0) return null;
+    const latest = list[0];
+    const visitedAt = new Date(latest.visit_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    visitedAt.setHours(0, 0, 0, 0);
+    const days = Math.max(0, Math.round((today.getTime() - visitedAt.getTime()) / 86_400_000));
+    const stale = days > 60;
+    const label =
+      days === 0 ? 'today'
+      : days === 1 ? 'yesterday'
+      : `${days} days ago`;
+    return { days, label, stale, latest, total: list.length };
+  })();
   return (
     <>
       <Card>
@@ -1783,6 +1828,26 @@ function MonitoringTabContent({ enterpriseId }: { enterpriseId: string }) {
                 Field-visit records. Lightweight observations + photos + GPS. Distinct from
                 the structured ESMP compliance Inspection (which lives on the ESMP tab).
               </CardDescription>
+              {/* Summary chip — "Last visit X days ago · N total". Renders red
+                  for > 60 days as a quick "this enterprise hasn't been seen in
+                  a while" flag. Hidden when there are no visits yet. */}
+              {summary && (
+                <div
+                  className={cn(
+                    'mt-2 inline-flex items-center gap-2 text-xs rounded-md px-2 py-1',
+                    summary.stale
+                      ? 'bg-destructive/10 text-destructive border border-destructive/30'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  <span>Last visit {summary.label}</span>
+                  <span className="opacity-50">·</span>
+                  <span>{formatDateDMY(summary.latest.visit_date)}</span>
+                  <span className="opacity-50">·</span>
+                  <span>{summary.total} total</span>
+                  {summary.stale && <span className="ml-1 font-medium">⚠ stale</span>}
+                </div>
+              )}
             </div>
             <Button asChild size="sm">
               <Link to={`/enterprises/${enterpriseId}/monitoring-visits/new`}>

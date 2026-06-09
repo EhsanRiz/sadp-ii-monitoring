@@ -1,5 +1,13 @@
 import { useEffect } from 'react';
-import { Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Outlet,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+  createBrowserRouter,
+  createRoutesFromElements,
+} from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { RoleGate } from '@/components/RoleGate';
 import { AppShell } from '@/components/AppShell';
@@ -30,22 +38,17 @@ import { EnterpriseTypesAdminPage } from '@/pages/admin/EnterpriseTypesAdminPage
 import { AdminGeographyPage } from '@/pages/admin/AdminGeographyPage';
 import { ReportsHomePage } from '@/pages/reports/ReportsHomePage';
 import { ReportsArchivePage } from '@/pages/reports/ReportsArchivePage';
+import { UnsavedChangesProvider } from '@/lib/use-unsaved-changes-guard';
 
 /**
- * Top-level route table. RBAC matrix (PHASE_1_DESIGN.md §4):
+ * Root layout — wraps the entire app. Runs the invite/recovery redirect
+ * once on mount and renders the Toaster portal + an <Outlet /> for child
+ * routes.
  *
- *   super_admin      → everything, all orgs
- *   team_leader      → read everything in own org
- *   me_officer       → read/write enterprises in own org
- *   field_supervisor → read/write enterprises in own org
- *
- * Admin section is super-admin-only; non-admins land directly on /dashboard.
+ * Lives inside the data router so it can use useLocation + useNavigate
+ * normally.
  */
-export default function App() {
-  // If the page loaded from an invite or recovery email link (captured by
-  // src/lib/initial-url.ts BEFORE supabase-js clears the hash), redirect
-  // once to /set-password so the user can choose a password before doing
-  // anything else.
+function RootLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => {
@@ -64,7 +67,26 @@ export default function App() {
         closeButton
         toastOptions={{ duration: 4000 }}
       />
-    <Routes>
+      <Outlet />
+    </>
+  );
+}
+
+/**
+ * Top-level route table built as a data router so we can use the stable
+ * `useBlocker` hook for unsaved-changes guards. RBAC matrix
+ * (PHASE_1_DESIGN.md §4):
+ *
+ *   super_admin      → everything, all orgs
+ *   team_leader      → read everything in own org
+ *   me_officer       → read/write enterprises in own org
+ *   field_supervisor → read/write enterprises in own org
+ *
+ * Admin section is super-admin-only; non-admins land directly on /dashboard.
+ */
+export const appRouter = createBrowserRouter(
+  createRoutesFromElements(
+    <Route element={<RootLayout />}>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/set-password" element={<SetPasswordPage />} />
@@ -81,7 +103,19 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/enterprises" element={<EnterprisesListPage />} />
         <Route path="/enterprises/new" element={<NewEnterprisePage />} />
-        <Route path="/enterprises/:id" element={<EnterpriseDetailPage />} />
+        {/* Wrap the enterprise detail page in an UnsavedChangesProvider so
+            the Details cover-page form AND the EnterpriseLifecycleEditor
+            can both register their dirty flag, and the page shows ONE
+            confirmation prompt on navigation (instead of two from
+            independent useBlocker instances). */}
+        <Route
+          path="/enterprises/:id"
+          element={
+            <UnsavedChangesProvider message="You have unsaved changes on this enterprise — leave anyway?">
+              <EnterpriseDetailPage />
+            </UnsavedChangesProvider>
+          }
+        />
         <Route path="/enterprises/:id/essf" element={<EssfEditPage />} />
         <Route path="/enterprises/:id/emmp" element={<EmmpEditPage />} />
         <Route path="/enterprises/:id/inspections/new" element={<InspectionEditPage />} />
@@ -150,7 +184,6 @@ export default function App() {
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
-    </>
-  );
-}
+    </Route>,
+  ),
+);

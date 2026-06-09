@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Plus, FileText, LayoutGrid, List, Sprout, ChevronRight } from 'lucide-react';
+import { Plus, FileText, LayoutGrid, List, Sprout, ChevronRight, X as XIcon } from 'lucide-react';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import { cn } from '@/lib/utils';
 
@@ -182,6 +182,27 @@ export function EnterprisesListPage() {
     (v: 'yes' | 'no' | 'n_a' | 'not_tracked' | '__any') => patchParams({ activityValue: v }),
     [patchParams],
   );
+
+  // Count of active filters — anything non-null/non-default. Drives the
+  // "N active · Clear all" pill in the filter card header.
+  const activeFilterCount =
+    (filters.search ? 1 : 0)
+    + (filters.organizationCode ? 1 : 0)
+    + (filters.districtId ? 1 : 0)
+    + (filters.resourceCenterId ? 1 : 0)
+    + (filters.enterpriseTypeId ? 1 : 0)
+    + (filters.esmpStatus ? 1 : 0)
+    + (filters.milestone1Status ? 1 : 0)
+    + (filters.drillingStatus ? 1 : 0)
+    + (filters.completeness ? 1 : 0)
+    + (activityId !== '__all' ? 1 : 0);
+
+  const clearAllFilters = useCallback(() => {
+    // setSearchParams with an empty URLSearchParams wipes every query key
+    // (filter + activity + activity-value). The view toggle is in
+    // localStorage so it survives.
+    setSearchParams(new URLSearchParams(), { replace: true });
+  }, [setSearchParams]);
   const [view, setView] = useState<'table' | 'cards'>(() => {
     // Default to cards on small screens — the 11-column matrix is unreadable
     // on a phone. Desktop respects the user's last choice.
@@ -267,8 +288,27 @@ export function EnterprisesListPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Filter</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle className="text-base flex items-center gap-2">
+            Filter
+            {activeFilterCount > 0 && (
+              <Badge variant="secondary" className="font-normal">
+                {activeFilterCount} active
+              </Badge>
+            )}
+          </CardTitle>
+          {activeFilterCount > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearAllFilters}
+              className="h-7 px-2 text-xs"
+            >
+              <XIcon className="mr-1 h-3 w-3" />
+              Clear all
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Row 1: Search spans wider; Org (super-admin only) + District + RC */}

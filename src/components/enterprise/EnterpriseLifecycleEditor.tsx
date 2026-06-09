@@ -26,6 +26,7 @@ import {
   type LifecycleMilestoneId,
 } from '@/lib/lifecycle';
 import { useSaveEnterpriseLifecycle } from '@/lib/enterprises';
+import { useRegisterDirty } from '@/lib/use-unsaved-changes-guard';
 
 interface Props {
   enterpriseId: string;
@@ -42,6 +43,11 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
   const save = useSaveEnterpriseLifecycle(enterpriseId);
   const [draft, setDraft] = useState<ManualMap>({});
   const [dirty, setDirty] = useState(false);
+
+  // Hook into the parent UnsavedChangesProvider (rendered on
+  // EnterpriseDetailPage). If this editor is used outside that provider,
+  // the hook is a no-op — the page-level guard takes over.
+  useRegisterDirty('lifecycle', dirty);
 
   // Hydrate draft when lifecycle arrives or enterprise switches.
   useEffect(() => {

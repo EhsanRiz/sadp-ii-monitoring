@@ -6,9 +6,9 @@ import './lib/initial-url';
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import App from './App';
+import { appRouter } from './App';
 import { AuthProvider } from './lib/auth';
 import { initOnlineStatus } from './lib/online-status';
 import { queryPersister } from './lib/query-persister';
@@ -49,11 +49,13 @@ initReplay(queryClient);
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </BrowserRouter>
+      {/* AuthProvider wraps RouterProvider so React Query + useAuth are
+          available inside route elements. The data router (createBrowserRouter)
+          replaces the older BrowserRouter + Routes pair so we can use the
+          stable `useBlocker` hook for unsaved-changes guards. */}
+      <AuthProvider>
+        <RouterProvider router={appRouter} />
+      </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

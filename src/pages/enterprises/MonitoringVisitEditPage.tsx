@@ -28,6 +28,7 @@ import {
 } from '@/lib/monitoring-visits';
 import { useOnlineStatus } from '@/lib/online-status';
 import { OnlineRequiredHint } from '@/components/OfflineBadge';
+import { useUnsavedChangesGuard } from '@/lib/use-unsaved-changes-guard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -207,6 +208,14 @@ export function MonitoringVisitEditPage() {
 
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [dirty, setDirty] = useState(false);
+
+  // Guard browser-level + in-app navigation while there are unsaved edits.
+  // Cleared on a successful save (setDirty(false) below in onSaveDraft /
+  // onSubmit success branches).
+  useUnsavedChangesGuard(
+    dirty,
+    'You have unsaved monitoring-visit edits — leave anyway?',
+  );
 
   // Seed the visitor name from the logged-in user's email the first time.
   // The user can replace it with their full name on the form. (We don't pull
