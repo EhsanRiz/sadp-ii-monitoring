@@ -1,6 +1,6 @@
 # SADP-II Monitoring — Progress Snapshot
 
-Last updated: 2026-06-09 (URL filters · ESMP/M1 manual · Monitoring visits · GPS coords) · HEAD: `<bump on commit>`
+Last updated: 2026-06-09 (Post-launch UX polish — ⌘K palette · sticky mobile Save · unsaved-changes guard) · HEAD: `8c420a8`
 
 A handoff document so the project can be picked up from another machine without
 re-explaining context. Read this top-to-bottom; everything you need to resume
@@ -24,38 +24,117 @@ is here or one link away.
 
 ## 2. What changed in this push
 
-**2026-06-09: Field-supervisor usability bundle** — four orthogonal improvements
-in one push. Latest section; older "Ask the data" + offline + mobile sections
-preserved below.
+**2026-06-09 (later, after b2c2aa7): Post-launch UX polish — four follow-up pushes**
 
-**A. URL-driven filters on the Enterprises list**
+Four small pushes layered onto the GPS / Monitoring / Filter URLs / ESMP-manual
+launch, each addressing usability friction reported / observed live:
+
+**A. "Back to filtered list" chip on enterprise header** (`bad604c`)
+(`src/pages/enterprises/EnterprisesListPage.tsx`,
+`src/pages/enterprises/EnterpriseDetailPage.tsx`)
+- EnterprisesListPage cards/table rows pass the current filtered URL
+  (`pathname + search`) via `<Link state={...}>` when navigating into an
+  enterprise.
+- EnterpriseDetailPage reads `location.state.from` and renders a small
+  "← Back to filtered enterprises" ghost-chip in the header that links to
+  the exact filtered URL the user was on. Hidden when arrived via direct
+  URL / refresh / bookmark (no state).
+- Solves the "users rarely use the browser back button" problem flagged
+  during live testing — gives an in-app affordance instead.
+
+**B. Clear-all filters + active filter count** (`4f2bcae`)
 (`src/pages/enterprises/EnterprisesListPage.tsx`)
-- Filter state (search, org, district, RC, type, activity, activity-value,
-  esmp/m1/drilling/completeness) now lives in the URL via `useSearchParams` +
-  `setSearchParams({ replace: true })` instead of local `useState`.
-- Click into an enterprise → browser back button restores the same filtered
-  view. Filtered URLs are now shareable / bookmarkable.
+- Filter card header now shows `Filter · N active` with a `× Clear all`
+  ghost button when any filter is set. One click wipes every URL query
+  param. Saves the tedium of resetting eight Selects individually.
 
-**B. ESMP + M1 lifecycle rows become manual** (migration
-`282_lifecycle_drop_derivation_esmp_m1.sql`, `src/lib/lifecycle.ts`,
-`src/components/enterprise/EnterpriseLifecycleEditor.tsx`)
+**C. Unsaved-changes guard on Details / Lifecycle / Monitoring forms** (`4f2bcae`)
+(NEW `src/lib/use-unsaved-changes-guard.tsx`,
+`src/App.tsx`, `src/main.tsx`,
+`src/components/enterprise/EnterpriseLifecycleEditor.tsx`,
+`src/pages/enterprises/MonitoringVisitEditPage.tsx`,
+`src/pages/enterprises/EnterpriseDetailPage.tsx`)
+- Data-router migration: `<BrowserRouter>` + `<Routes>` → `createBrowserRouter`
+  + `<RouterProvider>` in main.tsx. App.tsx now exports `appRouter` (a
+  router config) instead of an `<App>` component. A `RootLayout` keeps the
+  invite/recovery hash redirect. No URL behaviour change.
+- New `use-unsaved-changes-guard.tsx` exports two flavours:
+    * `useUnsavedChangesGuard(dirty, msg)` — single-form pages (used by
+      MonitoringVisitEditPage).
+    * `<UnsavedChangesProvider>` + `useRegisterDirty(key, dirty)` — pages
+      with multiple independent forms. Wrapped around the
+      `/enterprises/:id` route in App.tsx so the Details cover-page editor
+      AND EnterpriseLifecycleEditor share ONE confirmation prompt (instead
+      of firing two sequentially as raw `useBlocker` would).
+- Both wire `window.beforeunload` so a browser refresh / tab close with
+  unsaved edits triggers the native "Leave site?" dialog.
+
+**D. "Last visit: N days ago" indicator on Monitoring tab** (`4f2bcae`)
+(`src/pages/enterprises/EnterpriseDetailPage.tsx` → `MonitoringTabContent`)
+- Summary chip above the visit list: "Last visit X days ago · DD/MM/YYYY ·
+  N total". Switches to red with a `⚠ stale` tag when the most-recent
+  visit was > 60 days ago — quick triage glance for spotting neglected
+  enterprises. Hidden when no visits yet.
+
+**E. Sticky mobile Save buttons** (`8c420a8`)
+(`src/components/enterprise/EnterpriseLifecycleEditor.tsx`,
+`src/pages/enterprises/EnterpriseDetailPage.tsx`,
+`src/pages/enterprises/MonitoringVisitEditPage.tsx`)
+- Lifecycle editor, Details cover-page editor, and Monitoring visit edit
+  page now pin their primary action row to the viewport bottom on phones
+  via `sticky bottom-0 ... md:static`. Desktop keeps inline placement so
+  the bar doesn't float mid-content on a tall viewport. Backdrop blur +
+  border-top separate the sticky bar from the form above.
+
+**F. ⌘K command palette** (`8c420a8`)
+(NEW `src/components/CommandPalette.tsx`,
+NEW `src/components/ui/dialog.tsx`,
+`src/components/AppShell.tsx`)
+- `CommandPaletteProvider` mounted in AppShell so the ⌘K (Mac) / Ctrl+K
+  (others) hotkey opens a modal enterprise search from any authenticated
+  route. Substring match (case-insensitive) on `beneficiary_short_name`,
+  `applicant_organisation_name`, and id prefix. ↑/↓ navigate, Enter opens,
+  Esc closes. Up to 50 results shown.
+- Visible `<CommandPaletteTrigger>` button — "Search ⌘K" in the desktop
+  top strip next to OfflineBadge; compact icon-only variant in the mobile
+  header. Discoverable without keyboard memorisation.
+- New `src/components/ui/dialog.tsx` — minimal shadcn-style wrapper around
+  the already-installed `@radix-ui/react-dialog`. Open for reuse by future
+  modals (confirmation dialogs, etc.). No new dependencies added.
+
+---
+
+## 2.5. Earlier this session: Field-supervision usability bundle — four orthogonal improvements
+
+Two UX fixes, one new tracking entity, and a small geo feature, all in one push:
+
+**A. URL-driven filters on the Enterprises list** (`src/pages/enterprises/EnterprisesListPage.tsx`)
+- Filter state (search, org, district, RC, type, activity, activity-value,
+  esmp/m1/drilling/completeness) is now held in the URL via `useSearchParams`
+  + `setSearchParams({ replace: true })` instead of `useState`.
+- Effect: click an enterprise → browser back button restores the same filtered
+  view. Bonus: filtered URLs are shareable / bookmarkable.
+
+**B. ESMP + M1 lifecycle rows become manual** (`src/lib/lifecycle.ts`,
+`src/components/enterprise/EnterpriseLifecycleEditor.tsx`,
+migration `282_lifecycle_drop_derivation_esmp_m1.sql`)
 - All 11 milestones on the Progress tab are now manually marked Yes/No.
-  `LIFECYCLE_MILESTONES.source` is uniformly `'manual'`.
-- ESMP + M1 rows render an **Upload** pill (a navigation action, not a state
-  value) that deep-links into `?tab=esmp` / `?tab=m1` so the user can jump to
-  where they'd finish the work, then come back and mark the milestone Yes
-  themselves.
+  `LIFECYCLE_MILESTONES.source` is uniformly `'manual'`; `derived_from` is gone.
+- ESMP + M1 rows render an **Upload** pill (a navigation action, not a state)
+  that deep-links into `?tab=esmp` / `?tab=m1` so the user can jump to where
+  they'd finish the work, then come back and mark the milestone Yes themselves.
 - View rewritten to read every column from `enterprises.lifecycle_status`
-  jsonb. Stale "auto" indicators removed from Dashboard + Enterprises list
-  table headers; footer legend updated.
+  jsonb (previously esmp + m1_submitted were computed from submission rows).
+- Stale "auto" indicators removed from Dashboard + Enterprises list table
+  headers. Footer legend updated.
 
 **C. New "Monitoring" tab + lightweight visit records** (migration
 `281_monitoring_visits.sql`, `src/lib/monitoring-visits.ts`,
 `src/pages/enterprises/MonitoringVisitEditPage.tsx`, new tab inside
-`EnterpriseDetailPage.tsx`, migration `283_timeline_with_monitoring_visits.sql`)
-- Distinct from the heavy 21-aspect Inspection visit on the ESMP tab. This is
-  the casual, frequent "popped by, here's what I saw, here are photos" record.
-  Many per enterprise.
+`EnterpriseDetailPage.tsx`)
+- Distinct from the heavy 21-aspect Inspection visit on the ESMP tab. This
+  is the casual, frequent "popped by, here's what I saw, here are photos"
+  record. Many per enterprise.
 - Schema captures: visit_date (defaults today, editable), conducted_by_name,
   visit_type (routine / follow_up / complaint / opportunistic),
   enterprise_phase, owner_present, others_present, 5 quick yes/no signal
@@ -71,12 +150,14 @@ preserved below.
   payload type added to the offline queue + replay engine.
 - New tab between Milestone 1 and History on EnterpriseDetailPage. Reverse-
   chronological list with date, conductor, visit type, owner-present pill,
-  photo count, and a flag if `signal_major_issues=true`. Timeline view
-  extended (migration 283) so History surfaces monitoring events.
+  photo count, and a flag if `signal_major_issues=true`.
+- Timeline view (migration `283_timeline_with_monitoring_visits.sql`)
+  extended to surface visit creation, submission, and photo uploads in the
+  History tab.
 
 **D. GPS coordinates on enterprises + Resource Centers** (migration
-`280_gps_coordinates.sql`, `src/pages/admin/AdminGeographyPage.tsx`, GPS
-section added to the Location card on `EnterpriseDetailPage`)
+`280_gps_coordinates.sql`, `src/pages/admin/AdminGeographyPage.tsx`,
+GPS section added to the Location card on `EnterpriseDetailPage`)
 - New nullable `gps_lat` (numeric, range -90..90), `gps_lng` (range -180..180),
   `gps_captured_at` (timestamptz) on both `enterprises` and `resource_centers`.
 - Enterprise Details → Location card gains a GPS subsection with lat/lng
@@ -84,222 +165,17 @@ section added to the Location card on `EnterpriseDetailPage`)
   six decimal precision, captures accuracy in a toast). Saves through the
   existing offline-aware `useSaveEnterprisePatch` so field captures work
   offline.
-- Below the GPS inputs: read-only display of the selected RC's coords +
-  an "Edit on /admin/geography →" link.
-- New `/admin/geography` page (super-admin only) — RC rows grouped by district
-  with per-row lat/lng + capture button + Save. Coverage badge at the top
-  ("N / total RCs have coordinates").
-- Sidebar `Geography` item now points at `/admin/geography`; existing
-  districts admin page relabelled "Districts".
-
-**Note on migration numbering:** 280 happens to be reused — `280_run_safe_query`
-shipped 2026-06-07, `280_gps_coordinates` shipped today. They touch different
-objects (PG function vs. column adds) so they coexist; the Supabase
-schema_migrations log records both, applied in their actual timestamp order.
-Numbering convention will go 290+ from here so we don't repeat the
-collision.
+- A read-only block below shows the selected RC's coords + an "Edit RC →"
+  deep-link to `/admin/geography`.
+- New `/admin/geography` page (super-admin only) — RC rows grouped by
+  district with per-row lat/lng + capture button + Save. Coverage badge at
+  the top: "N / total RCs have coordinates".
+- Sidebar `Geography` item now points at `/admin/geography`; the existing
+  districts admin page gets renamed to "Districts" in the sidebar.
 
 ---
 
-## 2. What changed in this push
-
-**Ask the data — Layer 1 (curated questions library)**
-(`migration 280`,
-`src/data/curated-questions.ts`,
-`src/lib/ask.ts`,
-`src/pages/ask/AskPage.tsx`,
-`src/components/AppShell.tsx`, `src/App.tsx`)
-
-- New "Ask the data" sidebar entry between Reports and Users. Sparkles icon.
-- 20 hand-written SQL questions across 4 categories — Progress & bottlenecks
-  (5), Financials (5), Compliance & ESMP (5), Data quality (5).
-- Each question card shows title + description. Click → runs the SQL via the
-  new `run_safe_query()` PG function (migration 280) and renders a sortable
-  result table with CSV export.
-- A "Show SQL" toggle reveals the exact query — important for transparency
-  and so analysts can copy + tweak.
-- `run_safe_query()` is **SECURITY INVOKER** — caller's RLS scope applies
-  automatically. 4D users see 4D data, RSDA staff see RSDA data, no special
-  casing in the UI.
-- Safety guards in the PG function: SELECT/WITH only (regex), no `;` inside
-  the query, blacklist of dangerous keywords (INSERT/UPDATE/DELETE/DROP/...),
-  5-second statement timeout, result set bounded to LIMIT 500 in a wrapper
-  subquery so even an open-ended SELECT can't blow up.
-- One question (`q-inactive-users`) is flagged `requiresSuperAdmin` and only
-  shows for super admins because it joins `user_admin_list()` which is super-
-  admin gated.
-
-**UX polish after first ship** (`a7da62b`)
-- Originally the result panel sat below the question grid, so picking
-  a question meant scrolling down to see the answer. Rebalanced:
-  - **Quick-pick dropdown** at the top of the filter row, grouped by
-    category. Useful for power users who don't want their eyes to leave
-    the result table while switching questions.
-  - Result panel moved **above** the card grid. Cards stay below as a
-    visual browse mode.
-  - `useEffect` watches `selected` and calls `scrollIntoView({behavior:
-    'smooth'})` on the result panel so whichever way you pick, the answer
-    comes to you, not the other way around.
-  - Added `SelectLabel` to `src/components/ui/select.tsx` to support
-    grouped section headers in the dropdown.
-
-**Super-admin org scope picker** (`e2e2fe4`)
-- For super admins, the page now exposes a **"Scope"** select (All /
-  4D / RSDA). Hidden for partner staff (RLS already gives them their
-  org's data).
-- 19 of 20 curated queries carry an embedded `ORG_FILTER` placeholder in
-  their WHERE clauses. The Ask page substitutes it with `TRUE` (scope=All)
-  or `o.code = '4D'` / `o.code = 'RSDA'` before the SQL is sent to
-  `run_safe_query()`. Each scopable query was rewritten to either already
-  join `organizations o` or had that join added.
-- Changing scope auto re-runs the active question. Result panel header
-  shows a small badge: **"Scope: 4D"** when active, or **"Scope ignored —
-  not scopable"** for the one query (users-who-never-logged-in) that
-  internally calls a SECURITY DEFINER fn.
-- A subtle gotcha for future contributors: the JSDoc literally containing
-  `/*ORG_FILTER*/` prematurely closes the `/** … */` block comment. Use
-  prose like *"the literal slash-star-ORG_FILTER-star-slash"* instead.
-
-**Foundation for Layer 2.** The next push (free-form "Ask anything" box) will
-reuse `run_safe_query()` — just adds an edge function that asks Claude to
-generate the SQL, then shows it to the user for review before execution.
-
----
-
-## 2. What changed in this push
-
-**Zero-touch offline auto-sync** — supervisors can no longer be stranded by forgetting to click "Take offline"
-(`src/lib/auto-cache.ts`,
-`src/lib/offline-db.ts` (v3 → v4),
-`src/components/CacheStatusPill.tsx`,
-`src/components/AppShell.tsx`,
-`src/components/enterprise/PrecacheEnterpriseButton.tsx`,
-`src/pages/enterprises/EnterprisesListPage.tsx`)
-
-**The problem we solved.**  The previous offline rollout required users to
-proactively click *Take offline* before going to a remote site.  If they
-forgot, they were stranded — no enterprise data, no form, wasted trip.
-
-**How it works now.**
-- The moment a user logs in (and on every offline → online transition), the
-  app silently pulls every enterprise in their RLS scope plus all related
-  submissions in 12 bulk queries (one per table), and writes them into the
-  React Query IDB cache via `setQueryData`.  Refresh runs again every 30
-  minutes while the tab is foreground.
-- For a Mafeteng field supervisor, this is ~25 enterprises and 2-3 MB of
-  metadata.  Imperceptible on wifi; small enough on cellular to be a
-  reasonable trade against the "stranded" risk.  Per the design call:
-  *always auto-sync regardless of connection*.
-- A new IDB store `cache_state` (v4 schema bump) tracks per-enterprise
-  `cached_at` and `source_updated_at` so the UI can show "47 ready · synced
-  5m ago" and a small offline indicator on each cached enterprise without
-  losing state across reloads.
-
-**New UI affordances.**
-- `CacheStatusPill` in the app header next to OfflineBadge.  States: green
-  *"N ready · synced 5m ago"* (idle, click to refresh now); blue spinner
-  *"Caching N…"* (in-flight); red *"Cache failed · Retry"* (error); muted
-  *"Setting up offline copy…"* (first sync after login).
-- Enterprise list (both card and matrix views) shows a small `WifiOff` icon
-  next to the name on cached enterprises.  Glance and know which are ready.
-- *Take offline* button is now *Offline ready · 2h ago · Refresh* once
-  cached.  State persists across reloads (was lost in local `useState`
-  before).
-
-**Architecture notes.**
-- Sync uses **bulk queries**, not per-enterprise loops.  ~12 round-trips
-  total regardless of N enterprises.  RLS scopes results automatically; no
-  client-side filtering required.
-- Cache writes flow through React Query's existing IDB persister — the
-  same store the rest of the app reads from.  No duplicate caching layer.
-- Still **online-only by design**: PDF uploads, supporting-doc Blobs, the
-  Extract / Backfill-from-binder buttons.  Multi-MB blobs + Anthropic
-  round-trips aren't worth queueing (Phase 5 architecture unchanged).
-- The mounted-once orchestrator (`useAutoCache()` in `AppShell`) runs on
-  initial mount, watches the `online-status` store, and re-fires on every
-  reconnect transition.  Module-level state means multiple subscribers
-  (the pill + the list badges) see identical progress.
-
-**Post-ship fix — durability bug** (`464eb4f`).  End-to-end check found that
-auto-cache was populating React Query's in-memory store via `setQueryData`,
-but the IDB persister (`@tanstack/react-query-persist-client`) only writes
-queries that have an observer.  Result: a 273-row IDB `cache_state` table
-but only ~2 enterprises actually persisted to the `cache` store.  Tab
-close = losing 271/273.  Fix is mechanical — replace each
-`qc.setQueryData(key, data)` with `qc.prefetchQuery({ queryKey: key,
-queryFn: () => Promise.resolve(data), staleTime: 0 })`.  `prefetchQuery`
-goes through the normal fetch lifecycle so the persister picks it up.
-Verified post-deploy: IDB rows jumped 40 → 1,675 for a 273-enterprise
-super admin scope.  Stranded-supervisor scenario actually solved.
-
----
-
-## 2. What changed in this push
-
-**Ask the data — Layer 1 (curated questions library)**
-(`migration 280`,
-`src/data/curated-questions.ts`,
-`src/lib/ask.ts`,
-`src/pages/ask/AskPage.tsx`,
-`src/components/AppShell.tsx`, `src/App.tsx`)
-
-- New "Ask the data" sidebar entry between Reports and Users. Sparkles icon.
-- 20 hand-written SQL questions across 4 categories — Progress & bottlenecks
-  (5), Financials (5), Compliance & ESMP (5), Data quality (5).
-- Each question card shows title + description. Click → runs the SQL via the
-  new `run_safe_query()` PG function (migration 280) and renders a sortable
-  result table with CSV export.
-- A "Show SQL" toggle reveals the exact query — important for transparency
-  and so analysts can copy + tweak.
-- `run_safe_query()` is **SECURITY INVOKER** — caller's RLS scope applies
-  automatically. 4D users see 4D data, RSDA staff see RSDA data, no special
-  casing in the UI.
-- Safety guards in the PG function: SELECT/WITH only (regex), no `;` inside
-  the query, blacklist of dangerous keywords (INSERT/UPDATE/DELETE/DROP/...),
-  5-second statement timeout, result set bounded to LIMIT 500 in a wrapper
-  subquery so even an open-ended SELECT can't blow up.
-- One question (`q-inactive-users`) is flagged `requiresSuperAdmin` and only
-  shows for super admins because it joins `user_admin_list()` which is super-
-  admin gated.
-
-**UX polish after first ship** (`a7da62b`)
-- Originally the result panel sat below the question grid, so picking
-  a question meant scrolling down to see the answer. Rebalanced:
-  - **Quick-pick dropdown** at the top of the filter row, grouped by
-    category. Useful for power users who don't want their eyes to leave
-    the result table while switching questions.
-  - Result panel moved **above** the card grid. Cards stay below as a
-    visual browse mode.
-  - `useEffect` watches `selected` and calls `scrollIntoView({behavior:
-    'smooth'})` on the result panel so whichever way you pick, the answer
-    comes to you, not the other way around.
-  - Added `SelectLabel` to `src/components/ui/select.tsx` to support
-    grouped section headers in the dropdown.
-
-**Super-admin org scope picker** (`e2e2fe4`)
-- For super admins, the page now exposes a **"Scope"** select (All /
-  4D / RSDA). Hidden for partner staff (RLS already gives them their
-  org's data).
-- 19 of 20 curated queries carry an embedded `ORG_FILTER` placeholder in
-  their WHERE clauses. The Ask page substitutes it with `TRUE` (scope=All)
-  or `o.code = '4D'` / `o.code = 'RSDA'` before the SQL is sent to
-  `run_safe_query()`. Each scopable query was rewritten to either already
-  join `organizations o` or had that join added.
-- Changing scope auto re-runs the active question. Result panel header
-  shows a small badge: **"Scope: 4D"** when active, or **"Scope ignored —
-  not scopable"** for the one query (users-who-never-logged-in) that
-  internally calls a SECURITY DEFINER fn.
-- A subtle gotcha for future contributors: the JSDoc literally containing
-  `/*ORG_FILTER*/` prematurely closes the `/** … */` block comment. Use
-  prose like *"the literal slash-star-ORG_FILTER-star-slash"* instead.
-
-**Foundation for Layer 2.** The next push (free-form "Ask anything" box) will
-reuse `run_safe_query()` — just adds an edge function that asks Claude to
-generate the SQL, then shows it to the user for review before execution.
-
----
-
-## 2. What changed in this push
+## 2.5. Previous push — Offline-first + Mobile (still in scope)
 
 **Offline-first data collection + Mobile responsive layout — 7 phases shipped**
 
@@ -1205,19 +1081,28 @@ SETUP.md                                      # new-machine bootstrap
 ## 10. How to onboard a fresh Claude session
 
 > "Read PROGRESS.md top-to-bottom and continue from where the last session
-> left off. As of commit `33e590a`, the offline-first stack is fully
-> shipped (Phases 1–7) plus mobile-responsive AppShell. Field supervisors
-> can pre-cache an enterprise, work fully offline, and have writes
-> auto-sync on reconnect with conflict detection. The dashboard `t.values`
-> crash is fixed (Maps replaced with plain Records). The current edge
-> function slugs are `extract-esmp-pdf-v4`, `extract-m1-pdf-v4`,
-> `extract-m1-binder-v2`, `invite-user-v2`, `manage-user-v1` — any new
-> extractor or re-deploy needs a fresh suffix per the §6 stuck-slug
-> pattern. The PAT used in earlier commits is compromised — use
-> `gh auth login` for pushes from this machine. The Business Plan module
-> for Phase 4 farmers is the next major build (see memory
-> `sadp-bp-structure`). The testing playbook for the offline + mobile
-> work is §11."
+> left off. HEAD is `8c420a8`. The 2026-06-09 day shipped a big launch
+> (b2c2aa7 — migrations 280–283: GPS, Monitoring visits, ESMP/M1 manual,
+> URL filters) followed by four UX-polish pushes (`bad604c` → `4f2bcae` →
+> `8c420a8`): a 'Back to filtered list' chip on enterprise headers via
+> Link state, a 'Clear all filters' button with active-count badge, an
+> unsaved-changes guard wired via a context provider so multi-form pages
+> (Details + Lifecycle on the same enterprise) share ONE confirmation
+> prompt, a 'Last visit N days ago' summary chip on the Monitoring tab
+> (red > 60 days), sticky mobile Save buttons on three forms, and a ⌘K
+> command palette mounted in AppShell for global enterprise search.
+> The router was migrated from `<BrowserRouter>` to `createBrowserRouter`
+> + `<RouterProvider>` to unlock `useBlocker` — App.tsx exports `appRouter`
+> now, not an `<App>` component. The 7-phase offline + mobile stack from
+> the earlier push is still in place. Current edge function slugs:
+> `extract-esmp-pdf-v4`, `extract-m1-pdf-v4`, `extract-m1-binder-v2`,
+> `invite-user-v2`, `manage-user-v1` — any new extractor or re-deploy
+> needs a fresh suffix per the §6 stuck-slug pattern. Pushes from this
+> machine use `gh auth login` (the inline-PAT pattern auto-revokes;
+> recent 4 pushes went via Claude's sandbox using a burned PAT — see
+> [[sadp-push-via-sandbox]] memory). Business Plan module for Phase 4
+> farmers remains the next major build. Testing playbooks: §11
+> (offline + mobile), §12 (GPS / Monitoring / ESMP-manual launch)."
 
 Claude will absorb the architecture decisions (3-table ESMP, item.id key
 scheme, no-self-approval, computed-status views, cashbook column mapping,
@@ -1226,6 +1111,98 @@ backfill = Option B, Progress tab first, history aggregated via SQL
 view, offline = IDB queue + replay with apply* helpers shared between
 hook and replay, Records-not-Maps for any query that goes through the
 persister) without needing them re-explained.
+
+---
+
+## 12. Testing playbook — 2026-06-09 push
+
+Walk these on either machine. Independent sections; skip what you've already verified.
+
+### A. URL filter persistence (≈ 2 min)
+1. Open https://sadp-ii-monitoring.onrender.com/enterprises
+2. Set: District = Berea, RC = (any non-empty), Type = Broiler Production.
+   URL should populate with `?district=…&rc=…&type=…`.
+3. Click into one of the enterprises.
+4. Hit the browser **back** button. You should land on the filtered list
+   with the same three filters still applied — not the full 5-row list.
+5. Copy the filtered URL, paste it in a new tab — same filtered view.
+
+### B. ESMP + M1 milestone rows (≈ 2 min)
+1. Open any enterprise → **Progress** tab.
+2. The 11 rows should each show **Yes / No / N/A** pills, EXCEPT ESMP and
+   Milestone 1 which show **Yes / No / Upload**.
+3. Click Upload on the ESMP row — should jump to `?tab=esmp` on the same
+   enterprise (not navigate away). Same for M1 → `?tab=m1`.
+4. Mark ESMP = Yes manually, click **Save lifecycle**. Refresh page; value
+   should persist (no more auto-derivation overriding it).
+
+### C. GPS on enterprise Details (≈ 3 min, mobile is best)
+1. Enterprise → **Details** tab → Location card. Bottom of the card has a
+   new **GPS coordinates** section.
+2. Tap **"Use my current location"**. The browser will ask for permission;
+   accept. Coords appear in the two inputs with a toast like
+   "Captured ±25 m".
+3. Click **Save changes** in the Details footer. Refresh — coords persist.
+4. Below the GPS inputs you should see a small read-only block showing the
+   selected Resource Center's coords (or "No coordinates recorded yet" if
+   none set), with an "Edit on /admin/geography →" link.
+
+### D. /admin/geography page (super-admin only)
+1. Sidebar → **Geography** (the existing item still exists but now points at
+   /admin/geography; the old districts page is now under "Districts").
+2. Page shows all RCs grouped by district. Each row: name + lat + lng +
+   capture button + Save.
+3. Set a couple of RCs' coords using the capture button. The "N / total"
+   coverage badge at the top should update on save.
+
+### E. Monitoring tab + visit lifecycle
+1. Enterprise → **Monitoring** tab (between Milestone 1 and History). New
+   tab. Empty state "No monitoring visits recorded yet."
+2. Click **New visit**. The edit page opens with today's date prefilled,
+   your email seeded into the conductor field.
+3. Try filling: change to "Follow-up" type, mark "Owner present = Yes",
+   set "Activity progressing as planned = Yes", write observations,
+   capture GPS via the button, set "Actions due by" two weeks out.
+4. **Save draft** — toast confirms. Back to Monitoring tab; the visit
+   shows up in the list with Routine pill / Owner present / status=draft.
+5. Open the visit again, try uploading 1-2 photos via the file picker
+   (online only — the input is disabled while offline). Thumbnails appear.
+6. **Submit visit** — status flips to `submitted`, navigation returns to
+   Monitoring tab. Visit shows the submitted badge.
+7. Switch to **History** tab — the timeline now shows two `monitoring`
+   events ("Monitoring visit recorded …" + "Monitoring visit finalised").
+
+### F. Offline parity check (≈ 5 min)
+1. On a desktop browser DevTools → Network → **Offline** mode.
+2. From Monitoring tab, click **New visit**. Fill a few fields.
+3. **Save draft** — toast should say "Saved locally — will sync when online".
+   The OfflineBadge in the header should show 1 queued.
+4. Re-enable network. Within ~5 s the OfflineBadge flips to idle and
+   re-opens the Monitoring tab to confirm the visit is now on the server.
+5. Photo input should be disabled while offline (since photo uploads are
+   online-only — see "Uploading visit photos" hint banner).
+
+### G. Migration verification on the DB side
+```sql
+-- Run via Supabase SQL editor:
+select column_name from information_schema.columns
+  where table_schema='public' and table_name='enterprises' and column_name like 'gps%';
+-- → 3 rows: gps_captured_at, gps_lat, gps_lng
+
+select count(*) from public.monitoring_visits;
+-- → 0 initially; > 0 after you create one
+
+select * from public.enterprise_lifecycle limit 1;
+-- → all 11 columns now nullable (`yes|no|n_a|null`), incl. esmp + m1_submitted
+```
+
+### Handoff checklist for the other machine
+- `git pull` → migrations 280-283 are already on `main`.
+- DB-side migrations are already applied (via Supabase MCP from this session).
+- New routes: `/enterprises/:id/monitoring-visits/new`,
+  `/enterprises/:id/monitoring-visits/:visitId`, `/admin/geography`.
+- New sidebar item: Geography (now points at `/admin/geography`).
+- Browser cache: hard-refresh once on the other machine so the new bundle loads.
 
 ---
 
