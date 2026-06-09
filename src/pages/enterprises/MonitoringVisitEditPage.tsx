@@ -606,8 +606,11 @@ export function MonitoringVisitEditPage() {
         </CardContent>
       </Card>
 
-      {/* Save / Submit actions */}
-      <div className="flex items-center gap-2 flex-wrap pt-2">
+      {/* Save / Submit actions — sticky on mobile so the user can finish
+          filling, then tap Save/Submit without scrolling back up past the
+          photo grid + GPS + 5 quick signals. Desktop keeps inline. */}
+      <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t z-10 flex items-center gap-2 flex-wrap
+                      md:static md:mx-0 md:px-0 md:py-0 md:pt-2 md:bg-transparent md:backdrop-blur-none md:border-t-0">
         <Button onClick={onSaveDraft} disabled={saveVisit.isPending}>
           <Save className="mr-2 h-3.5 w-3.5" />
           {saveVisit.isPending ? 'Saving…' : 'Save draft'}

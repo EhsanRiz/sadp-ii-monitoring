@@ -630,7 +630,11 @@ export function EnterpriseDetailPage() {
           </Card>
 
           {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-          <div className="flex items-center gap-3">
+          {/* Sticky on mobile so Save stays in reach as the user scrolls
+              through the Identity / Location / GPS / Financials sections.
+              Desktop keeps inline placement. */}
+          <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t z-10 flex items-center gap-3 flex-wrap
+                          md:static md:mx-0 md:px-0 md:py-0 md:bg-transparent md:backdrop-blur-none md:border-t-0">
             <Button onClick={() => save.mutate()} disabled={save.isPending}>
               {save.isPending ? 'Saving…' : 'Save changes'}
             </Button>

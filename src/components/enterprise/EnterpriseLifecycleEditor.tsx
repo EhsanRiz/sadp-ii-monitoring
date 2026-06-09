@@ -160,7 +160,16 @@ export function EnterpriseLifecycleEditor({ enterpriseId, lifecycle, readOnly = 
           })}
         </ul>
         {!readOnly && (
-          <div className="flex justify-end pt-2">
+          // Sticky on mobile so the user doesn't have to scroll back down
+          // past 11 milestones to find Save. Desktop keeps the inline
+          // bottom-right placement — sticky there would float weirdly mid-
+          // page on a tall viewport. Negative margins cancel CardContent's
+          // padding so the sticky bar spans edge-to-edge on phones.
+          <div className="sticky bottom-0 -mx-6 -mb-2 px-6 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t z-10 flex justify-end items-center gap-2
+                          md:static md:mx-0 md:mb-0 md:p-0 md:pt-2 md:bg-transparent md:backdrop-blur-none md:border-t-0">
+            {dirty && (
+              <span className="text-xs text-warning md:hidden">Unsaved</span>
+            )}
             <Button onClick={onSave} disabled={!dirty || save.isPending} size="sm">
               <Save className="mr-2 h-3 w-3" />
               {save.isPending ? 'Saving…' : 'Save lifecycle'}

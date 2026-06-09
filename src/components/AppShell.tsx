@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { OfflineBadge } from '@/components/OfflineBadge';
+import { CommandPaletteProvider, CommandPaletteTrigger } from '@/components/CommandPalette';
 import {
   LogOut,
   LayoutDashboard,
@@ -73,6 +74,10 @@ export function AppShell() {
   }, [drawerOpen]);
 
   return (
+    // Wrap the entire authenticated shell in the CommandPaletteProvider so
+    // the ⌘K hotkey works on every authenticated route, and any child
+    // component can render <CommandPaletteTrigger /> to open it.
+    <CommandPaletteProvider>
     <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
       {/* ===================== Desktop sidebar ===================== */}
       <aside
@@ -144,21 +149,29 @@ export function AppShell() {
                 SADP-II
               </span>
             </div>
-            <OfflineBadge />
+            <div className="flex items-center gap-1.5">
+              {/* Compact search button on mobile — tapping it opens the same
+                  ⌘K palette as the desktop trigger. */}
+              <CommandPaletteTrigger compact />
+              <OfflineBadge />
+            </div>
           </div>
         </header>
 
         {/* Page outlet */}
         <main className="p-4 md:p-8 max-w-6xl">
           {/* Desktop top strip — only shown on md+, hidden on mobile where the
-              OfflineBadge already lives in the header. */}
-          <div className="hidden md:flex justify-end mb-4">
+              OfflineBadge already lives in the header. ⌘K palette trigger
+              sits next to OfflineBadge for keyboard-shy users. */}
+          <div className="hidden md:flex justify-end items-center gap-3 mb-4">
+            <CommandPaletteTrigger className="w-64" />
             <OfflineBadge />
           </div>
           <Outlet />
         </main>
       </div>
     </div>
+    </CommandPaletteProvider>
   );
 }
 
