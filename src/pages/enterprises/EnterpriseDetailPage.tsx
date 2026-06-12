@@ -55,6 +55,7 @@ import { useMonitoringVisits } from '@/lib/monitoring-visits';
 import { useRegisterDirty } from '@/lib/use-unsaved-changes-guard';
 import { useOnlineStatus } from '@/lib/online-status';
 import { OnlineRequiredHint } from '@/components/OfflineBadge';
+import { OfflineErrorState } from '@/components/OfflineErrorState';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import type { EnterpriseRow, SubmissionStatus } from '@/types/database';
 import { FileText, Upload, ClipboardList, FileCheck2, Plus, ChevronRight, ChevronDown, ChevronLeft, Sparkles, Loader2, AlertTriangle, X, Building2, Leaf, ShieldCheck, ClipboardCheck, Paperclip, History as HistoryIcon, Check, Send, FileUp, FilePlus2, MapPin, Crosshair } from 'lucide-react';
@@ -260,7 +261,15 @@ export function EnterpriseDetailPage() {
   });
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (error) return <p className="text-sm text-destructive">{(error as Error).message}</p>;
+  if (error) {
+    return (
+      <OfflineErrorState
+        error={error}
+        label="this enterprise"
+        retry={[() => qc.invalidateQueries({ queryKey: ['enterprise', id] })]}
+      />
+    );
+  }
   if (!enterprise) return null;
 
   const ready = isCoverPageReady({ ...enterprise, ...draft } as EnterpriseRow);

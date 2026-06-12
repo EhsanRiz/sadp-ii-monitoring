@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { OfflineBadge } from '@/components/OfflineBadge';
 import { CommandPaletteProvider, CommandPaletteTrigger } from '@/components/CommandPalette';
+import { AutoPrefetch } from '@/components/AutoPrefetch';
 import {
   LogOut,
   LayoutDashboard,
@@ -78,6 +79,11 @@ export function AppShell() {
     // the ⌘K hotkey works on every authenticated route, and any child
     // component can render <CommandPaletteTrigger /> to open it.
     <CommandPaletteProvider>
+    {/* Silently prefetch essential queries (enterprises list, lifecycle,
+        catalogs) on every authenticated render. Ensures the navigation
+        shell works offline even if the user never visits Dashboard or
+        Enterprises while online. */}
+    <AutoPrefetch />
     <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
       {/* ===================== Desktop sidebar ===================== */}
       <aside

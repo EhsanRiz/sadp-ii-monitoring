@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
@@ -17,7 +17,6 @@ import { cn } from '@/lib/utils';
 import {
   ArrowRight,
   Sprout,
-  AlertCircle,
   Layers,
 } from 'lucide-react';
 import {
@@ -34,6 +33,7 @@ import {
   Legend,
 } from 'recharts';
 import { getEnterpriseVisual } from '@/lib/enterprise-icons';
+import { OfflineErrorState } from '@/components/OfflineErrorState';
 
 /**
  * Dashboard — landing page for every signed-in user.
@@ -108,6 +108,7 @@ interface OrgCounts {
 }
 
 function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
+  const qc = useQueryClient();
   const { data: types } = useEnterpriseTypes();
   const { data: districts } = useDistricts();
   const { data: lifecycleMap } = useEnterpriseLifecycle();
@@ -220,15 +221,11 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
       </div>
 
       {error && (
-        <Card className="border-destructive bg-tint-danger">
-          <CardContent className="pt-6 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-            <div className="text-sm">
-              <div className="font-medium">Couldn&apos;t load counts.</div>
-              <div className="text-muted-foreground">{(error as Error).message}</div>
-            </div>
-          </CardContent>
-        </Card>
+        <OfflineErrorState
+          error={error}
+          label="dashboard data"
+          retry={[() => qc.invalidateQueries({ queryKey: ['enterprises'] })]}
+        />
       )}
 
       {/* District × milestone matrix */}

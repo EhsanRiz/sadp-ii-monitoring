@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEnterprises, useEnterpriseLifecycle, type EnterpriseListFilters } from '@/lib/enterprises';
 import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleMilestoneId, type LifecycleValue } from '@/lib/lifecycle';
 import type { DrillingStatus, EnterpriseRow, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
@@ -19,9 +20,12 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Plus, FileText, LayoutGrid, List, Sprout, ChevronRight, X as XIcon } from 'lucide-react';
+import { Plus, FileText, LayoutGrid, List, Sprout, ChevronRight, X as XIcon, CloudDownload } from 'lucide-react';
 import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-icons';
 import { cn } from '@/lib/utils';
+import { OfflineErrorState } from '@/components/OfflineErrorState';
+import { PrecacheRcButton } from '@/components/enterprise/PrecacheRcButton';
+import { getCachedEnterpriseIds } from '@/lib/precache';
 
 const ESMP_LABEL: Record<string, string> = {
   not_started: 'Not started',
@@ -217,6 +221,7 @@ export function EnterprisesListPage() {
   };
 
   const { isSuperAdmin } = useAuth();
+  const qc = useQueryClient();
   const { data: organizations } = useOrganizations();
   const { data: districts } = useDistricts();
   // When an Org filter is set, scope the District dropdown to that org only.
@@ -232,6 +237,30 @@ export function EnterprisesListPage() {
   const { data: rcs } = useResourceCenters(filters.districtId ?? null);
   const { data: enterprises, isLoading, error } = useEnterprises(filters);
   const { data: lifecycle } = useEnterpriseLifecycle();
+
+  // Read the localStorage-backed set of cached enterprise IDs once on mount.
+  // Re-read on focus and after the PrecacheRcButton fires (which dispatches
+  // a 'sadp:precache-changed' event so we don't have to poll).
+  const [cachedIds, setCachedIds] = useState<Set<string>>(() => getCachedEnterpriseIds());
+  useEffect(() => {
+    const refresh = () => setCachedIds(getCachedEnterpriseIds());
+    window.addEventListener('focus', refresh);
+    window.addEventListener('sadp:precache-changed', refresh);
+    // Polling fallback for when a cache happens in this same tab without a
+    // focus event — cheap, 2-second resolution is fine for a status dot.
+    const id = window.setInterval(refresh, 2000);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('sadp:precache-changed', refresh);
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // Resolve the selected RC (if any) into the name + count needed by the
+  // RC precache button.
+  const selectedRc = filters.resourceCenterId
+    ? rcs?.find((r) => r.id === filters.resourceCenterId)
+    : null;
 
   // Client-side activity/status filter applied on top of the server-filtered list.
   const filteredEnterprises = useMemo(() => {
@@ -254,7 +283,18 @@ export function EnterprisesListPage() {
             {enterprises ? `${filteredEnterprises.length} of ${enterprises.length} shown` : 'Loading…'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Per-RC "Take offline" — only when a Resource Center is filtered.
+              This is the headline offline workflow: one tap caches every
+              enterprise served by the selected RC. The button shows
+              cached-status from localStorage. */}
+          {selectedRc && filteredEnterprises.length > 0 && (
+            <PrecacheRcButton
+              rcId={selectedRc.id}
+              rcName={selectedRc.name}
+              count={filteredEnterprises.length}
+            />
+          )}
           {/* view toggle */}
           <div className="hidden md:flex rounded-md border bg-background overflow-hidden">
             <button
@@ -454,11 +494,11 @@ export function EnterprisesListPage() {
       </Card>
 
       {error && (
-        <Card className="border-destructive bg-tint-danger">
-          <CardContent className="pt-6 text-sm text-destructive">
-            {(error as Error).message}
-          </CardContent>
-        </Card>
+        <OfflineErrorState
+          error={error}
+          label="enterprises list"
+          retry={[() => qc.invalidateQueries({ queryKey: ['enterprises'] })]}
+        />
       )}
 
       {isLoading ? (
@@ -500,8 +540,19 @@ export function EnterprisesListPage() {
                         <Icon className={cn('h-5 w-5', v.iconColor)} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate" title={e.beneficiary_short_name}>
-                          {e.beneficiary_short_name}
+                        <div className="font-medium truncate flex items-center gap-1.5" title={e.beneficiary_short_name}>
+                          {/* Offline-ready dot — appears on cached enterprises so
+                              the user can see at a glance which beneficiaries
+                              they can access while offline. */}
+                          {cachedIds.has(e.id) && (
+                            <span
+                              title="Cached for offline"
+                              className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-success/15 text-success shrink-0"
+                            >
+                              <CloudDownload className="h-2.5 w-2.5" />
+                            </span>
+                          )}
+                          <span className="truncate">{e.beneficiary_short_name}</span>
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
                           {t?.name ?? '—'} · R{e.round_id} ·{' '}
@@ -564,7 +615,15 @@ export function EnterprisesListPage() {
                               <Icon className={cn('h-3 w-3', v.iconColor)} />
                             </div>
                             <div className="min-w-0">
-                              <div className="truncate">{e.beneficiary_short_name}</div>
+                              <div className="truncate flex items-center gap-1">
+                                {cachedIds.has(e.id) && (
+                                  <CloudDownload
+                                    className="h-2.5 w-2.5 text-success shrink-0"
+                                    aria-label="Cached for offline"
+                                  />
+                                )}
+                                <span className="truncate">{e.beneficiary_short_name}</span>
+                              </div>
                               <div className="text-[10px] text-muted-foreground truncate">{t?.name ?? '—'}</div>
                             </div>
                           </Link>
