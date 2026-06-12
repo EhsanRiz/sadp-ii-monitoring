@@ -187,6 +187,25 @@ export function pickUpdatedAt(cached: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
+/**
+ * How long to wait for the direct online save before giving up and queueing.
+ *
+ * The classic stuck-saving scenario: user clicks Save while `getOnlineState()`
+ * still reads `'online'`, the underlying fetch starts, then the device drops
+ * connection (airplane mode, walked out of LTE range, captive portal). The
+ * fetch hangs indefinitely until the browser's OS-level socket timeout
+ * (often 30s+), leaving the button stuck in "Saving…". The user-visible
+ * symptom: works only after going back online. This timeout caps the wait
+ * at a few seconds and falls through to the enqueue path, which is the
+ * same code as the always-offline branch — instant feedback + replay on
+ * reconnect.
+ *
+ * Set generously enough that a slow-but-working network on a tablet still
+ * completes within the budget (3s is plenty for a single Supabase
+ * INSERT/UPDATE round-trip).
+ */
+const ONLINE_SAVE_TIMEOUT_MS = 3000;
+
 export async function saveOrEnqueue<T>({
   description,
   payload,
@@ -195,9 +214,34 @@ export async function saveOrEnqueue<T>({
   source_updated_at,
 }: SaveOrEnqueueArgs<T>): Promise<OfflineSaveResult> {
   if (getOnlineState() === 'online') {
-    await doSave();
-    return { online: true };
+    // Race the direct save against a timeout. If the fetch is taking too
+    // long (typically because the device dropped connection mid-save), we
+    // bail and re-route the write through the offline queue. The original
+    // fetch continues running in the background until it errors or
+    // succeeds; if it eventually succeeds, the queued duplicate will hit
+    // the Phase 6 conflict gate on replay and the user is prompted to
+    // pick a winner — better than an indefinitely-spinning Save button.
+    const TIMED_OUT = Symbol('save-timed-out');
+    try {
+      const outcome = await Promise.race<typeof TIMED_OUT | 'ok'>([
+        doSave().then(() => 'ok' as const),
+        new Promise<typeof TIMED_OUT>((resolve) =>
+          setTimeout(() => resolve(TIMED_OUT), ONLINE_SAVE_TIMEOUT_MS),
+        ),
+      ]);
+      if (outcome === 'ok') {
+        return { online: true };
+      }
+      // Timeout — fall through to the enqueue path below.
+    } catch (e) {
+      // doSave rejected with a real error (RLS denial, validation, schema
+      // mismatch, etc.). Surface it directly; the caller's onError handler
+      // shows the message. We do NOT enqueue here because the same error
+      // would re-occur on replay.
+      throw e;
+    }
   }
+
   const entry = await enqueue({
     kind: 'mutation',
     description,
