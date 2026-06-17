@@ -102,9 +102,8 @@ interface OrgCounts {
   esmpDone: number;
   m1Submitted: number;
   drillingResolved: number;
-  coverPageReady: number;
   byTypeId: Record<number, number>;
-  byDistrictId: Record<string, { ready: number; total: number }>;
+  byDistrictId: Record<string, { visited: number; total: number }>;
 }
 
 function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
@@ -121,7 +120,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         (orgId ? q.eq('organization_id', orgId) : q) as T;
 
       // Counts in parallel.
-      const [total, esmpDone, m1Submitted, drillingResolved, coverPageReady, rows] = await Promise.all([
+      const [total, esmpDone, m1Submitted, drillingResolved, rows, visits] = await Promise.all([
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true })),
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true }))
           .in('esmp_status', ['completed_in_app', 'completed_uploaded']),
@@ -129,24 +128,28 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
           .eq('milestone1_report_status', 'done_submitted'),
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true }))
           .in('drilling_status', ['drilled', 'pre_existing', 'not_needed']),
-        scope(supabase.from('enterprises').select('id', { count: 'exact', head: true }))
-          .eq('registration_completeness', 'cover_page_ready'),
         // Pull rows to compute by-type and by-district histograms client-side.
-        scope(supabase.from('enterprises').select('enterprise_type_id, district_id, registration_completeness')),
+        scope(supabase.from('enterprises').select('id, enterprise_type_id, district_id')),
+        // Enterprise ids that have at least one monitoring visit (any date) —
+        // used for the per-district monitoring-coverage chart.
+        scope(supabase.from('monitoring_visits').select('enterprise_id')),
       ]);
 
+      const visitedSet = new Set(
+        ((visits.data ?? []) as Array<{ enterprise_id: string }>).map((v) => v.enterprise_id),
+      );
       const byTypeId: Record<number, number> = {};
-      const byDistrictId: Record<string, { ready: number; total: number }> = {};
+      const byDistrictId: Record<string, { visited: number; total: number }> = {};
       const rowData = (rows.data ?? []) as Array<{
+        id: string;
         enterprise_type_id: number;
         district_id: string;
-        registration_completeness: string;
       }>;
       for (const r of rowData) {
         byTypeId[r.enterprise_type_id] = (byTypeId[r.enterprise_type_id] ?? 0) + 1;
-        const bd = (byDistrictId[r.district_id] ||= { ready: 0, total: 0 });
+        const bd = (byDistrictId[r.district_id] ||= { visited: 0, total: 0 });
         bd.total += 1;
-        if (r.registration_completeness === 'cover_page_ready') bd.ready += 1;
+        if (visitedSet.has(r.id)) bd.visited += 1;
       }
 
       return {
@@ -154,7 +157,6 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         esmpDone: esmpDone.count ?? 0,
         m1Submitted: m1Submitted.count ?? 0,
         drillingResolved: drillingResolved.count ?? 0,
-        coverPageReady: coverPageReady.count ?? 0,
         byTypeId,
         byDistrictId,
       };
@@ -180,14 +182,13 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
   const pipeline = data
     ? [
         { stage: 'Registered',     count: data.total,            tone: 'hsl(var(--muted-foreground))' },
-        { stage: 'Cover-page ready', count: data.coverPageReady, tone: 'hsl(var(--info))' },
         { stage: 'ESMP done',      count: data.esmpDone,         tone: 'hsl(var(--warning))' },
         { stage: 'Drilling resolved', count: data.drillingResolved, tone: 'hsl(var(--secondary))' },
         { stage: 'M1 submitted',   count: data.m1Submitted,      tone: 'hsl(var(--success))' },
       ]
     : [];
 
-  // District readiness: ready vs. remaining, stacked.
+  // Monitoring coverage per district: visited (>=1 visit) vs not yet visited.
   const districtChart = (() => {
     if (!data || !districts) return [];
     return Object.entries(data.byDistrictId)
@@ -195,11 +196,11 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         const d = districts.find((x) => x.id === id);
         return {
           district: d?.name ?? id.slice(0, 6),
-          ready: v.ready,
-          remaining: v.total - v.ready,
+          visited: v.visited,
+          remaining: v.total - v.visited,
         };
       })
-      .sort((a, b) => b.ready + b.remaining - (a.ready + a.remaining));
+      .sort((a, b) => b.visited + b.remaining - (a.visited + a.remaining));
   })();
 
   // Donut palette — anchored on brand greens + semantic tints.
@@ -354,11 +355,11 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         </Card>
       </div>
 
-      {/* District readiness — only when we actually have multiple districts */}
+      {/* Monitoring coverage per district — only when we actually have multiple districts */}
       {districtChart.length > 1 && (
         <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Cover-page readiness by district</CardTitle>
+            <CardTitle className="text-sm">Monitoring coverage by district</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -380,8 +381,8 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
                       cursor={{ fill: 'hsl(var(--muted))' }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="ready" stackId="a" fill="hsl(var(--success))" name="Cover-page ready" />
-                    <Bar dataKey="remaining" stackId="a" fill="hsl(var(--muted))" name="Remaining" />
+                    <Bar dataKey="visited" stackId="a" fill="hsl(var(--success))" name="Visited" />
+                    <Bar dataKey="remaining" stackId="a" fill="hsl(var(--muted))" name="Not yet visited" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

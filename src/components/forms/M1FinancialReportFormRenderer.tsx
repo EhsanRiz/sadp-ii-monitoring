@@ -36,7 +36,8 @@ const fmt = (n: number) =>
   Number.isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 
 export function M1FinancialReportFormRenderer({ responses, onChange, readOnly = false }: Props) {
-  const items = responses.items ?? [];
+  // Memoize so the `?? []` fallback keeps a stable reference across renders.
+  const items = useMemo(() => responses.items ?? [], [responses.items]);
   const totals = useMemo(() => computeFinancialTotals(items), [items]);
 
   const setHeader = <K extends keyof M1FinancialReportResponses>(k: K, v: M1FinancialReportResponses[K]) => {

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { PageFallback } from '@/components/PageFallback';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
@@ -173,7 +174,9 @@ export function AppShell() {
             <CommandPaletteTrigger className="w-64" />
             <OfflineBadge />
           </div>
-          <Outlet />
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
