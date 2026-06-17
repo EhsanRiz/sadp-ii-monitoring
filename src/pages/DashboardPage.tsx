@@ -102,9 +102,8 @@ interface OrgCounts {
   esmpDone: number;
   m1Submitted: number;
   drillingResolved: number;
-  coverPageReady: number;
   byTypeId: Record<number, number>;
-  byDistrictId: Record<string, { ready: number; total: number }>;
+  byDistrictId: Record<string, { submitted: number; total: number }>;
 }
 
 function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
@@ -121,7 +120,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         (orgId ? q.eq('organization_id', orgId) : q) as T;
 
       // Counts in parallel.
-      const [total, esmpDone, m1Submitted, drillingResolved, coverPageReady, rows] = await Promise.all([
+      const [total, esmpDone, m1Submitted, drillingResolved, rows] = await Promise.all([
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true })),
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true }))
           .in('esmp_status', ['completed_in_app', 'completed_uploaded']),
@@ -129,24 +128,22 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
           .eq('milestone1_report_status', 'done_submitted'),
         scope(supabase.from('enterprises').select('id', { count: 'exact', head: true }))
           .in('drilling_status', ['drilled', 'pre_existing', 'not_needed']),
-        scope(supabase.from('enterprises').select('id', { count: 'exact', head: true }))
-          .eq('registration_completeness', 'cover_page_ready'),
         // Pull rows to compute by-type and by-district histograms client-side.
-        scope(supabase.from('enterprises').select('enterprise_type_id, district_id, registration_completeness')),
+        scope(supabase.from('enterprises').select('enterprise_type_id, district_id, milestone1_report_status')),
       ]);
 
       const byTypeId: Record<number, number> = {};
-      const byDistrictId: Record<string, { ready: number; total: number }> = {};
+      const byDistrictId: Record<string, { submitted: number; total: number }> = {};
       const rowData = (rows.data ?? []) as Array<{
         enterprise_type_id: number;
         district_id: string;
-        registration_completeness: string;
+        milestone1_report_status: string;
       }>;
       for (const r of rowData) {
         byTypeId[r.enterprise_type_id] = (byTypeId[r.enterprise_type_id] ?? 0) + 1;
-        const bd = (byDistrictId[r.district_id] ||= { ready: 0, total: 0 });
+        const bd = (byDistrictId[r.district_id] ||= { submitted: 0, total: 0 });
         bd.total += 1;
-        if (r.registration_completeness === 'cover_page_ready') bd.ready += 1;
+        if (r.milestone1_report_status === 'done_submitted') bd.submitted += 1;
       }
 
       return {
@@ -154,7 +151,6 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         esmpDone: esmpDone.count ?? 0,
         m1Submitted: m1Submitted.count ?? 0,
         drillingResolved: drillingResolved.count ?? 0,
-        coverPageReady: coverPageReady.count ?? 0,
         byTypeId,
         byDistrictId,
       };
@@ -180,14 +176,13 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
   const pipeline = data
     ? [
         { stage: 'Registered',     count: data.total,            tone: 'hsl(var(--muted-foreground))' },
-        { stage: 'Cover-page ready', count: data.coverPageReady, tone: 'hsl(var(--info))' },
         { stage: 'ESMP done',      count: data.esmpDone,         tone: 'hsl(var(--warning))' },
         { stage: 'Drilling resolved', count: data.drillingResolved, tone: 'hsl(var(--secondary))' },
         { stage: 'M1 submitted',   count: data.m1Submitted,      tone: 'hsl(var(--success))' },
       ]
     : [];
 
-  // District readiness: ready vs. remaining, stacked.
+  // M1 reporting progress per district: submitted vs. remaining, stacked.
   const districtChart = (() => {
     if (!data || !districts) return [];
     return Object.entries(data.byDistrictId)
@@ -195,11 +190,11 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         const d = districts.find((x) => x.id === id);
         return {
           district: d?.name ?? id.slice(0, 6),
-          ready: v.ready,
-          remaining: v.total - v.ready,
+          submitted: v.submitted,
+          remaining: v.total - v.submitted,
         };
       })
-      .sort((a, b) => b.ready + b.remaining - (a.ready + a.remaining));
+      .sort((a, b) => b.submitted + b.remaining - (a.submitted + a.remaining));
   })();
 
   // Donut palette — anchored on brand greens + semantic tints.
@@ -354,11 +349,11 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
         </Card>
       </div>
 
-      {/* District readiness — only when we actually have multiple districts */}
+      {/* M1 reporting progress per district — only when we actually have multiple districts */}
       {districtChart.length > 1 && (
         <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Cover-page readiness by district</CardTitle>
+            <CardTitle className="text-sm">Milestone-1 reporting by district</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -380,7 +375,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
                       cursor={{ fill: 'hsl(var(--muted))' }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="ready" stackId="a" fill="hsl(var(--success))" name="Cover-page ready" />
+                    <Bar dataKey="submitted" stackId="a" fill="hsl(var(--success))" name="M1 submitted" />
                     <Bar dataKey="remaining" stackId="a" fill="hsl(var(--muted))" name="Remaining" />
                   </BarChart>
                 </ResponsiveContainer>
