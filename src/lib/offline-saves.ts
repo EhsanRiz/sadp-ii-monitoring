@@ -24,7 +24,8 @@ export type FormSaveType =
   | 'inspection_transition'
   | 'm1_transition'
   | 'enterprise_patch'
-  | 'monitoring_visit_draft';
+  | 'monitoring_visit_draft'
+  | 'monitoring_photo_upload';
 
 /** Transitions follow the submission workflow: draft → submitted → approved → draft (reopen). */
 export type SubmissionTransition = 'draft' | 'submitted' | 'approved';
@@ -137,6 +138,25 @@ export interface MonitoringVisitDraftPayload {
   to_status?: 'draft' | 'submitted';
 }
 
+/**
+ * A monitoring-visit photo captured while offline (or when the upload was
+ * interrupted). The image bytes live in the IDB `blobs` store under
+ * `blob_key`; this payload just carries the references the replay engine
+ * needs to upload + insert the row. organization_id is captured at enqueue
+ * time (read from the cached enterprise) because the photos table has no
+ * trigger to backfill it.
+ */
+export interface MonitoringPhotoUploadPayload {
+  saveType: 'monitoring_photo_upload';
+  visit_id: string;
+  enterprise_id: string;
+  organization_id: string;
+  /** IDB blobs-store key holding the image bytes. */
+  blob_key: string;
+  content_type: string;
+  filename: string;
+}
+
 export type FormSavePayload =
   | EssfDraftPayload
   | EmmpDraftPayload
@@ -147,7 +167,8 @@ export type FormSavePayload =
   | InspectionTransitionPayload
   | M1TransitionPayload
   | EnterprisePatchPayload
-  | MonitoringVisitDraftPayload;
+  | MonitoringVisitDraftPayload
+  | MonitoringPhotoUploadPayload;
 
 export interface OfflineSaveResult {
   /** True when the save was applied online; false when it was queued. */

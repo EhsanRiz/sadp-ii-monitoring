@@ -13,7 +13,7 @@
  * visits stay editable to the same role (it's a record, not a gate). If
  * you want stricter rules later, add a CHECK or a transition payload.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
@@ -24,10 +24,11 @@ import {
   useMonitoringVisitPhotos,
   useUploadMonitoringVisitPhoto,
   useDeleteMonitoringVisitPhoto,
+  usePendingVisitPhotos,
+  useDiscardPendingPhoto,
   signedPhotoUrl,
 } from '@/lib/monitoring-visits';
 import { useOnlineStatus } from '@/lib/online-status';
-import { OnlineRequiredHint } from '@/components/OfflineBadge';
 import { useUnsavedChangesGuard } from '@/lib/use-unsaved-changes-guard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -37,7 +38,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { StatusPill } from '@/components/ui/status-pill';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, Send, Crosshair, Camera, Trash2, ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, Send, Crosshair, Camera, Trash2, ImageIcon, Loader2, CloudOff } from 'lucide-react';
 import { formatDateDMY } from '@/lib/utils';
 import type {
   MonitoringVisitRow,
@@ -205,9 +206,18 @@ export function MonitoringVisitEditPage() {
   const photos = useMonitoringVisitPhotos(visitId);
   const uploadPhoto = useUploadMonitoringVisitPhoto(visitId, enterpriseId ?? '');
   const deletePhoto = useDeleteMonitoringVisitPhoto();
+  const pendingPhotos = usePendingVisitPhotos(visitId);
+  const discardPhoto = useDiscardPendingPhoto();
 
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [dirty, setDirty] = useState(false);
+  // Track whether the visit row has been persisted at least once (existing
+  // visits start true). Photos need the row to exist for the FK + RLS, so the
+  // first photo on a brand-new visit auto-saves the draft first.
+  const [savedOnce, setSavedOnce] = useState(!isNew);
+  const [addingPhotos, setAddingPhotos] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
 
   // Guard browser-level + in-app navigation while there are unsaved edits.
   // Cleared on a successful save (setDirty(false) below in onSaveDraft /
@@ -257,11 +267,85 @@ export function MonitoringVisitEditPage() {
         onSuccess: (r) => {
           toast.success(r.online ? 'Visit saved' : 'Saved locally — will sync when online');
           setDirty(false);
+          setSavedOnce(true);
           if (isNew) navigate(`/enterprises/${enterpriseId}/monitoring-visits/${visitId}`, { replace: true });
         },
         onError: (e: Error) => toast.error('Save failed', { description: e.message }),
       },
     );
+  }
+
+  /**
+   * Make sure the visit row exists before attaching photos. On a brand-new
+   * visit this saves the draft (online or offline) so the photo's FK + RLS
+   * checks pass — and so the queued visit replays before the queued photos.
+   */
+  async function ensureVisitSaved(): Promise<boolean> {
+    if (savedOnce) return true;
+    if (!enterpriseId) return false;
+    if (!draft.conducted_by_name.trim()) {
+      toast.error('Enter your name (who conducted the visit) before adding photos');
+      return false;
+    }
+    try {
+      await saveVisit.mutateAsync({
+        visit_id: visitId,
+        enterprise_id: enterpriseId,
+        patch: { ...buildPatch(draft), conducted_by_user_id: user?.id ?? null },
+        description: 'Save monitoring visit draft',
+      });
+      setSavedOnce(true);
+      setDirty(false);
+      if (isNew) {
+        navigate(`/enterprises/${enterpriseId}/monitoring-visits/${visitId}`, { replace: true });
+      }
+      return true;
+    } catch (e) {
+      toast.error('Could not save the visit', {
+        description: e instanceof Error ? e.message : undefined,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Handle one or more picked/captured photos: ensure the visit exists, then
+   * upload (online) or queue (offline) each file. Works for the single shot
+   * from the camera and for a multi-select from the gallery.
+   */
+  async function handleFiles(files: File[]) {
+    if (files.length === 0) return;
+    setAddingPhotos(true);
+    try {
+      if (!(await ensureVisitSaved())) return;
+      let uploaded = 0;
+      let queued = 0;
+      for (const file of files) {
+        try {
+          const r = await uploadPhoto.mutateAsync({ file });
+          if (r.online) uploaded += 1;
+          else queued += 1;
+        } catch (e) {
+          toast.error(`Couldn't add ${file.name || 'photo'}`, {
+            description: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+      if (uploaded > 0) toast.success(`${uploaded} photo${uploaded === 1 ? '' : 's'} uploaded`);
+      if (queued > 0) {
+        toast.success(
+          `${queued} photo${queued === 1 ? '' : 's'} saved on this device — will upload when you're back online`,
+        );
+      }
+    } finally {
+      setAddingPhotos(false);
+    }
+  }
+
+  function onPickFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // reset so picking the same file again re-fires onChange
+    void handleFiles(files);
   }
 
   function onSubmit() {
@@ -545,49 +629,103 @@ export function MonitoringVisitEditPage() {
         </CardContent>
       </Card>
 
-      {/* Photos (online-only). Save the visit at least once before uploading so
-          the row exists for the FK + RLS check. */}
+      {/* Photos — works offline. Tapping "Take photo" opens the device camera
+          (one shot at a time, so you can take several); "Add from device" lets
+          you multi-select from the gallery. Offline captures are stored on the
+          device and upload automatically on reconnect. */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Camera className="h-4 w-4" /> Photos
           </CardTitle>
           <CardDescription>
-            Geotagged where available. Uploading requires a connection — capture photos
-            offline using your phone's camera, then upload here when back on signal.
+            Take photos on site — works offline. Captured photos upload automatically when
+            you're back on signal.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {isOffline && <OnlineRequiredHint feature="Uploading visit photos" />}
-          {isNew ? (
-            <p className="text-xs text-muted-foreground italic">
-              Save the visit first (button below) — then you can attach photos to it.
+          {/* Hidden inputs. `capture="environment"` asks the OS for the rear
+              camera; the gallery input allows multi-select. */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={onPickFiles}
+          />
+          <input
+            ref={libraryInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={onPickFiles}
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={addingPhotos}
+            >
+              <Camera className="mr-1.5 h-3.5 w-3.5" /> Take photo
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => libraryInputRef.current?.click()}
+              disabled={addingPhotos}
+            >
+              <ImageIcon className="mr-1.5 h-3.5 w-3.5" /> Add from device
+            </Button>
+            {addingPhotos && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Adding…
+              </span>
+            )}
+          </div>
+
+          {isOffline && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <CloudOff className="h-3.5 w-3.5" />
+              You're offline — photos are saved on this device and upload when you reconnect.
             </p>
-          ) : (
-            <Input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic"
-              multiple
-              disabled={isOffline || uploadPhoto.isPending}
-              onChange={(e) => {
-                const files = Array.from(e.target.files ?? []);
-                if (files.length === 0) return;
-                for (const file of files) {
-                  uploadPhoto.mutate(
-                    { file },
-                    {
-                      onError: (err: Error) =>
-                        toast.error(`Failed to upload ${file.name}`, { description: err.message }),
-                    },
-                  );
-                }
-                e.target.value = '';
-              }}
-            />
           )}
-          {photos.data && photos.data.length > 0 && (
+
+          {(pendingPhotos.length > 0 || (photos.data?.length ?? 0) > 0) && (
             <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {photos.data.map((p) => (
+              {/* Pending (offline) photos first — newest work on top. */}
+              {pendingPhotos.map((p) => (
+                <li
+                  key={p.queueId}
+                  className="relative group rounded-md overflow-hidden border bg-muted/30 aspect-square"
+                >
+                  <img src={p.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                  <span className="absolute inset-x-0 bottom-0 bg-foreground/60 text-[10px] text-background px-1.5 py-0.5 flex items-center gap-1">
+                    <CloudOff className="h-3 w-3" /> Pending upload
+                  </span>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
+                    onClick={() => {
+                      if (!window.confirm('Discard this photo? It has not uploaded yet.')) return;
+                      discardPhoto.mutate(
+                        { queueId: p.queueId, blobKey: p.blobKey },
+                        { onError: (e: Error) => toast.error('Could not discard', { description: e.message }) },
+                      );
+                    }}
+                    title="Discard pending photo"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </li>
+              ))}
+              {photos.data?.map((p) => (
                 <PhotoTile
                   key={p.id}
                   storagePath={p.storage_path}

@@ -18,6 +18,8 @@ import {
   getActiveQueueEntries,
   markStatus,
   purge,
+  getBlob,
+  deleteBlob,
   type QueueEntry,
 } from '@/lib/offline-db';
 import { getOnlineState, onConnectionChange } from '@/lib/online-status';
@@ -33,6 +35,7 @@ import type {
   M1DraftPayload,
   M1TransitionPayload,
   MonitoringVisitDraftPayload,
+  MonitoringPhotoUploadPayload,
 } from '@/lib/offline-saves';
 import type { Database, Json } from '@/types/database';
 
@@ -105,6 +108,9 @@ async function readServerUpdatedAt(p: FormSavePayload): Promise<string | null> {
           .maybeSingle();
         return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
       }
+      case 'monitoring_photo_upload':
+        // Append-only insert — no row to conflict against.
+        return null;
     }
   } catch {
     return null;
@@ -358,6 +364,66 @@ export async function applyMonitoringVisitDraft(p: MonitoringVisitDraftPayload):
   }
 }
 
+/**
+ * Upload a single monitoring-visit photo blob to Storage and insert its row.
+ * Shared by the ONLINE hook path (in-memory File) and the offline replay path
+ * (Blob rehydrated from IDB) so the write logic lives in exactly one place.
+ *
+ * Path layout matches the storage RLS policy: {enterprise}/{visit}/{photo}.{ext}.
+ */
+export async function uploadVisitPhotoBlob(input: {
+  blob: Blob;
+  content_type: string;
+  filename: string;
+  visit_id: string;
+  enterprise_id: string;
+  organization_id: string;
+}): Promise<void> {
+  const ext = input.filename.split('.').pop()?.toLowerCase() || 'jpg';
+  const photoId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `${input.enterprise_id}/${input.visit_id}/${photoId}.${ext}`;
+  const up = await supabase.storage
+    .from('monitoring-visit-photos')
+    .upload(path, input.blob, { upsert: false, contentType: input.content_type });
+  if (up.error) throw up.error;
+  const { error } = await supabase.from('monitoring_visit_photos').insert({
+    visit_id: input.visit_id,
+    enterprise_id: input.enterprise_id,
+    organization_id: input.organization_id,
+    storage_path: path,
+    caption: null,
+  });
+  if (error) {
+    // Best-effort cleanup if the row didn't land so we don't orphan the object.
+    await supabase.storage.from('monitoring-visit-photos').remove([path]);
+    throw error;
+  }
+}
+
+/**
+ * Replay an offline-captured photo: rehydrate the blob from IDB, upload it,
+ * then drop the local copy. If the blob is gone (e.g. cleared), surface a
+ * clear error so the entry parks as failed rather than silently vanishing.
+ */
+export async function applyMonitoringPhotoUpload(p: MonitoringPhotoUploadPayload): Promise<void> {
+  const rec = await getBlob(p.blob_key);
+  if (!rec) {
+    throw new Error('Photo data is no longer available on this device — it may have been cleared.');
+  }
+  await uploadVisitPhotoBlob({
+    blob: rec.blob,
+    content_type: p.content_type,
+    filename: p.filename,
+    visit_id: p.visit_id,
+    enterprise_id: p.enterprise_id,
+    organization_id: p.organization_id,
+  });
+  await deleteBlob(p.blob_key);
+}
+
 async function dispatch(payload: FormSavePayload): Promise<void> {
   switch (payload.saveType) {
     case 'essf_draft':              return applyEssfDraft(payload);
@@ -370,6 +436,7 @@ async function dispatch(payload: FormSavePayload): Promise<void> {
     case 'm1_transition':           return applyM1Transition(payload);
     case 'enterprise_patch':        return applyEnterprisePatch(payload);
     case 'monitoring_visit_draft':  return applyMonitoringVisitDraft(payload);
+    case 'monitoring_photo_upload': return applyMonitoringPhotoUpload(payload);
   }
 }
 
@@ -450,6 +517,12 @@ function invalidateAfterSync(entry: QueueEntry): void {
     case 'monitoring_visit_draft':
       qc.invalidateQueries({ queryKey: ['monitoring-visits', p.enterprise_id] });
       qc.invalidateQueries({ queryKey: ['monitoring-visit', p.visit_id] });
+      qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
+      break;
+    case 'monitoring_photo_upload':
+      qc.invalidateQueries({ queryKey: ['monitoring-visit-photos', p.visit_id] });
+      qc.invalidateQueries({ queryKey: ['monitoring-visit', p.visit_id] });
+      qc.invalidateQueries({ queryKey: ['monitoring-visits', p.enterprise_id] });
       qc.invalidateQueries({ queryKey: ['enterprise-timeline', p.enterprise_id] });
       break;
   }
