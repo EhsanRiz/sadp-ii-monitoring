@@ -9,11 +9,22 @@
  * blobs aren't queue-friendly and the field staffer typically has signal at
  * least for the upload step.
  */
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { saveOrEnqueue, pickUpdatedAt, type OfflineSaveResult } from '@/lib/offline-saves';
-import { applyMonitoringVisitDraft } from '@/lib/offline-replay';
-import type { MonitoringVisitRow, MonitoringVisitPhotoRow } from '@/types/database';
+import { applyMonitoringVisitDraft, uploadVisitPhotoBlob } from '@/lib/offline-replay';
+import { getOnlineState } from '@/lib/online-status';
+import {
+  enqueue,
+  putBlob,
+  getBlob,
+  deleteBlob,
+  purge,
+  getActiveQueueEntries,
+  onQueueChange,
+} from '@/lib/offline-db';
+import type { MonitoringVisitRow, MonitoringVisitPhotoRow, EnterpriseRow } from '@/types/database';
 
 // ============================================================================
 // List + single read
@@ -152,57 +163,154 @@ export function useMonitoringVisitPhotos(visitId: string | undefined) {
 }
 
 /**
- * Upload a photo + insert the row. Path layout matches the storage RLS
- * policy: {enterprise_id}/{visit_id}/{photo_id}.{ext}. The bucket only allows
- * image/* mime types.
+ * organization_id is NOT NULL on monitoring_visit_photos and has no
+ * BEFORE-INSERT trigger to backfill it (unlike monitoring_visits). Resolve it
+ * from the cached enterprise first (works offline), falling back to a network
+ * read only when online and not yet cached.
+ */
+async function resolveOrganizationId(
+  qc: ReturnType<typeof useQueryClient>,
+  enterpriseId: string,
+): Promise<string> {
+  const cached = qc.getQueryData<EnterpriseRow>(['enterprise', enterpriseId]);
+  if (cached?.organization_id) return cached.organization_id;
+  if (getOnlineState() === 'online') {
+    const res = await supabase
+      .from('enterprises')
+      .select('organization_id')
+      .eq('id', enterpriseId)
+      .single();
+    if (res.error) throw res.error;
+    return res.data.organization_id;
+  }
+  throw new Error(
+    "Can't attach a photo offline until this enterprise has been opened or cached once while online.",
+  );
+}
+
+/**
+ * Attach a monitoring-visit photo, online OR offline.
  *
- * Online-only — the bucket isn't reachable from the offline queue, and a
- * batch of phone-captured photos would blow up the IDB store.
+ *   - Online  → upload to Storage + insert the row immediately.
+ *   - Offline (or the upload fails, e.g. flaky signal) → park the image bytes
+ *     in IDB and queue a `monitoring_photo_upload` entry. The replay engine
+ *     uploads it when the device reconnects, after the visit row itself has
+ *     synced (queue replays oldest-first).
+ *
+ * Returns `{ online }` so the caller can show the right toast. Each call
+ * handles ONE file; the page calls it per selected/captured photo so users can
+ * add multiple shots (camera or library).
  */
 export function useUploadMonitoringVisitPhoto(visitId: string, enterpriseId: string) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ file, caption }: { file: File; caption?: string }) => {
-      // organization_id is NOT NULL on monitoring_visit_photos and has no
-      // BEFORE-INSERT trigger to auto-fill it (unlike monitoring_visits).
-      // We look it up from the enterprise row before inserting so RLS sees
-      // a complete row. Use the cached enterprise to skip a round-trip when
-      // it's already loaded on the page.
-      const orgRes = await supabase
-        .from('enterprises')
-        .select('organization_id')
-        .eq('id', enterpriseId)
-        .single();
-      if (orgRes.error) throw orgRes.error;
-      const organizationId = orgRes.data.organization_id;
+  return useMutation<{ online: boolean }, Error, { file: File }>({
+    mutationFn: async ({ file }) => {
+      const organizationId = await resolveOrganizationId(qc, enterpriseId);
+      const content_type = file.type || 'image/jpeg';
+      const filename = file.name || `photo-${Date.now()}.jpg`;
 
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const photoId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const path = `${enterpriseId}/${visitId}/${photoId}.${ext}`;
-      const up = await supabase.storage
-        .from('monitoring-visit-photos')
-        .upload(path, file, { upsert: false, contentType: file.type });
-      if (up.error) throw up.error;
-      const { error } = await supabase.from('monitoring_visit_photos').insert({
-        visit_id: visitId,
-        enterprise_id: enterpriseId,
-        organization_id: organizationId,
-        storage_path: path,
-        caption: caption ?? null,
-      });
-      if (error) {
-        // Best-effort cleanup if the DB row didn't land.
-        await supabase.storage.from('monitoring-visit-photos').remove([path]);
-        throw error;
+      if (getOnlineState() === 'online') {
+        try {
+          await uploadVisitPhotoBlob({
+            blob: file,
+            content_type,
+            filename,
+            visit_id: visitId,
+            enterprise_id: enterpriseId,
+            organization_id: organizationId,
+          });
+          return { online: true };
+        } catch {
+          // Likely a dropped/flaky connection mid-upload — fall through and
+          // queue so the photo isn't lost; replay retries on reconnect.
+        }
       }
+
+      const blob_key = await putBlob(file, { content_type, filename });
+      await enqueue({
+        kind: 'upload',
+        description: `Upload visit photo (${filename})`,
+        enterprise_id: enterpriseId,
+        payload: {
+          saveType: 'monitoring_photo_upload',
+          visit_id: visitId,
+          enterprise_id: enterpriseId,
+          organization_id: organizationId,
+          blob_key,
+          content_type,
+          filename,
+        },
+      });
+      return { online: false };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['monitoring-visit-photos', visitId] });
       qc.invalidateQueries({ queryKey: ['monitoring-visit', visitId] });
       qc.invalidateQueries({ queryKey: ['monitoring-visits', enterpriseId] });
       qc.invalidateQueries({ queryKey: ['enterprise-timeline', enterpriseId] });
+    },
+  });
+}
+
+/** A photo captured offline and waiting in the queue to upload. */
+export interface PendingVisitPhoto {
+  /** Queue entry id — used to discard before it uploads. */
+  queueId: string;
+  blobKey: string;
+  filename: string;
+  /** Object URL for a local preview (revoked on unmount). */
+  url: string;
+}
+
+/**
+ * Reactive list of this visit's photos that are still queued for upload.
+ * Rehydrates each blob into an object URL for an inline preview, and refreshes
+ * whenever the queue changes (e.g. one replays away on reconnect).
+ */
+export function usePendingVisitPhotos(visitId: string | undefined): PendingVisitPhoto[] {
+  const [items, setItems] = useState<PendingVisitPhoto[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const created: string[] = [];
+    async function load() {
+      if (!visitId) {
+        if (!cancelled) setItems([]);
+        return;
+      }
+      const entries = await getActiveQueueEntries();
+      const out: PendingVisitPhoto[] = [];
+      for (const e of entries) {
+        const p = e.payload as { saveType?: string; visit_id?: string; blob_key?: string; filename?: string };
+        if (p?.saveType !== 'monitoring_photo_upload' || p.visit_id !== visitId || !p.blob_key) continue;
+        const rec = await getBlob(p.blob_key);
+        if (!rec) continue;
+        const url = URL.createObjectURL(rec.blob);
+        created.push(url);
+        out.push({ queueId: e.id, blobKey: p.blob_key, filename: p.filename ?? 'photo', url });
+      }
+      if (cancelled) {
+        created.forEach((u) => URL.revokeObjectURL(u));
+        return;
+      }
+      setItems(out);
+    }
+    void load();
+    const unsub = onQueueChange(() => void load());
+    return () => {
+      cancelled = true;
+      unsub();
+      created.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [visitId]);
+  return items;
+}
+
+/** Discard a queued (not-yet-uploaded) photo: drop its queue entry + blob. */
+export function useDiscardPendingPhoto() {
+  return useMutation<void, Error, { queueId: string; blobKey: string }>({
+    mutationFn: async ({ queueId, blobKey }) => {
+      await purge(queueId);
+      await deleteBlob(blobKey);
     },
   });
 }

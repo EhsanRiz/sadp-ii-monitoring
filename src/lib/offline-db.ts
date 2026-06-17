@@ -68,6 +68,20 @@ export interface CacheStateRow {
   source_updated_at: string | null;
 }
 
+/**
+ * A binary payload (photo) captured offline and parked in IDB until its queue
+ * entry replays. Keyed by a UUID `blob_key` referenced from the queue payload,
+ * so the (potentially multi-MB) image never has to be JSON-serialised into the
+ * queue entry itself.
+ */
+export interface BlobEntry {
+  key: string;
+  blob: Blob;
+  content_type: string;
+  filename: string;
+  created_at: string;
+}
+
 interface SadpOfflineSchema extends DBSchema {
   queue: {
     key: string;
@@ -86,6 +100,10 @@ interface SadpOfflineSchema extends DBSchema {
     key: string;
     value: CacheStateRow;
   };
+  blobs: {
+    key: string;
+    value: BlobEntry;
+  };
 }
 
 const DB_NAME = 'sadp_offline';
@@ -95,7 +113,9 @@ const DB_NAME = 'sadp_offline';
 // `.values()` / `.get()` on rehydrate. The fix is two-pronged: change
 // those hooks to return plain Records at the source (commit), AND clear
 // the cache one more time for users who already have the bad data.
-const DB_VERSION = 4;
+// v5 bump: add the `blobs` store so photos captured offline (e.g. monitoring
+// visit photos) can be parked locally and uploaded when the device reconnects.
+const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBPDatabase<SadpOfflineSchema>> | null = null;
 
@@ -137,6 +157,12 @@ function getDb(): Promise<IDBPDatabase<SadpOfflineSchema>> {
           // pre-cache button without losing state across reloads.
           if (!db.objectStoreNames.contains('cache_state')) {
             db.createObjectStore('cache_state', { keyPath: 'enterprise_id' });
+          }
+        }
+        if (oldVersion < 5) {
+          // v5 — binary store for offline-captured photos awaiting upload.
+          if (!db.objectStoreNames.contains('blobs')) {
+            db.createObjectStore('blobs', { keyPath: 'key' });
           }
         }
       },
@@ -264,6 +290,37 @@ export async function cacheGet<T = unknown>(cacheKey: string): Promise<T | null>
   const db = await getDb();
   const row = await db.get('cache', cacheKey);
   return (row?.value as T) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Blob store — offline-captured binaries (photos) awaiting upload
+// ---------------------------------------------------------------------------
+
+/** Park a binary in IDB under a fresh key. Returns the key for the queue payload. */
+export async function putBlob(
+  blob: Blob,
+  meta: { content_type: string; filename: string },
+): Promise<string> {
+  const db = await getDb();
+  const key = genId();
+  await db.put('blobs', {
+    key,
+    blob,
+    content_type: meta.content_type,
+    filename: meta.filename,
+    created_at: new Date().toISOString(),
+  });
+  return key;
+}
+
+export async function getBlob(key: string): Promise<BlobEntry | undefined> {
+  const db = await getDb();
+  return (await db.get('blobs', key)) as BlobEntry | undefined;
+}
+
+export async function deleteBlob(key: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('blobs', key);
 }
 
 // ---------------------------------------------------------------------------
