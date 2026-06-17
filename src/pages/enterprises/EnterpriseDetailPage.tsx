@@ -47,7 +47,7 @@ import { BoreholeSupervisionForm } from '@/components/enterprise/BoreholeSupervi
 import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSchema';
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
 import { PrecacheEnterpriseButton } from '@/components/enterprise/PrecacheEnterpriseButton';
-import { useEnterpriseLifecycle, useSaveEnterprisePatch } from '@/lib/enterprises';
+import { useEnterpriseLifecycle, useSaveEnterprisePatch, MASERU_ZONES, zoneLabel } from '@/lib/enterprises';
 import { useMonitoringVisits } from '@/lib/monitoring-visits';
 // The UnsavedChangesProvider wraps this route in App.tsx so this page +
 // EnterpriseLifecycleEditor can both register their dirty flag and share
@@ -274,6 +274,12 @@ export function EnterpriseDetailPage() {
 
   const ready = isCoverPageReady({ ...enterprise, ...draft } as EnterpriseRow);
 
+  // Zoning is a Maseru-only concept — only surface the editable Zone field for
+  // enterprises in the Maseru district.
+  const isMaseruEnterprise = /maseru/i.test(
+    districts?.find((d) => d.id === enterprise?.district_id)?.name ?? '',
+  );
+
   function set<K extends keyof EnterpriseRow>(key: K, value: EnterpriseRow[K] | null) {
     setDraft((d) => ({ ...d, [key]: value }));
     // Mark Details dirty so the unsaved-changes guard kicks in.
@@ -467,6 +473,26 @@ export function EnterpriseDetailPage() {
                   onChange={(e) => set('location_detail', e.target.value || null)}
                 />
               </Field>
+              {isMaseruEnterprise && (
+                <Field label="Zone (Maseru)">
+                  <Select
+                    value={draft.zone != null ? String(draft.zone) : '__none'}
+                    onValueChange={(v) => set('zone', v === '__none' ? null : Number(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Unzoned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">Unzoned</SelectItem>
+                      {MASERU_ZONES.map((z) => (
+                        <SelectItem key={z} value={String(z)}>
+                          {zoneLabel(z)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
 
               {/* GPS coordinates — captured at the enterprise site. Spans both
                   columns so the inputs and "Use my current location" button sit

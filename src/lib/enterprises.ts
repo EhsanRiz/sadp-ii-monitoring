@@ -26,7 +26,25 @@ export interface EnterpriseListFilters {
   milestone1Status?: Milestone1ReportStatus | null;
   drillingStatus?: DrillingStatus | null;
   completeness?: 'minimal' | 'cover_page_ready' | null;
+  /**
+   * Maseru monitoring Zone (1-8), or the string 'unzoned' to match enterprises
+   * with no zone set (zone IS NULL). null = no zone filter.
+   */
+  zone?: number | 'unzoned' | null;
   search?: string;
+}
+
+/**
+ * The 8 Maseru monitoring Zones. Each is a cluster of nearby villages the
+ * field team uses for visit planning (defined in the SADP-II Master Check
+ * List). Zoning applies to the Maseru district only — elsewhere `zone` is
+ * always null ("Unzoned").
+ */
+export const MASERU_ZONES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+
+/** "Zone 3" / "Unzoned" display label for a zone value. */
+export function zoneLabel(zone: number | null | undefined): string {
+  return zone ? `Zone ${zone}` : 'Unzoned';
 }
 
 export function useEnterprises(filters: EnterpriseListFilters = {}) {
@@ -51,6 +69,8 @@ export function useEnterprises(filters: EnterpriseListFilters = {}) {
       if (filters.milestone1Status) q = q.eq('milestone1_report_status', filters.milestone1Status);
       if (filters.drillingStatus) q = q.eq('drilling_status', filters.drillingStatus);
       if (filters.completeness) q = q.eq('registration_completeness', filters.completeness);
+      if (filters.zone === 'unzoned') q = q.is('zone', null);
+      else if (typeof filters.zone === 'number') q = q.eq('zone', filters.zone);
       if (filters.search && filters.search.trim()) {
         const s = filters.search.trim();
         q = q.or(

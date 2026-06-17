@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEnterprises, useEnterpriseLifecycle, type EnterpriseListFilters } from '@/lib/enterprises';
+import { useEnterprises, useEnterpriseLifecycle, MASERU_ZONES, zoneLabel, type EnterpriseListFilters } from '@/lib/enterprises';
 import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleMilestoneId, type LifecycleValue } from '@/lib/lifecycle';
 import type { DrillingStatus, EnterpriseRow, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
 import { useDistricts, useEnterpriseTypes, useOrganizations, useResourceCenters } from '@/lib/catalogs';
@@ -133,6 +133,9 @@ export function EnterprisesListPage() {
       milestone1Status: (searchParams.get('m1')        as Milestone1ReportStatus   | null) ?? null,
       drillingStatus:   (searchParams.get('drilling')  as DrillingStatus           | null) ?? null,
       completeness:     (searchParams.get('completeness') as 'minimal' | 'cover_page_ready' | null) ?? null,
+      zone:             searchParams.get('zone')
+        ? (searchParams.get('zone') === 'unzoned' ? 'unzoned' : Number(searchParams.get('zone')))
+        : null,
     }),
     [searchParams],
   );
@@ -177,6 +180,7 @@ export function EnterprisesListPage() {
         m1:           next.milestone1Status ?? null,
         drilling:     next.drillingStatus ?? null,
         completeness: next.completeness ?? null,
+        zone:         next.zone == null ? null : String(next.zone),
       });
     },
     [patchParams],
@@ -199,6 +203,7 @@ export function EnterprisesListPage() {
     + (filters.milestone1Status ? 1 : 0)
     + (filters.drillingStatus ? 1 : 0)
     + (filters.completeness ? 1 : 0)
+    + (filters.zone != null ? 1 : 0)
     + (activityId !== '__all' ? 1 : 0);
 
   const clearAllFilters = useCallback(() => {
@@ -227,6 +232,12 @@ export function EnterprisesListPage() {
   // When an Org filter is set, scope the District dropdown to that org only.
   // Non-super-admins are already RLS-scoped server-side; the catalog query
   // still returns everything, so we filter client-side here for UI clarity.
+  // Zoning is Maseru-only. Show the Zone filter (and sort the list by zone)
+  // only in a Maseru context: when the Maseru district is selected, or when no
+  // district filter is set at all. Hide it when a non-Maseru district is chosen.
+  const maseruId = districts?.find((d) => /maseru/i.test(d.name))?.id ?? null;
+  const isMaseruContext = !filters.districtId || filters.districtId === maseruId;
+
   const selectedOrgId = filters.organizationCode
     ? organizations?.find((o) => o.code === filters.organizationCode)?.id
     : null;
@@ -262,17 +273,31 @@ export function EnterprisesListPage() {
     ? rcs?.find((r) => r.id === filters.resourceCenterId)
     : null;
 
-  // Client-side activity/status filter applied on top of the server-filtered list.
+  // Client-side activity/status filter applied on top of the server-filtered
+  // list, then (in a Maseru context) sorted/grouped by zone so the list reads
+  // as Zone 1 → Zone 8 → Unzoned, alphabetical within each zone.
   const filteredEnterprises = useMemo(() => {
-    if (!enterprises || activityId === '__all') return enterprises ?? [];
-    return enterprises.filter((e) => {
-      const row = lifecycle?.[e.id];
-      const cell = row ? (row[activityId] as LifecycleValue | null | undefined) : null;
-      if (activityValue === '__any') return cell != null; // any tracked value matches
-      if (activityValue === 'not_tracked') return cell == null;
-      return cell === activityValue;
-    });
-  }, [enterprises, lifecycle, activityId, activityValue]);
+    let list = enterprises ?? [];
+    if (list.length && activityId !== '__all') {
+      list = list.filter((e) => {
+        const row = lifecycle?.[e.id];
+        const cell = row ? (row[activityId] as LifecycleValue | null | undefined) : null;
+        if (activityValue === '__any') return cell != null; // any tracked value matches
+        if (activityValue === 'not_tracked') return cell == null;
+        return cell === activityValue;
+      });
+    }
+    if (isMaseruContext && list.length) {
+      list = [...list].sort((a, b) => {
+        // Unzoned (null) sinks to the bottom; otherwise ascending zone.
+        const za = a.zone ?? 99;
+        const zb = b.zone ?? 99;
+        if (za !== zb) return za - zb;
+        return a.beneficiary_short_name.localeCompare(b.beneficiary_short_name);
+      });
+    }
+    return list;
+  }, [enterprises, lifecycle, activityId, activityValue, isMaseruContext]);
 
   return (
     <div className="space-y-6">
@@ -429,8 +454,8 @@ export function EnterprisesListPage() {
               </Select>
             </div>
           </div>
-          {/* Row 2: Type + Activity + Status (Activity = milestone column from the matrix) */}
-          <div className="grid gap-3 md:grid-cols-3">
+          {/* Row 2: Type + Zone (Maseru) + Activity + Status (Activity = milestone column from the matrix) */}
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label>Enterprise type</Label>
               <Select
@@ -448,6 +473,30 @@ export function EnterprisesListPage() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Zone — Maseru only. Hidden when a non-Maseru district is selected. */}
+            {isMaseruContext && (
+              <div className="space-y-1.5">
+                <Label>Zone (Maseru)</Label>
+                <Select
+                  value={filters.zone == null ? '__all' : String(filters.zone)}
+                  onValueChange={(v) =>
+                    setFilters({
+                      ...filters,
+                      zone: v === '__all' ? null : v === 'unzoned' ? 'unzoned' : Number(v),
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="All zones" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">All zones</SelectItem>
+                    {MASERU_ZONES.map((z) => (
+                      <SelectItem key={z} value={String(z)}>{zoneLabel(z)}</SelectItem>
+                    ))}
+                    <SelectItem value="unzoned">Unzoned</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Activity (milestone)</Label>
               <Select
@@ -562,6 +611,11 @@ export function EnterprisesListPage() {
                       <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
                     </div>
                     <div className="flex flex-wrap gap-1.5">
+                      {e.zone != null && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Zone {e.zone}
+                        </Badge>
+                      )}
                       <Badge
                         variant={e.registration_completeness === 'cover_page_ready' ? 'default' : 'outline'}
                         className="text-[10px]"
@@ -624,7 +678,9 @@ export function EnterprisesListPage() {
                                 )}
                                 <span className="truncate">{e.beneficiary_short_name}</span>
                               </div>
-                              <div className="text-[10px] text-muted-foreground truncate">{t?.name ?? '—'}</div>
+                              <div className="text-[10px] text-muted-foreground truncate">
+                                {t?.name ?? '—'}{e.zone != null ? ` · Zone ${e.zone}` : ''}
+                              </div>
                             </div>
                           </Link>
                         </td>
