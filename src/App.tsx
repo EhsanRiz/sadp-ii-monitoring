@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense, type ComponentType } from 'react';
 import {
   Outlet,
   Route,
@@ -11,34 +11,52 @@ import {
 import { Toaster } from 'sonner';
 import { RoleGate } from '@/components/RoleGate';
 import { AppShell } from '@/components/AppShell';
+import { PageFallback } from '@/components/PageFallback';
 import { LoginPage } from '@/pages/LoginPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { SetPasswordPage } from '@/pages/SetPasswordPage';
 import { SyncConflictsPage } from '@/pages/SyncConflictsPage';
 import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
 import { INITIAL_URL_TYPE } from '@/lib/initial-url';
-import { DashboardPage } from '@/pages/DashboardPage';
+// Core day-to-day pages stay in the main bundle (no heavy deps, hot path).
 import { EnterprisesListPage } from '@/pages/enterprises/EnterprisesListPage';
 import { EnterpriseDetailPage } from '@/pages/enterprises/EnterpriseDetailPage';
 import { NewEnterprisePage } from '@/pages/enterprises/NewEnterprisePage';
-import { CoverPagePdfRoute } from '@/pages/enterprises/CoverPagePdfRoute';
-import { EsmpPdfRoute } from '@/pages/enterprises/EsmpPdfRoute';
 import { EssfEditPage } from '@/pages/enterprises/EssfEditPage';
 import { EmmpEditPage } from '@/pages/enterprises/EmmpEditPage';
 import { InspectionEditPage } from '@/pages/enterprises/InspectionEditPage';
 import { M1EditPage } from '@/pages/enterprises/M1EditPage';
 import { MonitoringVisitEditPage } from '@/pages/enterprises/MonitoringVisitEditPage';
-import { M1PdfRoute } from '@/pages/enterprises/M1PdfRoute';
-import { OrganizationsAdminPage } from '@/pages/admin/OrganizationsAdminPage';
-import { UsersAdminPage } from '@/pages/admin/UsersAdminPage';
-import { DistrictsAdminPage } from '@/pages/admin/DistrictsAdminPage';
-import { CommunityCouncilsAdminPage } from '@/pages/admin/CommunityCouncilsAdminPage';
-import { ResourceCentersAdminPage } from '@/pages/admin/ResourceCentersAdminPage';
-import { EnterpriseTypesAdminPage } from '@/pages/admin/EnterpriseTypesAdminPage';
-import { AdminGeographyPage } from '@/pages/admin/AdminGeographyPage';
-import { ReportsHomePage } from '@/pages/reports/ReportsHomePage';
-import { ReportsArchivePage } from '@/pages/reports/ReportsArchivePage';
 import { UnsavedChangesProvider } from '@/lib/use-unsaved-changes-guard';
+
+/**
+ * Lazy-load the heavy / infrequent routes into their own chunks so they don't
+ * bloat the initial bundle that every field user downloads on a slow link:
+ *   - Dashboard pulls in recharts
+ *   - the .pdf routes + Reports pull in @react-pdf/renderer (and xlsx)
+ *   - the admin section is super-admin-only
+ * `lazyNamed` adapts our named exports to React.lazy's default-export contract.
+ */
+function lazyNamed<T extends Record<string, ComponentType<object>>>(
+  loader: () => Promise<T>,
+  name: keyof T,
+) {
+  return lazy(() => loader().then((m) => ({ default: m[name] })));
+}
+
+const DashboardPage = lazyNamed(() => import('@/pages/DashboardPage'), 'DashboardPage');
+const CoverPagePdfRoute = lazyNamed(() => import('@/pages/enterprises/CoverPagePdfRoute'), 'CoverPagePdfRoute');
+const EsmpPdfRoute = lazyNamed(() => import('@/pages/enterprises/EsmpPdfRoute'), 'EsmpPdfRoute');
+const M1PdfRoute = lazyNamed(() => import('@/pages/enterprises/M1PdfRoute'), 'M1PdfRoute');
+const ReportsHomePage = lazyNamed(() => import('@/pages/reports/ReportsHomePage'), 'ReportsHomePage');
+const ReportsArchivePage = lazyNamed(() => import('@/pages/reports/ReportsArchivePage'), 'ReportsArchivePage');
+const OrganizationsAdminPage = lazyNamed(() => import('@/pages/admin/OrganizationsAdminPage'), 'OrganizationsAdminPage');
+const UsersAdminPage = lazyNamed(() => import('@/pages/admin/UsersAdminPage'), 'UsersAdminPage');
+const DistrictsAdminPage = lazyNamed(() => import('@/pages/admin/DistrictsAdminPage'), 'DistrictsAdminPage');
+const CommunityCouncilsAdminPage = lazyNamed(() => import('@/pages/admin/CommunityCouncilsAdminPage'), 'CommunityCouncilsAdminPage');
+const ResourceCentersAdminPage = lazyNamed(() => import('@/pages/admin/ResourceCentersAdminPage'), 'ResourceCentersAdminPage');
+const EnterpriseTypesAdminPage = lazyNamed(() => import('@/pages/admin/EnterpriseTypesAdminPage'), 'EnterpriseTypesAdminPage');
+const AdminGeographyPage = lazyNamed(() => import('@/pages/admin/AdminGeographyPage'), 'AdminGeographyPage');
 
 /**
  * Root layout — wraps the entire app. Runs the invite/recovery redirect
@@ -67,7 +85,12 @@ function RootLayout() {
         closeButton
         toastOptions={{ duration: 4000 }}
       />
-      <Outlet />
+      {/* Outer Suspense for lazy routes that render without the AppShell
+          (the raw .pdf routes). Shell routes have their own inner boundary so
+          the nav stays put while a page chunk loads. */}
+      <Suspense fallback={<PageFallback />}>
+        <Outlet />
+      </Suspense>
     </>
   );
 }
