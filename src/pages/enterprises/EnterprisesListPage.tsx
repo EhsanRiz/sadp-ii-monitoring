@@ -25,6 +25,7 @@ import { getEnterpriseVisual, type EnterpriseCategory } from '@/lib/enterprise-i
 import { cn } from '@/lib/utils';
 import { OfflineErrorState } from '@/components/OfflineErrorState';
 import { PrecacheRcButton } from '@/components/enterprise/PrecacheRcButton';
+import { PrecacheZonesButton } from '@/components/enterprise/PrecacheZonesButton';
 import { getCachedEnterpriseIds } from '@/lib/precache';
 
 const ESMP_LABEL: Record<string, string> = {
@@ -309,6 +310,9 @@ export function EnterprisesListPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Multi-zone "Take offline" — Maseru only. Lets staff cache every
+              enterprise across one or more zones in a single action. */}
+          {isMaseruContext && maseruId && <PrecacheZonesButton districtId={maseruId} />}
           {/* Per-RC "Take offline" — only when a Resource Center is filtered.
               This is the headline offline workflow: one tap caches every
               enterprise served by the selected RC. The button shows

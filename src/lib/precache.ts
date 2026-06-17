@@ -30,6 +30,18 @@ import { supabase } from '@/lib/supabase';
 
 const ENTERPRISES_KEY = 'sadp:cached-enterprises';
 const RCS_KEY = 'sadp:cached-rcs';
+const ZONES_KEY = 'sadp:cached-zones';
+
+/**
+ * A zone "key" in the cache registry: '1'..'8' for the numbered Maseru zones,
+ * or 'unzoned' for the Maseru enterprises that fall outside the zone bands.
+ */
+export type ZoneKey = string;
+
+/** Normalize a nullable zone number into its registry key. */
+export function zoneKey(zone: number | null | undefined): ZoneKey {
+  return zone == null ? 'unzoned' : String(zone);
+}
 
 /** Set of enterprise IDs that have been pre-cached on this device. */
 export function getCachedEnterpriseIds(): Set<string> {
@@ -95,6 +107,45 @@ export function markRcCached(rcId: string, enterpriseIds: string[]): void {
     notifyPrecacheChanged();
   } catch {
     // ignore
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Zone registry — per-zone "offline-ready" state (Maseru only)
+// ---------------------------------------------------------------------------
+
+export interface ZonePrecacheState {
+  cachedAt: number;
+  count: number;
+  enterpriseIds: string[];
+}
+
+function readZoneMap(): Record<ZoneKey, ZonePrecacheState> {
+  try {
+    const raw = localStorage.getItem(ZONES_KEY);
+    return raw ? (JSON.parse(raw) as Record<ZoneKey, ZonePrecacheState>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getZonePrecacheState(key: ZoneKey): ZonePrecacheState | null {
+  return readZoneMap()[key] ?? null;
+}
+
+/** Whole registry — handy for the multi-zone picker so it reads localStorage once. */
+export function getAllZonePrecacheStates(): Record<ZoneKey, ZonePrecacheState> {
+  return readZoneMap();
+}
+
+export function markZoneCached(key: ZoneKey, enterpriseIds: string[]): void {
+  try {
+    const map = readZoneMap();
+    map[key] = { cachedAt: Date.now(), count: enterpriseIds.length, enterpriseIds };
+    localStorage.setItem(ZONES_KEY, JSON.stringify(map));
+    notifyPrecacheChanged();
+  } catch {
+    // ignore — registry is a best-effort hint
   }
 }
 
@@ -367,5 +418,72 @@ export async function precacheResourceCenter(
   }
 
   markRcCached(rcId, list.map((e) => e.id));
+  return { total };
+}
+
+// ---------------------------------------------------------------------------
+// Zone prefetch — "Take zones offline" (Maseru only, multiple zones at once)
+// ---------------------------------------------------------------------------
+
+export interface PrecacheZonesParams {
+  /** Maseru district id — scopes the query, and makes 'unzoned' mean
+   *  "Maseru enterprise with no zone" rather than every null-zone row. */
+  districtId: string;
+  /** Selected zone keys: any of '1'..'8' and/or 'unzoned'. */
+  zones: ZoneKey[];
+  /** Fired per enterprise so the UI can show "4 of 37 done…". */
+  onProgress?: (done: number, total: number) => void;
+}
+
+/**
+ * Bulk-cache every Maseru enterprise in the selected zone(s) for offline use.
+ * One DB round-trip lists the district's enterprises; we filter to the chosen
+ * zones client-side (102 rows max), then precache each enterprise. Each zone is
+ * marked individually in the registry so the picker can show per-zone state.
+ */
+export async function precacheZones(
+  qc: QueryClient,
+  params: PrecacheZonesParams,
+): Promise<{ total: number }> {
+  const { districtId, zones, onProgress } = params;
+  const selected = new Set(zones);
+
+  const [, enterprisesRes] = await Promise.all([
+    precacheCatalogs(qc),
+    supabase
+      .from('enterprises')
+      .select('id, enterprise_type_id, district_id, zone')
+      .eq('district_id', districtId),
+  ]);
+
+  if (enterprisesRes.error) throw enterprisesRes.error;
+  const list = (enterprisesRes.data ?? []).filter((e) =>
+    selected.has(zoneKey((e as { zone: number | null }).zone)),
+  );
+  const total = list.length;
+  onProgress?.(0, total);
+
+  // Sequential so progress is meaningful and we don't fan out hundreds of
+  // concurrent requests; each enterprise's own jobs still run in parallel.
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i];
+    await precacheEnterprise(qc, {
+      enterpriseId: e.id,
+      enterpriseTypeId: e.enterprise_type_id,
+      districtId: e.district_id,
+    });
+    onProgress?.(i + 1, total);
+  }
+
+  // Record each selected zone separately (with its own enterprise ids) so the
+  // picker shows "Zone 3 ✓ cached 2 min ago" per zone.
+  const byZone = new Map<ZoneKey, string[]>();
+  for (const k of selected) byZone.set(k, []);
+  for (const e of list) {
+    const k = zoneKey((e as { zone: number | null }).zone);
+    byZone.get(k)?.push(e.id);
+  }
+  for (const [k, ids] of byZone) markZoneCached(k, ids);
+
   return { total };
 }
