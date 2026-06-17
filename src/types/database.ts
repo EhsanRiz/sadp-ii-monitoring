@@ -306,6 +306,7 @@ export interface Database {
           resource_center_id: string | null;
           village_id: string | null;
           location_detail: string | null;
+          zone: number | null;
           beneficiary_contact_phone: string | null;
           principal_applicant_signature_url: string | null;
           principal_applicant_signed_date: string | null;
@@ -353,6 +354,7 @@ export interface Database {
           resource_center_id?: string | null;
           village_id?: string | null;
           location_detail?: string | null;
+          zone?: number | null;
           beneficiary_contact_phone?: string | null;
           principal_applicant_signature_url?: string | null;
           principal_applicant_signed_date?: string | null;
@@ -399,6 +401,7 @@ export interface Database {
           resource_center_id?: string | null;
           village_id?: string | null;
           location_detail?: string | null;
+          zone?: number | null;
           beneficiary_contact_phone?: string | null;
           principal_applicant_signature_url?: string | null;
           principal_applicant_signed_date?: string | null;
