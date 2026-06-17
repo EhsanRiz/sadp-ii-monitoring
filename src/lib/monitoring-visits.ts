@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { saveOrEnqueue, pickUpdatedAt, type OfflineSaveResult } from '@/lib/offline-saves';
 import { applyMonitoringVisitDraft, uploadVisitPhotoBlob } from '@/lib/offline-replay';
+import { compressImage } from '@/lib/image';
 import { getOnlineState } from '@/lib/online-status';
 import {
   enqueue,
@@ -206,13 +207,16 @@ export function useUploadMonitoringVisitPhoto(visitId: string, enterpriseId: str
   return useMutation<{ online: boolean }, Error, { file: File }>({
     mutationFn: async ({ file }) => {
       const organizationId = await resolveOrganizationId(qc, enterpriseId);
-      const content_type = file.type || 'image/jpeg';
-      const filename = file.name || `photo-${Date.now()}.jpg`;
+      // Downscale before upload/queue — smaller IDB footprint + faster uploads
+      // on slow links. Falls back to the original file if it can't be decoded.
+      const image = await compressImage(file);
+      const content_type = image.type || 'image/jpeg';
+      const filename = image.name || `photo-${Date.now()}.jpg`;
 
       if (getOnlineState() === 'online') {
         try {
           await uploadVisitPhotoBlob({
-            blob: file,
+            blob: image,
             content_type,
             filename,
             visit_id: visitId,
@@ -226,7 +230,7 @@ export function useUploadMonitoringVisitPhoto(visitId: string, enterpriseId: str
         }
       }
 
-      const blob_key = await putBlob(file, { content_type, filename });
+      const blob_key = await putBlob(image, { content_type, filename });
       await enqueue({
         kind: 'upload',
         description: `Upload visit photo (${filename})`,
