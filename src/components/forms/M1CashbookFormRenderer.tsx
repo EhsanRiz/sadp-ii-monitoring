@@ -143,7 +143,9 @@ export function M1CashbookFormRenderer({
   const reactId = useId();
   const opening = responses.opening_balance ?? 0;
   const openingDate = responses.opening_balance_date ?? '';
-  const entries = responses.entries ?? [];
+  // Memoize so the `?? []` fallback doesn't produce a fresh array reference on
+  // every render (which would re-run every useMemo below each time).
+  const entries = useMemo(() => responses.entries ?? [], [responses.entries]);
   // Count rows whose date falls outside the reporting period — surfaced as a
   // header banner so the user spots typos like 2024 vs 2025 immediately.
   const outOfPeriodCount = useMemo(

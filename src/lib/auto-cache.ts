@@ -321,7 +321,6 @@ export function useCachedEnterpriseIds(): Set<string> {
     })();
     return () => { cancelled = true; };
     // refresh on every progress change so newly-cached enterprises show up
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress.last_sync_at, progress.cached_count]);
   return ids;
 }

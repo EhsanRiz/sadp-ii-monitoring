@@ -277,7 +277,6 @@ export function CoverPagePdfPage({ enterprise: e, districtName, resourceCenterNa
           <Text style={styles.labelCell}>Signature of Principal{'\n'}Applicants:</Text>
           <View style={styles.valueCell}>
             {e.principal_applicant_signature_url ? (
-              // eslint-disable-next-line jsx-a11y/alt-text
               <Image src={e.principal_applicant_signature_url} style={styles.signatureImg} />
             ) : (
               <Text style={styles.signatureText}>{cursiveSignature(e.principal_applicant_name)}</Text>
@@ -286,7 +285,6 @@ export function CoverPagePdfPage({ enterprise: e, districtName, resourceCenterNa
           <Text style={[styles.labelCell, { width: '20%' }]}>Signature of Service{'\n'}Provider:</Text>
           <View style={styles.valueCell}>
             {e.service_provider_signature_url ? (
-              // eslint-disable-next-line jsx-a11y/alt-text
               <Image src={e.service_provider_signature_url} style={styles.signatureImg} />
             ) : (
               <Text style={styles.signatureText}>{cursiveSignature(e.service_provider_name)}</Text>
@@ -328,7 +326,6 @@ export function CoverPagePdfPage({ enterprise: e, districtName, resourceCenterNa
           <View style={styles.valueCell}>
             <Text>{e.cgp_officer_name ?? ''}</Text>
             {e.cgp_officer_signature_url && (
-              // eslint-disable-next-line jsx-a11y/alt-text
               <Image src={e.cgp_officer_signature_url} style={styles.signatureImg} />
             )}
           </View>
