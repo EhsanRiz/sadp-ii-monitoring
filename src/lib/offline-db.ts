@@ -258,6 +258,23 @@ export async function markStatus(
   notifyChange();
 }
 
+/**
+ * Re-snapshot one entry's `source_updated_at` (the conflict baseline). Used by
+ * replay to rebase a pending entry after one of our own earlier writes advanced
+ * the target row's updated_at — so the user's own sequential offline edits
+ * don't self-conflict.
+ */
+export async function setEntrySourceUpdatedAt(
+  id: string,
+  source_updated_at: string | null,
+): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get('queue', id);
+  if (!existing) return;
+  await db.put('queue', { ...existing, source_updated_at });
+  notifyChange();
+}
+
 /** Permanently remove one entry (after successful replay, or when user discards). */
 export async function purge(id: string): Promise<void> {
   const db = await getDb();

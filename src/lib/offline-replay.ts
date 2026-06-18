@@ -20,6 +20,7 @@ import {
   purge,
   getBlob,
   deleteBlob,
+  setEntrySourceUpdatedAt,
   type QueueEntry,
 } from '@/lib/offline-db';
 import { getOnlineState, onConnectionChange } from '@/lib/online-status';
@@ -129,6 +130,88 @@ async function entryConflicts(entry: QueueEntry): Promise<boolean> {
   const serverUpdatedAt = await readServerUpdatedAt(entry.payload as unknown as FormSavePayload);
   if (!serverUpdatedAt) return false;
   return new Date(serverUpdatedAt).getTime() > new Date(source).getTime();
+}
+
+// ---------------------------------------------------------------------------
+// Chain rebasing — stop a user's own sequential offline edits from
+// self-conflicting on replay.
+// ---------------------------------------------------------------------------
+
+/**
+ * The row whose `updated_at` a queued write advances. Unlike
+ * readServerUpdatedAt, a photo upload DOES map to a target here, because
+ * inserting a monitoring_visit_photo bumps the parent visit's updated_at via
+ * the photo_count trigger (migration 281) — which is exactly what was making
+ * post-photo draft/submit entries look like conflicts.
+ */
+type EntryTarget = { table: string; idCol: string; id: string };
+
+function entryTarget(p: FormSavePayload): EntryTarget | null {
+  switch (p.saveType) {
+    case 'essf_draft':
+    case 'essf_transition':
+      return { table: 'essf_submissions', idCol: 'enterprise_id', id: p.enterprise_id };
+    case 'emmp_draft':
+    case 'emmp_transition':
+      return { table: 'emmp_submissions', idCol: 'enterprise_id', id: p.enterprise_id };
+    case 'inspection_draft':
+    case 'inspection_transition':
+      return { table: 'inspection_visits', idCol: 'id', id: p.visit_id };
+    case 'm1_draft':
+    case 'm1_transition':
+      return { table: 'm1_submissions', idCol: 'enterprise_id', id: p.enterprise_id };
+    case 'enterprise_patch':
+      return { table: 'enterprises', idCol: 'id', id: p.enterprise_id };
+    case 'monitoring_visit_draft':
+    case 'monitoring_photo_upload':
+      return { table: 'monitoring_visits', idCol: 'id', id: p.visit_id };
+  }
+}
+
+async function readUpdatedAtByTarget(t: EntryTarget): Promise<string | null> {
+  try {
+    const r = await supabase
+      .from(t.table as never)
+      .select('updated_at')
+      .eq(t.idCol as never, t.id as never)
+      .maybeSingle();
+    return (r.data as { updated_at?: string } | null)?.updated_at ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * After we successfully replay one of our own queued writes, the target row's
+ * server `updated_at` has moved forward BECAUSE OF US. Any other pending entry
+ * that snapshotted the older `updated_at` for the same row would then be
+ * falsely flagged as a conflict (the row "changed" — but it was our own
+ * earlier write, including a photo_count bump from a photo upload). Re-snapshot
+ * those siblings to the fresh value so a user's own sequential offline edits
+ * replay as one clean chain.
+ *
+ * This is safe: genuine external edits are still caught, because the FIRST
+ * entry touching a row is conflict-checked before any rebase happens — if the
+ * server moved before our chain started, that first entry parks as 'conflict'
+ * and we never reach the rebase.
+ *
+ * Mutates the in-memory `loopEntries` too so the current drain's conflict
+ * checks see the refreshed baseline (they iterate a snapshot taken up front).
+ */
+async function rebaseChainSiblings(applied: QueueEntry, loopEntries: QueueEntry[]): Promise<void> {
+  const target = entryTarget(applied.payload as unknown as FormSavePayload);
+  if (!target) return;
+  const fresh = await readUpdatedAtByTarget(target);
+  if (!fresh) return;
+  const key = `${target.table}:${target.id}`;
+  for (const e of loopEntries) {
+    if (e.id === applied.id || e.status !== 'pending' || !e.source_updated_at) continue;
+    const t = entryTarget(e.payload as unknown as FormSavePayload);
+    if (t && `${t.table}:${t.id}` === key) {
+      e.source_updated_at = fresh; // keep this drain's in-memory view in sync
+      await setEntrySourceUpdatedAt(e.id, fresh);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -569,6 +652,9 @@ export async function replayQueue(): Promise<{ synced: number; failed: number }>
         invalidateAfterSync(entry);
         await purge(entry.id);
         synced += 1;
+        // Our write advanced this row's updated_at; rebase pending siblings so
+        // they don't self-conflict against our own change.
+        await rebaseChainSiblings(entry, entries);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         // Restore to pending so a subsequent replay retries.
@@ -598,6 +684,9 @@ export async function resolveConflictUseMine(entryId: string): Promise<void> {
     await dispatch(entry.payload as unknown as FormSavePayload);
     invalidateAfterSync(entry);
     await purge(entry.id);
+    // Resolving this entry advanced the row; rebase its pending siblings so the
+    // user doesn't have to "use mine" on each false self-conflict in turn.
+    await rebaseChainSiblings(entry, await getActiveQueueEntries());
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await markStatus(entry.id, 'conflict', msg);
