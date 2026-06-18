@@ -265,7 +265,7 @@ export function MonitoringVisitEditPage() {
       },
       {
         onSuccess: (r) => {
-          toast.success(r.online ? 'Visit saved' : 'Saved locally — will sync when online');
+          toast.success(r.online ? 'Visit saved' : "Saved offline — will sync when you're back online");
           setDirty(false);
           setSavedOnce(true);
           if (isNew) navigate(`/enterprises/${enterpriseId}/monitoring-visits/${visitId}`, { replace: true });
@@ -364,7 +364,7 @@ export function MonitoringVisitEditPage() {
       },
       {
         onSuccess: (r) => {
-          toast.success(r.online ? 'Visit submitted' : 'Submit queued — will sync when online');
+          toast.success(r.online ? 'Visit submitted' : "Submitted offline — will sync when you're back online");
           setDirty(false);
           navigate(`/enterprises/${enterpriseId}?tab=monitoring`);
         },
