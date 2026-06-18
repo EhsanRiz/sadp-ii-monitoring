@@ -6,15 +6,29 @@ import path from 'node:path';
 // SADP-II Monitoring App — Vite + React + TypeScript + PWA
 //
 // PWA strategy:
-//   - autoUpdate registers a service worker that updates on next visit.
+//   - 'prompt' registration: a new deploy is surfaced as a "Reload" toast
+//     rather than auto-reloading, so a field officer mid-form never loses
+//     unsaved input. src/lib/pwa.ts registers the SW, polls for updates, and
+//     shows the prompt.
 //   - The app needs to work for field staff in low-connectivity areas, so we
 //     prefer cache-first for assets and network-first for Supabase API calls
 //     (so writes don't pile up stale).
+
+// Build stamp so a device can show exactly which build it's running (helps
+// confirm a deploy actually reached the field tablet).
+const BUILD_ID = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+
 export default defineConfig({
+  define: {
+    __APP_BUILD__: JSON.stringify(BUILD_ID),
+  },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      // We register the SW ourselves in src/lib/pwa.ts (update polling +
+      // reload prompt), so disable the auto-injected registration.
+      injectRegister: false,
       includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
         name: 'SADP-II Monitoring',

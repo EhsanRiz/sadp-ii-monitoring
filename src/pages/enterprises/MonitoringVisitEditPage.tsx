@@ -268,7 +268,11 @@ export function MonitoringVisitEditPage() {
           toast.success(r.online ? 'Visit saved' : "Saved offline — will sync when you're back online");
           setDirty(false);
           setSavedOnce(true);
-          if (isNew) navigate(`/enterprises/${enterpriseId}/monitoring-visits/${visitId}`, { replace: true });
+          // Close the form and return to the monitoring list (the draft is
+          // safely saved/queued). Submit does the same; Save draft used to stay
+          // on the page, which left field staff staring at a form they thought
+          // hadn't saved.
+          navigate(`/enterprises/${enterpriseId}?tab=monitoring`);
         },
         onError: (e: Error) => toast.error('Save failed', { description: e.message }),
       },
