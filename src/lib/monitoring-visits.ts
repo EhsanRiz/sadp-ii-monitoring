@@ -164,6 +164,41 @@ export function useMonitoringVisitPhotos(visitId: string | undefined) {
 }
 
 /**
+ * Cap how long we wait for an online photo operation before giving up and
+ * routing through the offline queue instead.
+ *
+ * This mirrors ONLINE_SAVE_TIMEOUT_MS in offline-saves.ts (which protects the
+ * visit-draft save), but the photo path bypasses saveOrEnqueue and so needs
+ * its own guard. Without it, the classic field failure — device reports
+ * `navigator.onLine === true` while the network is actually dead (weak/dropped
+ * signal, captive Wi-Fi), and the 30s connectivity probe hasn't corrected the
+ * cached state yet — leaves the Storage upload `fetch` hanging indefinitely.
+ * A bare try/catch can't catch a hang (it never rejects), so the "Adding…"
+ * spinner spun forever and the photo was never queued.
+ *
+ * The budget is larger than the draft's 3s because a multi-MB image over rural
+ * LTE legitimately takes longer than a single-row INSERT. The goal isn't to
+ * abandon slow-but-working links — it's to bound the wait so a dead network
+ * falls through to the queue (instant feedback + replay on reconnect) instead
+ * of hanging.
+ */
+const ONLINE_PHOTO_TIMEOUT_MS = 15_000;
+
+const PHOTO_TIMED_OUT = Symbol('photo-op-timed-out');
+
+/**
+ * Race a promise against a timeout. Resolves to PHOTO_TIMED_OUT if it's slow.
+ * Accepts PromiseLike so a Supabase query builder (a thenable, not a real
+ * Promise) can be passed directly.
+ */
+function withPhotoTimeout<T>(p: PromiseLike<T>, ms = ONLINE_PHOTO_TIMEOUT_MS): Promise<T | typeof PHOTO_TIMED_OUT> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<typeof PHOTO_TIMED_OUT>((resolve) => setTimeout(() => resolve(PHOTO_TIMED_OUT), ms)),
+  ]);
+}
+
+/**
  * organization_id is NOT NULL on monitoring_visit_photos and has no
  * BEFORE-INSERT trigger to backfill it (unlike monitoring_visits). Resolve it
  * from the cached enterprise first (works offline), falling back to a network
@@ -176,13 +211,15 @@ async function resolveOrganizationId(
   const cached = qc.getQueryData<EnterpriseRow>(['enterprise', enterpriseId]);
   if (cached?.organization_id) return cached.organization_id;
   if (getOnlineState() === 'online') {
-    const res = await supabase
-      .from('enterprises')
-      .select('organization_id')
-      .eq('id', enterpriseId)
-      .single();
-    if (res.error) throw res.error;
-    return res.data.organization_id;
+    // Timeout-guarded so a dead-but-"online" network can't hang the read.
+    const res = await withPhotoTimeout(
+      supabase.from('enterprises').select('organization_id').eq('id', enterpriseId).single(),
+    );
+    if (res !== PHOTO_TIMED_OUT) {
+      if (res.error) throw res.error;
+      return res.data.organization_id;
+    }
+    // Read stalled — fall through to the same guidance as the offline case.
   }
   throw new Error(
     "Can't attach a photo offline until this enterprise has been opened or cached once while online.",
@@ -215,15 +252,26 @@ export function useUploadMonitoringVisitPhoto(visitId: string, enterpriseId: str
 
       if (getOnlineState() === 'online') {
         try {
-          await uploadVisitPhotoBlob({
-            blob: image,
-            content_type,
-            filename,
-            visit_id: visitId,
-            enterprise_id: enterpriseId,
-            organization_id: organizationId,
-          });
-          return { online: true };
+          // Timeout-guarded: if the upload stalls (device says online but the
+          // network is actually dead), bail and queue instead of hanging the
+          // "Adding…" spinner forever. A bare await can't recover from a hang
+          // because the stalled fetch never rejects.
+          const outcome = await withPhotoTimeout(
+            uploadVisitPhotoBlob({
+              blob: image,
+              content_type,
+              filename,
+              visit_id: visitId,
+              enterprise_id: enterpriseId,
+              organization_id: organizationId,
+            }),
+          );
+          if (outcome !== PHOTO_TIMED_OUT) {
+            return { online: true };
+          }
+          // Stalled past the budget — fall through to the queue path below.
+          // (If the original upload somehow lands later, the worst case is a
+          // duplicate photo row the user can delete — never a lost photo.)
         } catch {
           // Likely a dropped/flaky connection mid-upload — fall through and
           // queue so the photo isn't lost; replay retries on reconnect.
