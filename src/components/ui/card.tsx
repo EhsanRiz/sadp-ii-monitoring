@@ -5,7 +5,15 @@ export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('rounded-lg border bg-card text-card-foreground shadow-sm', className)}
+      className={cn(
+        // Brand treatment: a lime (--secondary) left accent bar on every card,
+        // paired with the green CardTitle / Label below. Uses a left border
+        // (not an overflow-clipped pseudo) so it never interferes with sticky
+        // children or portaled popovers. Callers can override border-l-* to opt
+        // out (e.g. tinted status sub-cards).
+        'rounded-lg border border-l-[3px] border-l-secondary bg-card text-card-foreground shadow-sm',
+        className,
+      )}
       {...props}
     />
   ),
@@ -23,7 +31,7 @@ export const CardTitle = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLHea
   ({ className, ...props }, ref) => (
     <h3
       ref={ref}
-      className={cn('text-2xl font-semibold leading-none tracking-tight', className)}
+      className={cn('text-2xl font-semibold leading-none tracking-tight text-primary', className)}
       {...props}
     />
   ),
