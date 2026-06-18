@@ -26,6 +26,15 @@ const queryClient = new QueryClient({
       // Field staff are often offline. Trade some freshness for usability:
       // serve cached data first, refetch in background.
       staleTime: 30_000,
+      // Run queries even when the browser thinks it's offline. With the
+      // default 'online' mode, a query with no cached data is PAUSED forever
+      // when offline (fetchStatus: 'paused') — which showed up in the field as
+      // an endless "Loading…" on any enterprise/page that hadn't been
+      // pre-cached. 'offlineFirst' instead runs the queryFn: persisted/cached
+      // data renders immediately, and an uncached query fails fast (network
+      // error) so pages can show the friendly <OfflineErrorState/> ("Not
+      // loaded offline yet") instead of spinning indefinitely.
+      networkMode: 'offlineFirst',
       // Phase 2: keep cached data in-memory for 24h so the user can revisit
       // an enterprise after lunch without re-fetching. IDB persistence (below)
       // covers cold-start / page-reload after the in-memory cache is GC'd.
