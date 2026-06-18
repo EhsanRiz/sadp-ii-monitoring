@@ -27,7 +27,7 @@ export interface EnterpriseListFilters {
   drillingStatus?: DrillingStatus | null;
   completeness?: 'minimal' | 'cover_page_ready' | null;
   /**
-   * Maseru monitoring Zone (1-8), or the string 'unzoned' to match enterprises
+   * Maseru monitoring Zone (1-9), or the string 'unzoned' to match enterprises
    * with no zone set (zone IS NULL). null = no zone filter.
    */
   zone?: number | 'unzoned' | null;
@@ -35,12 +35,12 @@ export interface EnterpriseListFilters {
 }
 
 /**
- * The 8 Maseru monitoring Zones. Each is a cluster of nearby villages the
+ * The Maseru monitoring Zones (1-9). Each is a cluster of nearby villages the
  * field team uses for visit planning (defined in the SADP-II Master Check
  * List). Zoning applies to the Maseru district only — elsewhere `zone` is
- * always null ("Unzoned").
+ * always null ("Unzoned"). Zone 9 (Semonkong) was added in migration 291.
  */
-export const MASERU_ZONES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const MASERU_ZONES = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 /** "Zone 3" / "Unzoned" display label for a zone value. */
 export function zoneLabel(zone: number | null | undefined): string {
