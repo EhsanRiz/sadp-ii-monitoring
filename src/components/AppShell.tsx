@@ -231,6 +231,11 @@ function SidebarBody({ email, role, items, onSignOut, closeButton }: SidebarBody
           <LogOut className="mr-2 h-4 w-4" />
           Sign out
         </Button>
+        {/* Build stamp — lets the field team confirm a deploy actually reached
+            this device (vs a stale cached bundle). */}
+        <div className="mt-2 text-[10px] text-muted-foreground/70 text-center">
+          build {__APP_BUILD__}
+        </div>
       </div>
     </>
   );

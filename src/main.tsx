@@ -14,7 +14,12 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { initOnlineStatus } from './lib/online-status';
 import { queryPersister } from './lib/query-persister';
 import { initReplay } from './lib/offline-replay';
+import { initPwa } from './lib/pwa';
 import './index.css';
+
+// Register the service worker + update prompt (polls for new deploys so field
+// tablets actually receive fixes; prompts to reload instead of auto-reloading).
+initPwa();
 
 // Phase 1 of the offline stack — boot the connection probe immediately so the
 // OfflineBadge in AppShell shows accurate state on first render.
