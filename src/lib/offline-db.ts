@@ -118,6 +118,7 @@ const DB_NAME = 'sadp_offline';
 const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBPDatabase<SadpOfflineSchema>> | null = null;
+let dbConn: IDBPDatabase<SadpOfflineSchema> | null = null;
 
 function getDb(): Promise<IDBPDatabase<SadpOfflineSchema>> {
   if (!dbPromise) {
@@ -166,7 +167,44 @@ function getDb(): Promise<IDBPDatabase<SadpOfflineSchema>> {
           }
         }
       },
-    });
+      // Another tab holds an older-version connection open, blocking our
+      // upgrade. Without handling this, openDB() never resolves and EVERY
+      // offline write (save draft, photo enqueue) hangs forever — the
+      // "Saving…" / "Adding…" spinner that never finishes. We just log; the
+      // blocking tab's `blocking` handler (same code) closes its connection.
+      blocked() {
+        console.warn('[offline-db] open is blocked by another tab/connection');
+      },
+      // We are the tab holding a connection that is blocking another tab's
+      // upgrade. Close so the upgrade can proceed; next getDb() re-opens.
+      blocking() {
+        console.warn('[offline-db] closing connection to unblock another tab');
+        dbConn?.close();
+        dbConn = null;
+        dbPromise = null;
+      },
+      // Browser killed the connection (e.g. storage pressure). Allow re-open.
+      terminated() {
+        dbConn = null;
+        dbPromise = null;
+      },
+    })
+      .then((db) => {
+        dbConn = db;
+        // If the browser closes this connection out from under us, drop the
+        // cached promise so the next call transparently re-opens.
+        db.addEventListener('close', () => {
+          dbConn = null;
+          dbPromise = null;
+        });
+        return db;
+      })
+      .catch((e) => {
+        // Never cache a rejected/failed open — otherwise every later call
+        // re-throws the same error instead of retrying.
+        dbPromise = null;
+        throw e;
+      });
   }
   return dbPromise;
 }

@@ -227,6 +227,17 @@ export function pickUpdatedAt(cached: unknown): string | null {
  */
 const ONLINE_SAVE_TIMEOUT_MS = 3000;
 
+/**
+ * Safety net for the offline write itself. The enqueue lands in IndexedDB,
+ * which is normally instant — but a wedged IDB (e.g. a cross-tab version-change
+ * deadlock) could leave the write pending forever, which surfaced in the field
+ * as a "Saving…" button that never finishes. If the enqueue doesn't complete in
+ * this budget we reject with a clear, actionable message instead of spinning.
+ * (offline-db now also hardens the IDB connection against that deadlock.)
+ */
+const ENQUEUE_TIMEOUT_MS = 10_000;
+const ENQUEUE_TIMED_OUT = Symbol('enqueue-timed-out');
+
 export async function saveOrEnqueue<T>({
   description,
   payload,
@@ -263,13 +274,23 @@ export async function saveOrEnqueue<T>({
     }
   }
 
-  const entry = await enqueue({
-    kind: 'mutation',
-    description,
-    enterprise_id: 'enterprise_id' in payload ? payload.enterprise_id ?? null : null,
-    payload: payload as unknown as Record<string, unknown>,
-    source_updated_at: source_updated_at ?? null,
-  });
+  const entry = await Promise.race([
+    enqueue({
+      kind: 'mutation',
+      description,
+      enterprise_id: 'enterprise_id' in payload ? payload.enterprise_id ?? null : null,
+      payload: payload as unknown as Record<string, unknown>,
+      source_updated_at: source_updated_at ?? null,
+    }),
+    new Promise<typeof ENQUEUE_TIMED_OUT>((resolve) =>
+      setTimeout(() => resolve(ENQUEUE_TIMED_OUT), ENQUEUE_TIMEOUT_MS),
+    ),
+  ]);
+  if (entry === ENQUEUE_TIMED_OUT) {
+    throw new Error(
+      "This device's offline storage isn't responding. Close any other SADP tabs, reload the app, then save again — your entry is still on screen.",
+    );
+  }
   applyOptimistic?.();
   return { online: false, queued_id: entry.id };
 }
