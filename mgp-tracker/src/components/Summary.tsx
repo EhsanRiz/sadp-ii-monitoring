@@ -5,6 +5,7 @@ import { DISTRICTS, DISTRICT_SHORT, STAGE, STAGES, type StageKey } from '../lib/
 import { supabase } from '../lib/supabase';
 import { useNav, type ListFilter } from '../App';
 import { Button, Modal, toast } from './ui';
+import { MyTasksCard } from './Tasks';
 
 type Row =
   | { kind: 'stage'; key: StageKey; label: string; indent: number; strong?: boolean }
@@ -95,6 +96,8 @@ export function Summary() {
           </Button>
         </div>
       </div>
+
+      <MyTasksCard />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

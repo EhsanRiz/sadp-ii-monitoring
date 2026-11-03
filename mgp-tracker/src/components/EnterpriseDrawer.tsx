@@ -215,9 +215,11 @@ function ActionPlan({
 }) {
   const [kind, setKind] = useState<'action' | 'sadp_query'>('action');
   const [desc, setDesc] = useState('');
+  const { users } = useData();
+  const activeUsers = users.filter((u) => u.is_active);
+  const [assignee, setAssignee] = useState(''); // user id, '' = none, 'other' = free text
   const [owner, setOwner] = useState('');
   const [due, setDue] = useState('');
-  const [showMore, setShowMore] = useState(false);
   const [busy, setBusy] = useState(false);
   // Optimistic ticks so the checkbox responds instantly; cleared when fresh data arrives.
   const [pendingTick, setPendingTick] = useState<Record<string, 'open' | 'done'>>({});
@@ -239,7 +241,14 @@ function ActionPlan({
     setBusy(true);
     const { error } = await supabase
       .from('mgp_actions')
-      .insert({ tracking_id: trackingId, kind, description: text, owner: owner.trim() || null, due_date: due || null });
+      .insert({
+        tracking_id: trackingId,
+        kind,
+        description: text,
+        assigned_to: assignee && assignee !== 'other' ? assignee : null,
+        owner: assignee === 'other' ? owner.trim() || null : null,
+        due_date: due || null,
+      });
     setBusy(false);
     if (error) return toast.err(errMsg(error));
     setDesc('');
@@ -259,6 +268,15 @@ function ActionPlan({
       });
       toast.err(errMsg(error));
     } else onChange();
+  }
+
+  async function reassign(a: ActionRow, userId: string) {
+    const { error } = await supabase.from('mgp_actions').update({ assigned_to: userId || null }).eq('id', a.id);
+    if (error) toast.err(errMsg(error));
+    else {
+      if (userId) toast.ok(`Assigned to ${userName(userId)}`);
+      onChange();
+    }
   }
 
   async function del(a: ActionRow) {
@@ -300,7 +318,14 @@ function ActionPlan({
                     </div>
                     {(a.owner || a.due_date || (done && a.done_at)) && (
                       <div className="text-xs text-slate-500">
-                        {a.owner && <span className="font-medium text-slate-700">{a.owner}</span>}
+                        {a.assigned_to ? (
+                          <span className="font-medium text-slate-700" title={a.assigned_at ? `Assigned by ${userName(a.assigned_by)} on ${fmtDateTime(a.assigned_at)}` : undefined}>
+                            🔔 {userName(a.assigned_to)}
+                            {a.assigned_at && <span className="font-normal text-slate-400"> · assigned {fmtDateTime(a.assigned_at)}</span>}
+                          </span>
+                        ) : (
+                          a.owner && <span className="font-medium text-slate-700">{a.owner}</span>
+                        )}
                         {a.due_date && <span className={late ? 'font-semibold text-red-600' : ''}>{a.owner ? ' · ' : ''}due {fmtDate(a.due_date)}</span>}
                         {done && a.done_at && (
                           <span className="text-brand">
@@ -311,6 +336,21 @@ function ActionPlan({
                     )}
                   </div>
                 </label>
+                {canEdit && !done && (
+                  <select
+                    className="w-24 shrink-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 focus:border-brand"
+                    value={a.assigned_to ?? ''}
+                    onChange={(e) => reassign(a, e.target.value)}
+                    title="Assign to"
+                  >
+                    <option value="">{a.assigned_to ? 'Unassign' : 'Assign…'}</option>
+                    {activeUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 {canEdit && (
                   <button onClick={() => del(a)} className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-600" title="Delete">
                     <Trash2 size={14} />
@@ -338,16 +378,21 @@ function ActionPlan({
             />
             <Button disabled={busy || !desc.trim()}>{busy ? '…' : 'Add'}</Button>
           </div>
-          {showMore ? (
-            <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-              <input className={inputCls} list="mgp-owners" placeholder="Owner (optional — kept for the next items)" value={owner} onChange={(e) => setOwner(e.target.value)} />
-              <input className={inputCls} type="date" value={due} onChange={(e) => setDue(e.target.value)} title="Due date (optional)" />
+          <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+            <div className="flex gap-2">
+              <select className={`${inputCls} ${assignee === 'other' ? 'w-40' : ''}`} value={assignee} onChange={(e) => setAssignee(e.target.value)} title="Assign to (kept for the next items)">
+                <option value="">🔔 Assign to… (optional)</option>
+                {activeUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name}
+                  </option>
+                ))}
+                <option value="other">Someone not registered…</option>
+              </select>
+              {assignee === 'other' && <input className={inputCls} list="mgp-owners" placeholder="Name" value={owner} onChange={(e) => setOwner(e.target.value)} />}
             </div>
-          ) : (
-            <button type="button" className="mt-1.5 text-xs text-brand hover:underline" onClick={() => setShowMore(true)}>
-              + owner / due date
-            </button>
-          )}
+            <input className={`${inputCls} w-[150px]`} type="date" value={due} onChange={(e) => setDue(e.target.value)} title="Due date (optional)" />
+          </div>
           <datalist id="mgp-owners">
             {owners.map((o) => (
               <option key={o} value={o} />

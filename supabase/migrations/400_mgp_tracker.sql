@@ -345,3 +345,62 @@ GRANT EXECUTE ON FUNCTION public.mgp_current_role(), public.mgp_is_member(), pub
 -- Every open tracker screen refreshes when anyone changes a stage/action/baseline.
 -- RLS still applies to realtime: only tracker members receive events.
 ALTER PUBLICATION supabase_realtime ADD TABLE public.mgp_tracking, public.mgp_actions, public.mgp_stage_history, public.mgp_settings;
+
+-- ---------- Assignment to registered users (applied as 404) -------------------
+ALTER TABLE public.mgp_actions
+  ADD COLUMN IF NOT EXISTS assigned_to uuid REFERENCES public.mgp_users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS assigned_by uuid REFERENCES public.mgp_users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS assigned_at timestamptz;
+CREATE INDEX IF NOT EXISTS mgp_actions_assigned_to_idx ON public.mgp_actions(assigned_to);
+CREATE INDEX IF NOT EXISTS mgp_actions_assigned_by_idx ON public.mgp_actions(assigned_by);
+
+CREATE OR REPLACE FUNCTION public.mgp_actions_before()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.created_by := coalesce(public.mgp_current_user_id(), NEW.created_by);
+  END IF;
+  -- Assignment to a registered user: stamp who/when, mirror the name into owner.
+  IF NEW.assigned_to IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.assigned_to IS DISTINCT FROM OLD.assigned_to) THEN
+    NEW.assigned_at := now();
+    NEW.assigned_by := public.mgp_current_user_id();
+    NEW.owner := (SELECT u.full_name FROM public.mgp_users u WHERE u.id = NEW.assigned_to);
+  ELSIF NEW.assigned_to IS NULL AND TG_OP = 'UPDATE' AND OLD.assigned_to IS NOT NULL THEN
+    NEW.assigned_at := NULL;
+    NEW.assigned_by := NULL;
+    IF NEW.owner IS NOT DISTINCT FROM OLD.owner THEN NEW.owner := NULL; END IF;
+  END IF;
+  IF NEW.status = 'done' AND (TG_OP = 'INSERT' OR OLD.status <> 'done') THEN
+    NEW.done_at := now();
+    NEW.done_by := public.mgp_current_user_id();
+  ELSIF NEW.status = 'open' THEN
+    NEW.done_at := NULL;
+    NEW.done_by := NULL;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.mgp_actions_before() FROM PUBLIC, anon, authenticated;
+
+-- ---------- Assignees can clear their own items (applied as 405) --------------
+DROP POLICY IF EXISTS mgp_actions_update ON public.mgp_actions;
+CREATE POLICY mgp_actions_update ON public.mgp_actions FOR UPDATE TO authenticated
+  USING ((SELECT public.mgp_can_edit()) OR assigned_to = (SELECT public.mgp_current_user_id()))
+  WITH CHECK ((SELECT public.mgp_can_edit()) OR assigned_to = (SELECT public.mgp_current_user_id()));
+
+CREATE OR REPLACE FUNCTION public.mgp_actions_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.mgp_can_edit() THEN
+    -- assignee without edit rights: only the status may change
+    NEW.tracking_id := OLD.tracking_id; NEW.kind := OLD.kind; NEW.description := OLD.description;
+    NEW.owner := OLD.owner; NEW.due_date := OLD.due_date; NEW.assigned_to := OLD.assigned_to;
+    NEW.assigned_by := OLD.assigned_by; NEW.assigned_at := OLD.assigned_at;
+    NEW.created_by := OLD.created_by; NEW.created_at := OLD.created_at;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.mgp_actions_guard() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER mgp_actions_a_guard_trg BEFORE UPDATE ON public.mgp_actions
+  FOR EACH ROW EXECUTE FUNCTION public.mgp_actions_guard();

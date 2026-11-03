@@ -38,6 +38,9 @@ export interface ActionRow {
   created_at: string;
   done_by: string | null;
   done_at: string | null;
+  assigned_to: string | null;
+  assigned_by: string | null;
+  assigned_at: string | null;
 }
 
 export interface HistoryRow {
@@ -135,6 +138,9 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
   // ---- Realtime: any change by anyone refreshes every open screen within ~0.5s ----
   const [live, setLive] = useState(false);
   const pending = useRef<HistoryRow[]>([]);
+  const pendingAssign = useRef<ActionRow[]>([]);
+  const actionsRef = useRef<ActionRow[]>([]);
+  actionsRef.current = actions;
   const timer = useRef<number | null>(null);
   const scheduleReload = useCallback(() => {
     if (timer.current) window.clearTimeout(timer.current);
@@ -146,7 +152,12 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
     const channel = supabase
       .channel('mgp-tracker-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_tracking' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_actions' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_actions' }, (payload) => {
+        const n = payload.new as ActionRow | undefined;
+        const prev = n ? actionsRef.current.find((x) => x.id === n.id) : undefined;
+        if (n?.assigned_to && n.status === 'open' && (!prev || prev.assigned_to !== n.assigned_to)) pendingAssign.current.push(n);
+        scheduleReload();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_settings' }, scheduleReload)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mgp_stage_history' }, (payload) => {
         pending.current.push(payload.new as HistoryRow);
@@ -216,6 +227,18 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
       reload,
     };
   }, [loading, error, catalog, tracking, actions, history, users, baselineAt, live, reload, authUserId]);
+
+  // Tell people when a colleague assigns them an item.
+  useEffect(() => {
+    if (!pendingAssign.current.length || !value.me) return;
+    const mine = pendingAssign.current.filter((a) => a.assigned_to === value.me!.id && a.assigned_by && a.assigned_by !== value.me!.id);
+    pendingAssign.current = [];
+    for (const a of mine.slice(0, 3)) {
+      const ent = value.itemById[a.tracking_id]?.name;
+      toast.ok(`🔔 ${value.userName(a.assigned_by).split(' ')[0]} assigned you: ${a.description}${ent ? ` (${ent})` : ''}`);
+    }
+    if (mine.length > 3) toast.ok(`🔔 ${mine.length - 3} more items assigned to you`);
+  }, [value]);
 
   // Tell people when a colleague moves an enterprise (not for their own moves).
   useEffect(() => {

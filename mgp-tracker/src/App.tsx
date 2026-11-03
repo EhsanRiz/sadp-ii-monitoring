@@ -15,9 +15,10 @@ import { PlaceView } from './components/PlaceView';
 import { UsersView } from './components/UsersView';
 import { ActivityView } from './components/ActivityView';
 import { EnterpriseDrawer } from './components/EnterpriseDrawer';
+import { BellMenu } from './components/Tasks';
 
 export type View = 'summary' | 'board' | 'list' | 'actions' | 'activity' | 'add' | 'users';
-export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d' | 'unplaced'; district?: string }
+export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d' | 'unplaced'; district?: string; owner?: string }
 
 interface Nav {
   view: View;
@@ -126,6 +127,7 @@ function Shell() {
               ))}
             </nav>
             <div className="ml-auto flex items-center gap-2 print:hidden">
+              <BellMenu />
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${live ? 'bg-brand-light text-brand-dark' : 'bg-amber-50 text-amber-800'}`}
                 title={live ? 'Changes by others appear instantly' : 'Reconnecting — changes will sync when back online'}

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { KeyRound, MessageCircle, Copy } from 'lucide-react';
+import { KeyRound, MessageCircle, Copy, Bell } from 'lucide-react';
+import { useNav } from '../App';
 import { useData, fmtDate, errMsg, type MgpUser } from '../lib/data';
 import { supabase, formatPhone, normalizePhone, maskPhone } from '../lib/supabase';
 import { Button, Modal, inputCls, toast } from './ui';
@@ -14,7 +15,9 @@ const ROLES: { key: MgpUser['role']; label: string; hint: string }[] = [
 const APP_URL = typeof window !== 'undefined' ? window.location.origin : 'https://tracker.4dcs.co.za';
 
 export function UsersView() {
-  const { users, me, reload } = useData();
+  const { users, me, reload, items } = useData();
+  const { go } = useNav();
+  const openCount = (id: string) => items.reduce((n, it) => n + it.actions.filter((a) => a.assigned_to === id && a.status === 'open').length, 0);
   const [pinFor, setPinFor] = useState<{ user: MgpUser; pin: string } | null>(null);
   const [edit, setEdit] = useState<MgpUser | null>(null);
 
@@ -56,6 +59,7 @@ export function UsersView() {
               <th className="px-4 py-2.5">Phone</th>
               <th className="px-4 py-2.5">Role</th>
               <th className="px-4 py-2.5">Status</th>
+              <th className="px-4 py-2.5">Tasks</th>
               <th className="px-4 py-2.5"></th>
             </tr>
           </thead>
@@ -70,6 +74,11 @@ export function UsersView() {
                   <td className="px-4 py-2.5 tabular-nums">{formatPhone(u.phone)}</td>
                   <td className="px-4 py-2.5">{ROLES.find((r) => r.key === u.role)?.label}</td>
                   <td className="px-4 py-2.5">{status(u)}</td>
+                  <td className="px-4 py-2.5">
+                    <button onClick={() => go('actions')} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${openCount(u.id) ? 'bg-brand text-white' : 'bg-slate-100 text-slate-500'}`} title="Open tasks assigned — see Actions → By person">
+                      <Bell size={12} /> {openCount(u.id)}
+                    </button>
+                  </td>
                   <td className="px-4 py-2.5 text-right">
                     {!locked && (
                       <div className="flex justify-end gap-1.5">
