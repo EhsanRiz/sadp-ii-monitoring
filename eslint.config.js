@@ -8,7 +8,7 @@ export default [
     // supabase/functions are Deno edge functions with a different runtime and
     // type story (Deno globals, untyped remote imports) — they're not part of
     // the Vite app build and shouldn't be held to the app's lint rules.
-    ignores: ['dist', 'node_modules', 'dev-dist', 'supabase/.temp', 'supabase/functions'],
+    ignores: ['dist', 'node_modules', 'dev-dist', 'supabase/.temp', 'supabase/functions', 'mgp-tracker'],
   },
   {
     files: ['**/*.{ts,tsx}'],
