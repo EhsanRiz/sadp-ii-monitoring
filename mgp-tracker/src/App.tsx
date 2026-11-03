@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { LayoutGrid, Columns3, List, ListChecks, PlusCircle, Users, LogOut } from 'lucide-react';
+import { LayoutGrid, Columns3, List, ListChecks, PlusCircle, Users, LogOut, History } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { DataProvider, useData } from './lib/data';
 import type { StageKey } from './lib/stages';
@@ -13,9 +13,10 @@ import { ListView } from './components/ListView';
 import { ActionsView } from './components/ActionsView';
 import { PlaceView } from './components/PlaceView';
 import { UsersView } from './components/UsersView';
+import { ActivityView } from './components/ActivityView';
 import { EnterpriseDrawer } from './components/EnterpriseDrawer';
 
-export type View = 'summary' | 'board' | 'list' | 'actions' | 'add' | 'users';
+export type View = 'summary' | 'board' | 'list' | 'actions' | 'activity' | 'add' | 'users';
 export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d' | 'unplaced'; district?: string }
 
 interface Nav {
@@ -58,8 +59,9 @@ const VIEWS: { key: View; label: string; icon: typeof List; admin?: boolean; edi
   { key: 'summary', label: 'Summary', icon: LayoutGrid },
   { key: 'board', label: 'Board', icon: Columns3 },
   { key: 'list', label: 'Enterprises', icon: List },
-  { key: 'actions', label: 'Action plan', icon: ListChecks },
-  { key: 'add', label: 'Add to tracker', icon: PlusCircle, edit: true },
+  { key: 'actions', label: 'Actions', icon: ListChecks },
+  { key: 'activity', label: 'Activity', icon: History },
+  { key: 'add', label: 'Bulk add', icon: PlusCircle, edit: true },
   { key: 'users', label: 'Users', icon: Users, admin: true },
 ];
 
@@ -107,7 +109,7 @@ function Shell() {
           <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-2.5">
             <span className="sm:hidden"><Logo size={34} /></span>
             <span className="hidden sm:block"><FullLogo height={36} /></span>
-            <div className="min-w-0 border-l border-slate-200 pl-3 leading-tight">
+            <div className="min-w-0 border-l border-slate-200 pl-3 leading-tight lg:hidden 2xl:block">
               <div className="truncate text-sm font-bold text-brand-dark">MGP M1 Approval Tracker</div>
               <div className="truncate text-[11px] text-fdbrown">SADP II · Central Region</div>
             </div>
@@ -116,7 +118,7 @@ function Shell() {
                 <button
                   key={v.key}
                   onClick={() => go(v.key)}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${view === v.key ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100'}`}
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium ${view === v.key ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
                   <v.icon size={16} />
                   {v.label}
@@ -134,7 +136,7 @@ function Shell() {
                 </span>
                 {live ? 'Live' : 'Reconnecting…'}
               </span>
-              <span className="hidden text-right text-xs leading-tight text-slate-500 sm:block">
+              <span className="hidden whitespace-nowrap text-right text-xs leading-tight text-slate-500 sm:block">
                 <span className="font-medium text-slate-700">{me.full_name}</span>
                 <br />
                 {me.role.replace('_', ' ')}
@@ -158,6 +160,7 @@ function Shell() {
           {view === 'board' && <Board />}
           {view === 'list' && <ListView />}
           {view === 'actions' && <ActionsView />}
+          {view === 'activity' && <ActivityView />}
           {view === 'add' && canEdit && <PlaceView />}
           {view === 'users' && isAdmin && <UsersView />}
         </main>
