@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { KeyRound, MessageCircle, Copy } from 'lucide-react';
 import { useData, fmtDate, errMsg, type MgpUser } from '../lib/data';
-import { supabase, formatPhone, normalizePhone } from '../lib/supabase';
+import { supabase, formatPhone, normalizePhone, maskPhone } from '../lib/supabase';
 import { Button, Modal, inputCls, toast } from './ui';
 
 const ROLES: { key: MgpUser['role']; label: string; hint: string }[] = [
@@ -107,7 +107,7 @@ function AddUser({ isSuper, onAdded }: { isSuper: boolean; onAdded: (u: MgpUser)
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!/^266\d{8}$/.test(normalizePhone(phone))) return toast.err('Enter an 8-digit Lesotho phone number');
+    if (!/^266\d{8}$/.test(normalizePhone(phone))) return toast.err('Enter the phone number as xxxx xxxx (8 digits)');
     setBusy(true);
     const { data, error } = await supabase.rpc('mgp_admin_add_user', { p_full_name: name, p_phone: phone, p_role: role });
     setBusy(false);
@@ -124,7 +124,7 @@ function AddUser({ isSuper, onAdded }: { isSuper: boolean; onAdded: (u: MgpUser)
       <div className="mb-3 text-sm font-semibold">Add a user</div>
       <div className="grid gap-2 sm:grid-cols-[1fr_180px_180px_auto]">
         <input className={inputCls} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <input className={inputCls} placeholder="Phone (5xxx xxxx)" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+        <input className={inputCls} placeholder="Phone (xxxx xxxx)" inputMode="tel" maxLength={9} value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
         <select className={inputCls} value={role} onChange={(e) => setRole(e.target.value as MgpUser['role'])}>
           {ROLES.filter((r) => isSuper || r.key !== 'super_admin').map((r) => (
             <option key={r.key} value={r.key}>
