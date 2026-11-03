@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from './supabase';
-import type { StageKey } from './stages';
+import { STAGE, type StageKey } from './stages';
+import { toast } from '../components/ui';
 
 export interface CatalogRow {
   enterprise_id: string;
@@ -87,6 +88,7 @@ interface DataCtx {
   users: MgpUser[];
   userName: (id: string | null) => string;
   baselineAt: string | null;
+  live: boolean;
   reload: () => Promise<void>;
 }
 
@@ -130,16 +132,40 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
     setLoading(false);
   }, []);
 
+  // ---- Realtime: any change by anyone refreshes every open screen within ~0.5s ----
+  const [live, setLive] = useState(false);
+  const pending = useRef<HistoryRow[]>([]);
+  const timer = useRef<number | null>(null);
+  const scheduleReload = useCallback(() => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => reload(), 400); // batch bursts (e.g. bulk placing)
+  }, [reload]);
+
   useEffect(() => {
     reload();
+    const channel = supabase
+      .channel('mgp-tracker-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_tracking' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_actions' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_settings' }, scheduleReload)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mgp_stage_history' }, (payload) => {
+        pending.current.push(payload.new as HistoryRow);
+        scheduleReload();
+      })
+      .subscribe((status) => {
+        setLive(status === 'SUBSCRIBED');
+        if (status === 'SUBSCRIBED') reload(); // catch anything missed while disconnected
+      });
     const onFocus = () => reload();
     window.addEventListener('focus', onFocus);
-    const t = window.setInterval(reload, 60_000);
+    const t = window.setInterval(reload, 120_000); // safety net
     return () => {
+      supabase.removeChannel(channel);
       window.removeEventListener('focus', onFocus);
       window.clearInterval(t);
+      if (timer.current) window.clearTimeout(timer.current);
     };
-  }, [reload]);
+  }, [reload, scheduleReload]);
 
   const value = useMemo<DataCtx>(() => {
     const catById = new Map(catalog.map((c) => [c.enterprise_id, c]));
@@ -186,9 +212,28 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
       users,
       userName: (id) => (id ? nameById.get(id) ?? 'Unknown' : '—'),
       baselineAt,
+      live,
       reload,
     };
-  }, [loading, error, catalog, tracking, actions, history, users, baselineAt, reload, authUserId]);
+  }, [loading, error, catalog, tracking, actions, history, users, baselineAt, live, reload, authUserId]);
+
+  // Tell people when a colleague moves an enterprise (not for their own moves).
+  useEffect(() => {
+    if (!pending.current.length) return;
+    const meId = value.me?.id;
+    const ready = pending.current.filter((h) => value.itemById[h.tracking_id]);
+    pending.current = pending.current.filter((h) => !value.itemById[h.tracking_id]).slice(-20);
+    const others = ready.filter((h) => h.changed_by && h.changed_by !== meId);
+    if (others.length > 3) {
+      toast.ok(`${value.userName(others[0].changed_by)} updated ${others.length} enterprises`);
+    } else {
+      for (const h of others) {
+        const who = value.userName(h.changed_by).split(' ')[0];
+        const what = value.itemById[h.tracking_id].name;
+        toast.ok(h.from_stage ? `${who} moved ${what} → ${STAGE[h.to_stage].short}` : `${who} placed ${what} in ${STAGE[h.to_stage].short}`);
+      }
+    }
+  }, [value]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

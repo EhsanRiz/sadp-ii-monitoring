@@ -69,7 +69,7 @@ function readHash(): View {
 }
 
 function Shell() {
-  const { loading, error, me, isAdmin, canEdit } = useData();
+  const { loading, error, me, isAdmin, canEdit, live } = useData();
   const [view, setView] = useState<View>(readHash());
   const [listFilter, setListFilter] = useState<ListFilter>({});
   const [openId, setOpenId] = useState<string | null>(null);
@@ -124,6 +124,16 @@ function Shell() {
               ))}
             </nav>
             <div className="ml-auto flex items-center gap-2 print:hidden">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${live ? 'bg-brand-light text-brand-dark' : 'bg-amber-50 text-amber-800'}`}
+                title={live ? 'Changes by others appear instantly' : 'Reconnecting — changes will sync when back online'}
+              >
+                <span className="relative flex h-2 w-2">
+                  {live && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-logo opacity-60" />}
+                  <span className={`relative inline-flex h-2 w-2 rounded-full ${live ? 'bg-brand-logo' : 'bg-amber-500'}`} />
+                </span>
+                {live ? 'Live' : 'Reconnecting…'}
+              </span>
               <span className="hidden text-right text-xs leading-tight text-slate-500 sm:block">
                 <span className="font-medium text-slate-700">{me.full_name}</span>
                 <br />

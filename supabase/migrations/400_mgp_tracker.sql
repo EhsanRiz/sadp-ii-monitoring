@@ -340,3 +340,8 @@ REVOKE ALL ON public.mgp_tracking, public.mgp_actions, public.mgp_settings FROM 
 
 REVOKE EXECUTE ON FUNCTION public.mgp_current_role(), public.mgp_is_member(), public.mgp_can_edit(), public.mgp_is_admin(), public.mgp_current_user_id() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.mgp_current_role(), public.mgp_is_member(), public.mgp_can_edit(), public.mgp_is_admin(), public.mgp_current_user_id() TO authenticated, service_role;
+
+-- ---------- Realtime (applied as 403) -----------------------------------------
+-- Every open tracker screen refreshes when anyone changes a stage/action/baseline.
+-- RLS still applies to realtime: only tracker members receive events.
+ALTER PUBLICATION supabase_realtime ADD TABLE public.mgp_tracking, public.mgp_actions, public.mgp_stage_history, public.mgp_settings;
