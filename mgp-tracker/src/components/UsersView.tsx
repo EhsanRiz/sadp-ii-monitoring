@@ -124,7 +124,7 @@ function AddUser({ isSuper, onAdded }: { isSuper: boolean; onAdded: (u: MgpUser)
       <div className="mb-3 text-sm font-semibold">Add a user</div>
       <div className="grid gap-2 sm:grid-cols-[1fr_180px_180px_auto]">
         <input className={inputCls} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <input className={inputCls} placeholder="Phone (xxxx xxxx)" inputMode="tel" maxLength={9} value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
+        <input className={inputCls} placeholder="Phone (xxxx xxxx)" inputMode="tel" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
         <select className={inputCls} value={role} onChange={(e) => setRole(e.target.value as MgpUser['role'])}>
           {ROLES.filter((r) => isSuper || r.key !== 'super_admin').map((r) => (
             <option key={r.key} value={r.key}>

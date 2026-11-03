@@ -71,7 +71,7 @@ export function Login() {
           {mode === 'signin' ? (
             <form onSubmit={signIn} className="space-y-3">
               <Field label="Phone number">
-                <input className={inputCls} inputMode="tel" autoComplete="username" placeholder="xxxx xxxx" maxLength={9} value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
+                <input className={inputCls} inputMode="tel" autoComplete="username" placeholder="xxxx xxxx" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
               </Field>
               <Field label="Password">
                 <input className={inputCls} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
@@ -83,7 +83,7 @@ export function Login() {
             <form onSubmit={activate} className="space-y-3">
               <p className="text-xs text-slate-500">Enter the 6-digit PIN your admin gave you, then create your password. Use this also if you forgot your password (ask the admin for a new PIN).</p>
               <Field label="Phone number">
-                <input className={inputCls} inputMode="tel" autoComplete="username" placeholder="xxxx xxxx" maxLength={9} value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
+                <input className={inputCls} inputMode="tel" autoComplete="username" placeholder="xxxx xxxx" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
               </Field>
               <Field label="PIN">
                 <input className={`${inputCls} tracking-[0.4em]`} inputMode="numeric" maxLength={6} placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required />
