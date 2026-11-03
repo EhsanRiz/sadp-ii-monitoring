@@ -52,9 +52,9 @@ export function ListView() {
   }
 
   function exportCsv() {
-    const head = ['Enterprise', 'District', 'Type', 'Community council', 'Stage', 'Whiteboard ref', 'In stage since', 'Days in stage', 'Open SADP queries', 'Open actions', 'Next due', 'Note', 'Open items'];
+    const head = ['Enterprise', 'District', 'Type', 'Community council', 'Stage', 'Whiteboard ref', 'In stage since', 'Days in stage', 'Open SADP queries', 'Open actions', 'Checklist done', 'Next due', 'Note', 'Action plan'];
     const lines = shown.map((r) => {
-      if (r.kind === 'unplaced') return [r.name, r.district, r.c.enterprise_type ?? '', r.c.community_council ?? '', 'Not yet placed', '', '', '', '', '', '', '', ''];
+      if (r.kind === 'unplaced') return [r.name, r.district, r.c.enterprise_type ?? '', r.c.community_council ?? '', 'Not yet placed', '', '', '', '', '', '', '', '', ''];
       const i = r.it;
       return [
         i.name,
@@ -67,11 +67,12 @@ export function ListView() {
         String(daysSince(i.stage_since)),
         String(i.openQueries),
         String(i.openActions - i.openQueries),
+        i.actions.length ? `${i.actions.length - i.openActions}/${i.actions.length}` : '',
         i.nextDue ?? '',
         i.note ?? '',
-        i.actions
-          .filter((a) => a.status === 'open')
-          .map((a) => `${a.kind === 'sadp_query' ? '[Query] ' : ''}${a.description}${a.owner ? ` (${a.owner})` : ''}${a.due_date ? ` due ${a.due_date}` : ''}`)
+        [...i.actions]
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          .map((a) => `${a.status === 'done' ? '[x] ' : '[ ] '}${a.kind === 'sadp_query' ? '[Query] ' : ''}${a.description}${a.owner ? ` (${a.owner})` : ''}${a.due_date ? ` due ${a.due_date}` : ''}`)
           .join(' | '),
       ];
     });
@@ -134,7 +135,7 @@ export function ListView() {
                 <th className="px-3 py-2.5">District</th>
                 <th className="px-3 py-2.5">Stage</th>
                 <th className="px-3 py-2.5 text-right">Days</th>
-                <th className="px-3 py-2.5">Open items</th>
+                <th className="px-3 py-2.5">Action plan</th>
                 <th className="px-3 py-2.5">Next due</th>
               </tr>
             </thead>
@@ -190,20 +191,34 @@ export function ListView() {
                       <StageChip stage={i.stage} size="sm" />
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{daysSince(i.stage_since)}</td>
-                    <td className="max-w-xs px-3 py-2 text-xs">
-                      {open.length === 0 ? (
+                    <td className="max-w-sm px-3 py-2 text-xs">
+                      {i.actions.length === 0 ? (
                         <span className="text-slate-400">—</span>
                       ) : (
-                        <ul className="space-y-0.5">
-                          {open.slice(0, 3).map((a) => (
-                            <li key={a.id}>
-                              {a.kind === 'sadp_query' && <b className="text-amber-700">Query: </b>}
-                              {a.description}
-                              {a.owner && <span className="text-slate-500"> — {a.owner}</span>}
-                            </li>
-                          ))}
-                          {open.length > 3 && <li className="text-slate-500">+{open.length - 3} more</li>}
-                        </ul>
+                        <div>
+                          <div className="mb-1 flex items-center gap-2">
+                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                              <div className="h-full bg-brand-logo" style={{ width: `${((i.actions.length - open.length) / i.actions.length) * 100}%` }} />
+                            </div>
+                            <span className="font-medium text-slate-600">
+                              {i.actions.length - open.length}/{i.actions.length} done
+                            </span>
+                          </div>
+                          <ul className="space-y-0.5">
+                            {[...i.actions]
+                              .sort((a, b) => a.created_at.localeCompare(b.created_at))
+                              .slice(0, 4)
+                              .map((a) => (
+                                <li key={a.id} className={a.status === 'done' ? 'text-slate-400 line-through' : ''}>
+                                  <span className={`mr-1 ${a.status === 'done' ? 'text-brand' : 'text-slate-400'}`}>{a.status === 'done' ? '☑' : '☐'}</span>
+                                  {a.kind === 'sadp_query' && <b className="text-amber-700">Query: </b>}
+                                  {a.description}
+                                  {a.owner && <span className="text-slate-500"> — {a.owner}</span>}
+                                </li>
+                              ))}
+                            {i.actions.length > 4 && <li className="text-slate-500">+{i.actions.length - 4} more</li>}
+                          </ul>
+                        </div>
                       )}
                     </td>
                     <td className={`whitespace-nowrap px-3 py-2 text-xs ${i.nextDue && i.nextDue < new Date().toISOString().slice(0, 10) ? 'font-semibold text-red-600' : ''}`}>{fmtDate(i.nextDue)}</td>

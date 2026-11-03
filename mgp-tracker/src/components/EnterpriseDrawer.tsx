@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Trash2, ArrowRight, Phone, AlertTriangle } from 'lucide-react';
 import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow } from '../lib/data';
 import { supabase } from '../lib/supabase';
@@ -217,29 +217,52 @@ function ActionPlan({
   const [desc, setDesc] = useState('');
   const [owner, setOwner] = useState('');
   const [due, setDue] = useState('');
+  const [showMore, setShowMore] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Optimistic ticks so the checkbox responds instantly; cleared when fresh data arrives.
+  const [pendingTick, setPendingTick] = useState<Record<string, 'open' | 'done'>>({});
+  const inputRef = useRef<HTMLInputElement>(null);
   const today = new Date().toISOString().slice(0, 10);
 
-  const sorted = [...actions].sort((a, b) => (a.status === b.status ? (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') : a.status === 'open' ? -1 : 1));
+  useEffect(() => setPendingTick({}), [actions]);
 
-  async function add(e: FormEvent) {
-    e.preventDefault();
+  // Keep the order items were added (no jumping when ticked).
+  const list = [...actions].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const statusOf = (a: ActionRow) => pendingTick[a.id] ?? a.status;
+  const doneCount = list.filter((a) => statusOf(a) === 'done').length;
+  const pct = list.length ? Math.round((doneCount / list.length) * 100) : 0;
+
+  async function add(e?: FormEvent) {
+    e?.preventDefault();
+    const text = desc.trim();
+    if (!text || busy) return;
     setBusy(true);
-    const { error } = await supabase.from('mgp_actions').insert({ tracking_id: trackingId, kind, description: desc.trim(), owner: owner.trim() || null, due_date: due || null });
+    const { error } = await supabase
+      .from('mgp_actions')
+      .insert({ tracking_id: trackingId, kind, description: text, owner: owner.trim() || null, due_date: due || null });
     setBusy(false);
     if (error) return toast.err(errMsg(error));
     setDesc('');
     onChange();
+    inputRef.current?.focus(); // ready for the next item
   }
 
   async function toggle(a: ActionRow) {
-    const { error } = await supabase.from('mgp_actions').update({ status: a.status === 'open' ? 'done' : 'open' }).eq('id', a.id);
-    if (error) toast.err(errMsg(error));
-    else onChange();
+    const next = statusOf(a) === 'open' ? 'done' : 'open';
+    setPendingTick((p) => ({ ...p, [a.id]: next }));
+    const { error } = await supabase.from('mgp_actions').update({ status: next }).eq('id', a.id);
+    if (error) {
+      setPendingTick((p) => {
+        const n = { ...p };
+        delete n[a.id];
+        return n;
+      });
+      toast.err(errMsg(error));
+    } else onChange();
   }
 
   async function del(a: ActionRow) {
-    if (!window.confirm('Delete this item?')) return;
+    if (!window.confirm(`Delete “${a.description}”?`)) return;
     const { error } = await supabase.from('mgp_actions').delete().eq('id', a.id);
     if (error) toast.err(errMsg(error));
     else onChange();
@@ -247,56 +270,84 @@ function ActionPlan({
 
   return (
     <section>
-      <h3 className="mb-2 text-sm font-semibold">
-        Action plan <span className="font-normal text-slate-500">({actions.filter((a) => a.status === 'open').length} open)</span>
-      </h3>
-      {sorted.length === 0 && <p className="mb-3 text-sm text-slate-500">No queries or actions yet.</p>}
-      <ul className="mb-3 divide-y rounded-lg border">
-        {sorted.map((a) => {
-          const late = a.status === 'open' && a.due_date && a.due_date < today;
-          return (
-            <li key={a.id} className="flex items-start gap-3 px-3 py-2">
-              <input type="checkbox" className="mt-1 h-4 w-4 accent-[#008C44]" checked={a.status === 'done'} disabled={!canEdit} onChange={() => toggle(a)} />
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm ${a.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
-                  {a.kind === 'sadp_query' && <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900">SADP query</span>}
-                  {a.description}
-                </div>
-                <div className="text-xs text-slate-500">
-                  {a.owner && <span className="font-medium text-slate-700">{a.owner}</span>}
-                  {a.due_date && <span className={late ? 'font-semibold text-red-600' : ''}> · due {fmtDate(a.due_date)}</span>}
-                  {a.status === 'done' && a.done_at && (
-                    <span>
-                      {' '}
-                      · done by {userName(a.done_by)} {fmtDate(a.done_at)}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {canEdit && (
-                <button onClick={() => del(a)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Delete">
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <div className="mb-2 flex items-center gap-3">
+        <h3 className="text-sm font-semibold">Action plan</h3>
+        {list.length > 0 && (
+          <>
+            <div className="h-1.5 w-28 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full bg-brand-logo transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-xs font-medium text-slate-600">
+              {doneCount} of {list.length} done
+            </span>
+          </>
+        )}
+      </div>
+
+      {list.length > 0 && (
+        <ul className="mb-3 divide-y rounded-lg border">
+          {list.map((a) => {
+            const done = statusOf(a) === 'done';
+            const late = !done && a.due_date && a.due_date < today;
+            return (
+              <li key={a.id} className={`group flex items-start gap-3 px-3 py-2 ${done ? 'bg-slate-50' : ''}`}>
+                <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+                  <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#008C44]" checked={done} disabled={!canEdit} onChange={() => toggle(a)} />
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm ${done ? 'text-slate-400 line-through' : ''}`}>
+                      {a.kind === 'sadp_query' && <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900 no-underline">SADP query</span>}
+                      {a.description}
+                    </div>
+                    {(a.owner || a.due_date || (done && a.done_at)) && (
+                      <div className="text-xs text-slate-500">
+                        {a.owner && <span className="font-medium text-slate-700">{a.owner}</span>}
+                        {a.due_date && <span className={late ? 'font-semibold text-red-600' : ''}>{a.owner ? ' · ' : ''}due {fmtDate(a.due_date)}</span>}
+                        {done && a.done_at && (
+                          <span className="text-brand">
+                            {a.owner || a.due_date ? ' · ' : ''}✓ {userName(a.done_by)}, {fmtDate(a.done_at)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </label>
+                {canEdit && (
+                  <button onClick={() => del(a)} className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-600" title="Delete">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       {canEdit && (
-        <form onSubmit={add} className="space-y-2 rounded-lg bg-slate-50 p-3">
-          <div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-xs font-medium">
-            {(['action', 'sadp_query'] as const).map((k) => (
-              <button type="button" key={k} onClick={() => setKind(k)} className={`flex-1 rounded px-2 py-1 ${kind === k ? 'bg-brand text-white' : 'text-slate-600'}`}>
-                {k === 'action' ? 'Action' : 'SADP query'}
-              </button>
-            ))}
+        <form onSubmit={add} className="rounded-lg bg-slate-50 p-2.5">
+          <div className="flex gap-2">
+            <select className="rounded-md border border-slate-300 bg-white px-2 text-xs font-medium" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} title="Type of item">
+              <option value="action">Action</option>
+              <option value="sadp_query">SADP query</option>
+            </select>
+            <input
+              ref={inputRef}
+              className={inputCls}
+              placeholder={list.length ? 'Add another item… (press Enter)' : 'Add an item… (press Enter)'}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
+            <Button disabled={busy || !desc.trim()}>{busy ? '…' : 'Add'}</Button>
           </div>
-          <input className={inputCls} placeholder={kind === 'action' ? 'What needs to be done?' : 'Query raised by SADP'} value={desc} onChange={(e) => setDesc(e.target.value)} required />
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
-            <input className={inputCls} list="mgp-owners" placeholder="Owner (who)" value={owner} onChange={(e) => setOwner(e.target.value)} />
-            <input className={inputCls} type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-            <Button disabled={busy || !desc.trim()}>Add</Button>
-          </div>
+          {showMore ? (
+            <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+              <input className={inputCls} list="mgp-owners" placeholder="Owner (optional — kept for the next items)" value={owner} onChange={(e) => setOwner(e.target.value)} />
+              <input className={inputCls} type="date" value={due} onChange={(e) => setDue(e.target.value)} title="Due date (optional)" />
+            </div>
+          ) : (
+            <button type="button" className="mt-1.5 text-xs text-brand hover:underline" onClick={() => setShowMore(true)}>
+              + owner / due date
+            </button>
+          )}
           <datalist id="mgp-owners">
             {owners.map((o) => (
               <option key={o} value={o} />

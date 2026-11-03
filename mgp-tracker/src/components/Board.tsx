@@ -141,9 +141,12 @@ function Card({ it, draggable, onDragStart, onClick }: { it: Item; draggable: bo
             <MessageSquareWarning size={11} /> {it.openQueries} quer{it.openQueries === 1 ? 'y' : 'ies'}
           </span>
         )}
-        {it.openActions - it.openQueries > 0 && (
-          <span className="inline-flex items-center gap-1 rounded bg-fdblue-light px-1.5 py-0.5 font-medium text-sky-800">
-            <ListChecks size={11} /> {it.openActions - it.openQueries}
+        {it.actions.length > 0 && (
+          <span
+            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium ${it.openActions === 0 ? 'bg-brand-light text-brand-dark' : 'bg-fdblue-light text-sky-800'}`}
+            title="Action plan items done"
+          >
+            <ListChecks size={11} /> {it.actions.length - it.openActions}/{it.actions.length}
           </span>
         )}
         {overdue && <span className="rounded bg-red-100 px-1.5 py-0.5 font-medium text-red-700">overdue</span>}
