@@ -107,7 +107,7 @@ export function Board() {
 
 function UnplacedCard({ c, draggable, onDragStart }: { c: CatalogRow; draggable: boolean; onDragStart: () => void }) {
   return (
-    <div draggable={draggable} onDragStart={onDragStart} className={`rounded-md border bg-white px-2.5 py-1.5 ${draggable ? 'cursor-grab hover:border-brand active:cursor-grabbing' : ''}`}>
+    <div draggable={draggable} onDragStart={onDragStart} className={`hover-lift rounded-md border bg-white px-2.5 py-1.5 ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1 text-[13px] leading-snug">{c.name}</div>
         <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{DISTRICT_SHORT[c.district ?? ''] ?? c.district}</span>
@@ -125,7 +125,7 @@ function Card({ it, draggable, onDragStart, onClick }: { it: Item; draggable: bo
       draggable={draggable}
       onDragStart={onDragStart}
       onClick={onClick}
-      className={`cursor-pointer rounded-lg border bg-white p-2.5 shadow-sm transition hover:border-brand hover:shadow ${draggable ? 'active:cursor-grabbing' : ''}`}
+      className={`hover-lift cursor-pointer rounded-lg border bg-white p-2.5 shadow-sm ${draggable ? 'active:cursor-grabbing' : ''}`}
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1 text-sm font-medium leading-snug">{it.name}</div>

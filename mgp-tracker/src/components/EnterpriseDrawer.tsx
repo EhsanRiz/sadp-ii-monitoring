@@ -319,7 +319,7 @@ function ActionPlan({
             const done = statusOf(a) === 'done';
             const late = !done && a.due_date && a.due_date < today;
             return (
-              <li key={a.id} className={`group flex items-start gap-3 px-3 py-2 ${done ? 'bg-slate-50' : ''}`}>
+              <li key={a.id} className={`hover-row group flex items-start gap-3 px-3 py-2 ${done ? 'bg-slate-50' : ''}`}>
                 <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
                   <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#008C44]" checked={done} disabled={!canEdit} onChange={() => toggle(a)} />
                   <div className="min-w-0 flex-1">

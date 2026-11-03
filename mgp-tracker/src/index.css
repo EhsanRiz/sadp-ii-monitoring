@@ -8,3 +8,42 @@ html, body { @apply bg-slate-50 text-slate-900 antialiased; }
   @page { size: A4 landscape; margin: 12mm; }
   body { background: white; }
 }
+
+/* ---- Hover: rows tint + green accent bar; cards lift ---- */
+@layer components {
+  tbody tr {
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+  }
+  tbody tr > td { transition: background-color 160ms ease, box-shadow 160ms ease; }
+  tbody tr:hover {
+    box-shadow: 0 1px 6px rgba(0, 107, 52, 0.12);
+    position: relative;
+    z-index: 1;
+  }
+  tbody tr:hover > td { background-color: #e6f6ed !important; }
+  tbody tr:hover > td:first-child { box-shadow: inset 4px 0 0 #00a551; color: #006b34; }
+
+  .hover-row {
+    transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+  .hover-row:hover {
+    background-color: #e6f6ed;
+    box-shadow: inset 4px 0 0 #00a551;
+  }
+
+  .hover-lift {
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 107, 52, 0.14);
+    border-color: #00a551;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  tbody tr, .hover-row, .hover-lift { transition: none; }
+  .hover-lift:hover { transform: none; }
+}
+@media print {
+  tbody tr:hover { background: none !important; box-shadow: none; }
+}

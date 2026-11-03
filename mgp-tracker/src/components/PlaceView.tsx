@@ -86,7 +86,7 @@ export function PlaceView() {
           <ul className="max-h-[60vh] divide-y overflow-y-auto">
             {shown.map((c) => (
               <li key={c.enterprise_id}>
-                <label className="flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-brand-light/40">
+                <label className="hover-row flex cursor-pointer items-center gap-3 px-4 py-2">
                   <input type="checkbox" className="h-4 w-4 accent-[#008C44]" checked={selected.has(c.enterprise_id)} onChange={() => toggle(c.enterprise_id)} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">{c.name}</div>

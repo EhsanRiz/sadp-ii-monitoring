@@ -42,7 +42,7 @@ export function TaskRow({ t, canTick, compact, onOpen }: { t: Task; canTick: boo
   }
 
   return (
-    <li className={`flex items-start gap-2.5 ${compact ? 'px-3 py-2' : 'px-4 py-2.5'} ${ticking ? 'opacity-50' : ''}`}>
+    <li className={`hover-row flex items-start gap-2.5 ${compact ? 'px-3 py-2' : 'px-4 py-2.5'} ${ticking ? 'opacity-50' : ''}`}>
       {canTick ? (
         <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#008C44]" checked={ticking} onChange={clear} title="Mark as done" />
       ) : (

@@ -111,7 +111,7 @@ export function ActionsView() {
 function ActionLine({ a, it, canEdit, onToggle, onOpen, today }: { a: ActionRow; it: Item; canEdit: boolean; onToggle: () => void; onOpen: () => void; today: string }) {
   const late = a.status === 'open' && a.due_date && a.due_date < today;
   return (
-    <li className="flex items-start gap-3 px-4 py-2.5">
+    <li className="hover-row flex items-start gap-3 px-4 py-2.5">
       <input type="checkbox" className="mt-1 h-4 w-4 accent-[#008C44]" checked={a.status === 'done'} disabled={!canEdit} onChange={onToggle} />
       <div className="min-w-0 flex-1">
         <div className={`text-sm ${a.status === 'done' ? 'text-slate-400 line-through' : ''}`}>

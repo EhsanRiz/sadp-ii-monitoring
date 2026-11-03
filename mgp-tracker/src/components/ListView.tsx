@@ -179,7 +179,7 @@ export function ListView() {
                 const i = r.it;
                 const open = i.actions.filter((a) => a.status === 'open');
                 return (
-                  <tr key={i.id} className="cursor-pointer align-top hover:bg-brand-light/50" onClick={() => openItem(i.id)}>
+                  <tr key={i.id} className="cursor-pointer align-top" onClick={() => openItem(i.id)}>
                     <td className="px-3 py-2 tabular-nums text-slate-400">{n + 1}</td>
                     <td className="px-3 py-2">
                       <div className="font-medium">{i.name}</div>

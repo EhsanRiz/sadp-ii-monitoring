@@ -212,7 +212,7 @@ export function Summary() {
             {recent.map((h) => {
               const it = itemById[h.tracking_id];
               return (
-                <li key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-sm">
+                <li key={h.id} className="hover-row flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-sm">
                   <button className="font-medium text-brand hover:underline" onClick={() => it && openItem(it.id)}>
                     {it?.name ?? '—'}
                   </button>
@@ -246,7 +246,7 @@ export function Summary() {
 function Kpi({ label, value, sub, tone }: { label: string; value: number; sub: string; tone: 'emerald' | 'sky' | 'amber' | 'orange' }) {
   const bar = { emerald: 'bg-brand-logo', sky: 'bg-fdblue', amber: 'bg-amber-500', orange: 'bg-fdbrown-light' }[tone];
   return (
-    <div className="relative overflow-hidden rounded-xl border bg-white p-4">
+    <div className="hover-lift relative overflow-hidden rounded-xl border bg-white p-4">
       <div className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
       <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 text-3xl font-bold tabular-nums">{value}</div>
