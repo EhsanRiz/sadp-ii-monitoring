@@ -5,7 +5,7 @@ import { supabase } from './lib/supabase';
 import { DataProvider, useData } from './lib/data';
 import type { StageKey } from './lib/stages';
 import { Login } from './components/Login';
-import { Logo } from './components/Logo';
+import { Logo, FullLogo } from './components/Logo';
 import { Toaster, Button } from './components/ui';
 import { Summary } from './components/Summary';
 import { Board } from './components/Board';
@@ -16,7 +16,7 @@ import { UsersView } from './components/UsersView';
 import { EnterpriseDrawer } from './components/EnterpriseDrawer';
 
 export type View = 'summary' | 'board' | 'list' | 'actions' | 'add' | 'users';
-export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d'; district?: string }
+export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d' | 'unplaced'; district?: string }
 
 interface Nav {
   view: View;
@@ -102,15 +102,16 @@ function Shell() {
 
   return (
     <NavCtx.Provider value={{ view, go, listFilter, openItem: setOpenId }}>
-      <div className="min-h-screen pb-20 md:pb-0">
+      <div className="min-h-screen pb-20 lg:pb-0">
         <header className="sticky top-0 z-30 border-b bg-white/95 backdrop-blur print:static print:border-0">
           <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-2.5">
-            <Logo size={30} />
-            <div className="min-w-0 leading-tight">
-              <div className="truncate text-sm font-bold">MGP M1 Approval Tracker</div>
-              <div className="truncate text-[11px] text-slate-500">SADP II · Central Region · 4D Climate Solutions</div>
+            <span className="sm:hidden"><Logo size={34} /></span>
+            <span className="hidden sm:block"><FullLogo height={36} /></span>
+            <div className="min-w-0 border-l border-slate-200 pl-3 leading-tight">
+              <div className="truncate text-sm font-bold text-brand-dark">MGP M1 Approval Tracker</div>
+              <div className="truncate text-[11px] text-fdbrown">SADP II · Central Region</div>
             </div>
-            <nav className="ml-6 hidden items-center gap-1 md:flex print:hidden">
+            <nav className="ml-4 hidden items-center gap-0.5 lg:flex print:hidden">
               {visible.map((v) => (
                 <button
                   key={v.key}
@@ -133,6 +134,12 @@ function Shell() {
               </button>
             </div>
           </div>
+          <div className="flex h-1 print:hidden">
+            <div className="flex-1 bg-fdblue" />
+            <div className="flex-1 bg-fdlime" />
+            <div className="flex-1 bg-fdbrown-light" />
+            <div className="flex-1 bg-brand-logo" />
+          </div>
         </header>
 
         <main className="mx-auto max-w-[1400px] px-4 py-5">
@@ -146,7 +153,7 @@ function Shell() {
         </main>
 
         {/* mobile bottom nav */}
-        <nav className="fixed inset-x-0 bottom-0 z-30 grid border-t bg-white md:hidden print:hidden" style={{ gridTemplateColumns: `repeat(${visible.length}, 1fr)` }}>
+        <nav className="fixed inset-x-0 bottom-0 z-30 grid border-t bg-white lg:hidden print:hidden" style={{ gridTemplateColumns: `repeat(${visible.length}, 1fr)` }}>
           {visible.map((v) => (
             <button key={v.key} onClick={() => go(v.key)} className={`flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${view === v.key ? 'text-brand' : 'text-slate-500'}`}>
               <v.icon size={18} />

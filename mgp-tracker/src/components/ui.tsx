@@ -112,3 +112,6 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{children}</div>;
 }
+
+export const selectCls =
+  'w-auto rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20';

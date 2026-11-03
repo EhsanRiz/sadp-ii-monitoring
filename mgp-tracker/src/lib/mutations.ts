@@ -12,3 +12,13 @@ export async function changeStage(trackingId: string, name: string, stage: Stage
   toast.ok(`${name} → ${STAGE[stage].short}`);
   return true;
 }
+
+export async function placeEnterprise(enterpriseId: string, name: string, stage: StageKey): Promise<boolean> {
+  const { error } = await supabase.from('mgp_tracking').insert({ enterprise_id: enterpriseId, stage });
+  if (error) {
+    toast.err(errMsg(error));
+    return false;
+  }
+  toast.ok(`${name} placed in ${STAGE[stage].short}`);
+  return true;
+}

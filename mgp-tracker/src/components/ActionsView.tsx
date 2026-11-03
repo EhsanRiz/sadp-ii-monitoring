@@ -3,7 +3,7 @@ import { useData, fmtDate, errMsg, type ActionRow, type Item } from '../lib/data
 import { supabase } from '../lib/supabase';
 import { useNav } from '../App';
 import { Filters, matches } from './Filters';
-import { Empty, StageChip, inputCls, toast } from './ui';
+import { Empty, StageChip, selectCls, toast } from './ui';
 
 export function ActionsView() {
   const { items, canEdit, reload } = useData();
@@ -44,17 +44,17 @@ export function ActionsView() {
         <p className="text-sm text-slate-500">Every SADP query and action across all enterprises, by due date.</p>
       </div>
       <Filters search={search} setSearch={setSearch} district={district} setDistrict={setDistrict}>
-        <select className={`${inputCls} w-auto`} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+        <select className={selectCls} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
           <option value="open">Open</option>
           <option value="done">Done</option>
           <option value="all">All</option>
         </select>
-        <select className={`${inputCls} w-auto`} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+        <select className={selectCls} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
           <option value="">Queries & actions</option>
           <option value="sadp_query">SADP queries only</option>
           <option value="action">Actions only</option>
         </select>
-        <select className={`${inputCls} w-auto`} value={owner} onChange={(e) => setOwner(e.target.value)}>
+        <select className={selectCls} value={owner} onChange={(e) => setOwner(e.target.value)}>
           <option value="">All owners</option>
           {owners.map((o) => (
             <option key={o}>{o}</option>
@@ -84,7 +84,7 @@ function ActionLine({ a, it, canEdit, onToggle, onOpen, today }: { a: ActionRow;
   const late = a.status === 'open' && a.due_date && a.due_date < today;
   return (
     <li className="flex items-start gap-3 px-4 py-2.5">
-      <input type="checkbox" className="mt-1 h-4 w-4 accent-[#006838]" checked={a.status === 'done'} disabled={!canEdit} onChange={onToggle} />
+      <input type="checkbox" className="mt-1 h-4 w-4 accent-[#008C44]" checked={a.status === 'done'} disabled={!canEdit} onChange={onToggle} />
       <div className="min-w-0 flex-1">
         <div className={`text-sm ${a.status === 'done' ? 'text-slate-400 line-through' : ''}`}>
           {a.kind === 'sadp_query' && <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900">SADP query</span>}

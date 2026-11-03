@@ -66,7 +66,7 @@ export function Summary() {
     <button onClick={() => go('list', filter)} className={`group inline-flex items-baseline gap-1.5 rounded px-1.5 hover:bg-brand-light ${cls}`}>
       <span className="tabular-nums">{n}</span>
       {base !== null && n - base !== 0 && (
-        <span className={`text-[11px] font-semibold tabular-nums ${n - base > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+        <span className={`text-[11px] font-semibold tabular-nums ${n - base > 0 ? 'text-brand' : 'text-red-500'}`}>
           {n - base > 0 ? '+' : ''}
           {n - base}
         </span>
@@ -179,8 +179,8 @@ export function Summary() {
                       b = baseStage ? baseUnplaced(d) : null;
                       return (
                         <td key={d ?? 'total'} className={`px-1 py-2 text-right sm:px-3 ${d === null ? 'bg-slate-50' : ''}`}>
-                          <button onClick={() => go('add')} className="rounded px-1.5 tabular-nums hover:bg-brand-light">{n}</button>
-                          {b !== null && n - b !== 0 && <span className={`ml-1 text-[11px] font-semibold ${n - b > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{n - b > 0 ? '+' : ''}{n - b}</span>}
+                          <button onClick={() => go('list', { stage: 'unplaced', district: dist })} className="rounded px-1.5 tabular-nums hover:bg-brand-light">{n}</button>
+                          {b !== null && n - b !== 0 && <span className={`ml-1 text-[11px] font-semibold ${n - b > 0 ? 'text-red-500' : 'text-brand'}`}>{n - b > 0 ? '+' : ''}{n - b}</span>}
                         </td>
                       );
                     } else if (r.kind === 'total') {
@@ -204,7 +204,7 @@ export function Summary() {
       <div className="rounded-xl border bg-white print:hidden">
         <div className="border-b px-4 py-3 text-sm font-semibold">Latest movements</div>
         {recent.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-slate-500">No enterprises placed yet. Start with “Add to tracker”.</p>
+          <p className="px-4 py-4 text-sm text-slate-500">No enterprises placed yet. Open Enterprises or Board — every enterprise is listed with its district, ready to be placed.</p>
         ) : (
           <ul className="divide-y">
             {recent.map((h) => {
@@ -242,7 +242,7 @@ export function Summary() {
 }
 
 function Kpi({ label, value, sub, tone }: { label: string; value: number; sub: string; tone: 'emerald' | 'sky' | 'amber' | 'orange' }) {
-  const bar = { emerald: 'bg-emerald-600', sky: 'bg-sky-600', amber: 'bg-amber-500', orange: 'bg-orange-500' }[tone];
+  const bar = { emerald: 'bg-brand-logo', sky: 'bg-fdblue', amber: 'bg-amber-500', orange: 'bg-fdbrown-light' }[tone];
   return (
     <div className="relative overflow-hidden rounded-xl border bg-white p-4">
       <div className={`absolute inset-y-0 left-0 w-1 ${bar}`} />

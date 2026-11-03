@@ -1,11 +1,9 @@
+/** 4D cube mark (square). */
 export function Logo({ size = 32 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-label="4D Climate Solutions">
-      <rect width="32" height="32" rx="7" fill="#006838" />
-      <text x="16" y="21.5" fontFamily="Arial,Helvetica,sans-serif" fontSize="13" fontWeight="700" fill="#fff" textAnchor="middle">
-        4D
-      </text>
-      <rect x="7" y="25" width="18" height="2.5" rx="1.2" fill="#8DC63F" />
-    </svg>
-  );
+  return <img src="/4d-icon.png" width={size} height={size} alt="4D Climate Solutions" className="shrink-0" />;
+}
+
+/** Full 4D Climate Solutions logo with tagline. */
+export function FullLogo({ height = 56 }: { height?: number }) {
+  return <img src="/4d-logo.png" style={{ height }} className="w-auto" alt="4D Climate Solutions — creative · innovative · green · sustainable" />;
 }

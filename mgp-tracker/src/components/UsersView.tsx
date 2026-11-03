@@ -29,7 +29,7 @@ export function UsersView() {
     if (!u.is_active) return <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-600">Deactivated</span>;
     if (u.pin_expires_at && new Date(u.pin_expires_at) > new Date())
       return <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900">PIN issued · expires {fmtDate(u.pin_expires_at)}</span>;
-    if (u.activated_at) return <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">Active</span>;
+    if (u.activated_at) return <span className="rounded bg-brand-light px-2 py-0.5 text-xs text-brand-dark">Active</span>;
     return <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Needs PIN</span>;
   };
 
@@ -203,7 +203,7 @@ function EditUser({ user, isSuper, onClose, onSaved }: { user: MgpUser | null; i
           ))}
         </select>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="h-4 w-4 accent-[#006838]" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          <input type="checkbox" className="h-4 w-4 accent-[#008C44]" checked={active} onChange={(e) => setActive(e.target.checked)} />
           Active (untick to block sign-in)
         </label>
         <div className="flex justify-end gap-2 pt-2">

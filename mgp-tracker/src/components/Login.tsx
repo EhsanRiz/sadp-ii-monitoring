@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { supabase, phoneToEmail, maskPhone } from '../lib/supabase';
 import { Button, inputCls } from './ui';
-import { Logo } from './Logo';
+import { FullLogo } from './Logo';
 
 export function Login() {
   const [mode, setMode] = useState<'signin' | 'activate'>('signin');
@@ -48,12 +48,13 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-light via-white to-lime/10 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-white p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Logo size={48} />
-          <h1 className="mt-3 text-xl font-bold text-slate-900">MGP M1 Approval Tracker</h1>
-          <p className="text-sm text-slate-500">SADP II · Central Region · 4D Climate Solutions</p>
+          <FullLogo height={64} />
+          <div className="mt-5 h-1 w-24 rounded-full bg-gradient-to-r from-fdblue via-fdlime to-fdbrown-light" />
+          <h1 className="mt-4 text-xl font-bold text-brand-dark">MGP M1 Approval Tracker</h1>
+          <p className="text-sm text-fdbrown">SADP II Matching Grants · Central Region</p>
         </div>
 
         <div className="rounded-xl border bg-white p-5 shadow-sm">
