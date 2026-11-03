@@ -9,7 +9,7 @@ import { Button, StageChip, Empty, selectCls } from './ui';
 
 type StageFilter = '' | StageKey | 'pending' | 'with_4d' | 'unplaced';
 const GROUPS: Record<'pending' | 'with_4d', StageKey[]> = {
-  pending: ['sadp_queries', 'under_review', 'with_isp', 'blocked_infra', 'withdrawn'],
+  pending: ['sadp_queries', 'under_review', 'with_isp', 'blocked_infra'],
   with_4d: ['sadp_queries', 'under_review'],
 };
 

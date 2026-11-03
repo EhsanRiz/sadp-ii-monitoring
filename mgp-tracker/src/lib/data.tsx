@@ -159,6 +159,7 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
         scheduleReload();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_settings' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mgp_excluded' }, scheduleReload)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mgp_stage_history' }, (payload) => {
         pending.current.push(payload.new as HistoryRow);
         scheduleReload();

@@ -452,3 +452,20 @@ BEGIN
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION public.mgp_actions_guard() FROM PUBLIC, anon, authenticated;
+
+-- ---------- 408: enterprises removed from the tracker (e.g. withdrawn) ---------
+CREATE TABLE IF NOT EXISTS public.mgp_excluded (
+  enterprise_id uuid PRIMARY KEY REFERENCES public.enterprises(id) ON DELETE CASCADE,
+  reason        text,
+  excluded_by   uuid REFERENCES public.mgp_users(id) ON DELETE SET NULL,
+  excluded_at   timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.mgp_excluded ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.mgp_excluded FROM anon;
+CREATE INDEX IF NOT EXISTS mgp_excluded_by_idx ON public.mgp_excluded(excluded_by);
+CREATE POLICY mgp_excluded_select ON public.mgp_excluded FOR SELECT TO authenticated USING ((SELECT public.mgp_is_member()));
+CREATE POLICY mgp_excluded_write ON public.mgp_excluded FOR ALL TO authenticated
+  USING ((SELECT public.mgp_is_admin())) WITH CHECK ((SELECT public.mgp_is_admin()));
+-- mgp_enterprise_catalog() now also filters: AND NOT EXISTS (SELECT 1 FROM public.mgp_excluded x WHERE x.enterprise_id = e.id)
+ALTER PUBLICATION supabase_realtime ADD TABLE public.mgp_excluded;
+-- Data (3 Nov 2026): City of Grace Park Pty Ltd, Goshen, Mamorena & TM Poultry excluded as Withdrawn.

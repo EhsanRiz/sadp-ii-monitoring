@@ -7,7 +7,8 @@ import { changeStage } from '../lib/mutations';
 import { Button, Drawer, Modal, StageChip, inputCls, toast } from './ui';
 
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
-  const { itemById, history, users, items, canEdit, isAdmin, userName, reload } = useData();
+  const { itemById, history, users, items, canEdit, isAdmin, userName, reload, me } = useData();
+  const [removeReason, setRemoveReason] = useState('Withdrawn');
   const it = trackingId ? itemById[trackingId] : undefined;
 
   const [target, setTarget] = useState<StageKey | null>(null);
@@ -53,6 +54,13 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   }
 
   async function remove() {
+    if (it!.enterprise_id) {
+      // keep it out of the enterprise list and totals (e.g. withdrawn)
+      const { error: xErr } = await supabase
+        .from('mgp_excluded')
+        .upsert({ enterprise_id: it!.enterprise_id, reason: removeReason || 'Removed from tracker', excluded_by: me?.id ?? null });
+      if (xErr) return toast.err(errMsg(xErr));
+    }
     const { error } = await supabase.from('mgp_tracking').delete().eq('id', it!.id);
     if (error) return toast.err(errMsg(error));
     toast.ok(`${it!.name} removed from tracker`);
@@ -184,7 +192,10 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
       </div>
 
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Remove from tracker?">
-        <p className="mb-4 text-sm text-slate-600">This removes {it.name} from the tracker along with its action plan and history. It does not touch the enterprise in the monitoring app.</p>
+        <p className="mb-3 text-sm text-slate-600">
+          {it.name} will be taken off the tracker and out of all totals (e.g. if withdrawn), together with its action plan and history. The enterprise itself stays in the monitoring app.
+        </p>
+        <input className={`${inputCls} mb-4`} value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} placeholder="Reason (e.g. Withdrawn)" />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
             Cancel

@@ -14,7 +14,7 @@ type Row =
   | { kind: 'unplaced'; label: string }
   | { kind: 'total'; label: string };
 
-const PENDING: StageKey[] = ['sadp_queries', 'under_review', 'with_isp', 'blocked_infra', 'withdrawn'];
+const PENDING: StageKey[] = ['sadp_queries', 'under_review', 'with_isp', 'blocked_infra'];
 
 const ROWS: Row[] = [
   { kind: 'stage', key: 'approved', label: '1. Approved', indent: 0, strong: true },
@@ -25,7 +25,6 @@ const ROWS: Row[] = [
   { kind: 'stage', key: 'under_review', label: '(ii) Under 4D review — submitted by ISP/farmer', indent: 2 },
   { kind: 'stage', key: 'with_isp', label: '(b) With ISPs', indent: 1 },
   { kind: 'stage', key: 'blocked_infra', label: '(c) Borehole / shadenet', indent: 1 },
-  { kind: 'stage', key: 'withdrawn', label: '(d) Withdrawal', indent: 1 },
   { kind: 'group', filter: 'pending', keys: PENDING, label: 'Total pending (3)', indent: 0 },
   { kind: 'unplaced', label: 'Not yet placed on tracker' },
   { kind: 'total', label: 'Total' },
