@@ -404,3 +404,51 @@ END $$;
 REVOKE ALL ON FUNCTION public.mgp_actions_guard() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER mgp_actions_a_guard_trg BEFORE UPDATE ON public.mgp_actions
   FOR EACH ROW EXECUTE FUNCTION public.mgp_actions_guard();
+
+-- ---------- 406/407: typed owner names that match a registered user become ----
+-- real assignments (old/cached app versions); guard limited to app sessions.
+CREATE OR REPLACE FUNCTION public.mgp_actions_before()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.created_by := coalesce(public.mgp_current_user_id(), NEW.created_by);
+  END IF;
+  IF NEW.assigned_to IS NULL AND NEW.owner IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.owner IS DISTINCT FROM OLD.owner) THEN
+    NEW.assigned_to := (SELECT u.id FROM public.mgp_users u
+                         WHERE u.is_active AND lower(trim(u.full_name)) = lower(trim(NEW.owner)) LIMIT 1);
+  END IF;
+  IF NEW.assigned_to IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.assigned_to IS DISTINCT FROM OLD.assigned_to) THEN
+    NEW.assigned_at := now();
+    NEW.assigned_by := coalesce(public.mgp_current_user_id(), NEW.created_by);
+    NEW.owner := (SELECT u.full_name FROM public.mgp_users u WHERE u.id = NEW.assigned_to);
+  ELSIF NEW.assigned_to IS NULL AND TG_OP = 'UPDATE' AND OLD.assigned_to IS NOT NULL THEN
+    NEW.assigned_at := NULL;
+    NEW.assigned_by := NULL;
+    IF NEW.owner IS NOT DISTINCT FROM OLD.owner THEN NEW.owner := NULL; END IF;
+  END IF;
+  IF NEW.status = 'done' AND (TG_OP = 'INSERT' OR OLD.status <> 'done') THEN
+    NEW.done_at := now();
+    NEW.done_by := public.mgp_current_user_id();
+  ELSIF NEW.status = 'open' THEN
+    NEW.done_at := NULL;
+    NEW.done_by := NULL;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.mgp_actions_before() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.mgp_actions_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  IF (SELECT auth.uid()) IS NOT NULL AND NOT public.mgp_can_edit() THEN
+    NEW.tracking_id := OLD.tracking_id; NEW.kind := OLD.kind; NEW.description := OLD.description;
+    NEW.owner := OLD.owner; NEW.due_date := OLD.due_date; NEW.assigned_to := OLD.assigned_to;
+    NEW.assigned_by := OLD.assigned_by; NEW.assigned_at := OLD.assigned_at;
+    NEW.created_by := OLD.created_by; NEW.created_at := OLD.created_at;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.mgp_actions_guard() FROM PUBLIC, anon, authenticated;
