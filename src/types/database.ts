@@ -991,6 +991,21 @@ export interface Database {
         };
         Relationships: [];
       };
+      district_finance_rollup: {
+        Row: {
+          district_id: string;
+          district: string;
+          enterprises: number;
+          tracked: number;
+          in_m1: number;
+          in_m2: number;
+          graduated: number;
+          farmer_contract: number;
+          farmer_contributed: number;
+          yet_to_report: number;
+        };
+        Relationships: [];
+      };
       enterprise_esmp_status: {
         Row: {
           enterprise_id: string;
