@@ -34,12 +34,14 @@ export default defineConfig({
         name: 'SADP-II Monitoring',
         short_name: 'SADP-II',
         description:
-          'Smallholder Agriculture Development Project II — Monitoring app for 4D Climate Solutions and RSDA',
+          'Smallholder Agriculture Development Project II — Monitoring app for 4D Climate Solutions',
         theme_color: '#006838',
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        // Installed app launches straight into the monitoring tool; the public
+        // website lives at the web root ('/') for browser visitors.
+        start_url: '/dashboard',
         scope: '/',
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },

@@ -28,6 +28,11 @@ import { InspectionEditPage } from '@/pages/enterprises/InspectionEditPage';
 import { M1EditPage } from '@/pages/enterprises/M1EditPage';
 import { MonitoringVisitEditPage } from '@/pages/enterprises/MonitoringVisitEditPage';
 import { UnsavedChangesProvider } from '@/lib/use-unsaved-changes-guard';
+import { PublicLayout } from '@/components/public/PublicLayout';
+import { HomePage } from '@/pages/public/HomePage';
+import { AboutPage } from '@/pages/public/AboutPage';
+import { ResultsPage } from '@/pages/public/ResultsPage';
+import { PartnersPage } from '@/pages/public/PartnersPage';
 
 /**
  * Lazy-load the heavy / infrequent routes into their own chunks so they don't
@@ -110,6 +115,14 @@ function RootLayout() {
 export const appRouter = createBrowserRouter(
   createRoutesFromElements(
     <Route element={<RootLayout />}>
+      {/* Public website (no login). Monitoring lives behind /dashboard. */}
+      <Route element={<PublicLayout />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/results" element={<ResultsPage />} />
+        <Route path="/partners" element={<PartnersPage />} />
+      </Route>
+
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/set-password" element={<SetPasswordPage />} />
@@ -205,8 +218,8 @@ export const appRouter = createBrowserRouter(
         <Route path="/admin/geography" element={<AdminGeographyPage />} />
       </Route>
 
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Unknown paths fall back to the public home. */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Route>,
   ),
 );

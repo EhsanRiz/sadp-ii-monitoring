@@ -36,7 +36,7 @@ export function AskPage() {
   const { isSuperAdmin } = useAuth();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<QuestionCategory | 'all'>('all');
-  const [scope, setScope] = useState<'all' | '4D' | 'RSDA'>('all');
+  const [scope, setScope] = useState<'all' | '4D'>('all');
   const [selected, setSelected] = useState<CuratedQuestion | null>(null);
   const [showSql, setShowSql] = useState(false);
   const run = useRunCuratedQuery();
@@ -160,12 +160,11 @@ export function AskPage() {
             <div className="flex flex-wrap items-center gap-2 pb-1 border-b">
               <span className="text-xs text-muted-foreground mr-1">Scope:</span>
               <div className="min-w-[200px]">
-                <Select value={scope} onValueChange={(v) => setScope(v as 'all'|'4D'|'RSDA')}>
+                <Select value={scope} onValueChange={(v) => setScope(v as 'all'|'4D')}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All organisations</SelectItem>
                     <SelectItem value="4D">4D only</SelectItem>
-                    <SelectItem value="RSDA">RSDA only</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
