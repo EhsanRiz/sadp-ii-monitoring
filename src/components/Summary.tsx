@@ -7,6 +7,7 @@ import { useNav, type ListFilter } from '../App';
 import { Button, Modal, toast } from './ui';
 import { MyTasksCard } from './Tasks';
 import { LifecycleRollup } from './LifecycleRollup';
+import { LifecycleFlow } from './LifecycleFlow';
 
 type Row =
   | { kind: 'stage'; key: StageKey; label: string; indent: number; strong?: boolean }
@@ -205,6 +206,9 @@ export function Summary() {
 
       {/* Lifecycle rollups */}
       <LifecycleRollup />
+
+      {/* Lifecycle flow (enterprises under each journey step) */}
+      <LifecycleFlow />
 
       {/* Recent movement */}
       <div className="rounded-xl border bg-white print:hidden">
