@@ -18,6 +18,7 @@ import {
   stageFinanceOrEmpty,
   farmerVariance,
   pctDepleted,
+  approvalTurnaroundDays,
   formatLsl,
   emptyStageFinance,
   BA_STATUS_META,
@@ -126,6 +127,7 @@ interface CardProps {
 function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardProps) {
   const variance = farmerVariance(f);
   const depleted = pctDepleted(f);
+  const turnaround = approvalTurnaroundDays(f);
   const set = <K extends keyof StageFinance>(key: K, v: StageFinance[K]) => onChange(stage, key, v);
 
   return (
@@ -183,6 +185,20 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardPro
             <input type="date" className={inputCls} value={f.report_date ?? ''} onChange={(e) => set('report_date', e.target.value || null)} />
           </Field>
           <ReadOut label="Depleted" value={depleted == null ? '—' : `${depleted}%`} warn={depleted != null && depleted >= 90} />
+        </div>
+      </fieldset>
+
+      {/* Report approval turnaround */}
+      <fieldset className="space-y-2" disabled={readOnly}>
+        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stage.toUpperCase()} report approval (PFO → SADP)</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Field label="Submitted to PFO">
+            <input type="date" className={inputCls} value={f.pfo_submitted_date ?? ''} onChange={(e) => set('pfo_submitted_date', e.target.value || null)} />
+          </Field>
+          <Field label="Approved by SADP">
+            <input type="date" className={inputCls} value={f.sadp_approved_date ?? ''} onChange={(e) => set('sadp_approved_date', e.target.value || null)} />
+          </Field>
+          <ReadOut label="Turnaround" value={turnaround == null ? '—' : `${turnaround} day${turnaround === 1 ? '' : 's'}`} warn={turnaround != null && turnaround > 30} />
         </div>
       </fieldset>
     </div>
