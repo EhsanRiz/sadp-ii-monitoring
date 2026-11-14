@@ -39,7 +39,7 @@ import { OfflineErrorState } from '@/components/OfflineErrorState';
 /**
  * Dashboard — landing page for every signed-in user.
  *
- *   - Super Admin sees one section per organization (4D + RSDA stacked).
+ *   - Super Admin sees one section per organization (stacked).
  *   - Everyone else sees their own org only.
  *   - Each section: 4 stat cards (icon + count + sparkline), a donut of
  *     enterprises by type, and a horizontal bar of M1-readiness pipeline.
@@ -49,7 +49,7 @@ export function DashboardPage() {
   const { data: orgs } = useOrganizations();
 
   // For non-super-admin users, find their own org so the dashboard section
-  // header reads "4D" / "RSDA" instead of the generic "Your org".
+  // header reads the org code (e.g. "4D") instead of the generic "Your org".
   const myOrg = !isSuperAdmin
     ? orgs?.find((o) => o.id === organizationId) ?? null
     : null;
@@ -400,7 +400,7 @@ function OrgSection({ orgId, orgCode, orgName }: OrgSectionProps) {
 
 // ---------------------------------------------------------------------------
 // LifecycleMatrix — district × milestone aggregation table.
-// Mirrors RSDA's "Analysed beneficiary" sheet: one row per district plus a
+// Mirrors the "Analysed beneficiary" sheet: one row per district plus a
 // grand-total row; one column per milestone; cell shows "count_yes / total".
 // Cells colored by completion ratio.
 // ---------------------------------------------------------------------------

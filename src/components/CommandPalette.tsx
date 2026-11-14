@@ -17,7 +17,7 @@
  *     similar names are distinguishable.
  *
  * Reads `useEnterprises({})` so results are already RLS-scoped to the
- * caller's org (super_admin sees everything; 4D / RSDA each see their
+ * caller's org (super_admin sees everything; each org sees its
  * own set).
  */
 import {

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 
 /**
- * Organizations are seeded by migration 110 (4D + RSDA) and intentionally
+ * Organizations are seeded by migration 110 and intentionally
  * read-only. Adding a new partner needs an explicit, audited decision —
  * not a click in an admin panel.
  */
