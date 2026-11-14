@@ -1,29 +1,9 @@
-/**
- * 4D Climate Solutions logo. Renders the official PNGs in public/.
- *   - /logo-4d.png      → full lockup (cube + "4D Climate Solutions" wordmark)
- *   - /logo-4d-mark.png → cube logomark only (for compact spots)
- */
-interface LogoProps {
-  /** Compact = cube mark only (no wordmark). For tight headers/favicons. */
-  compact?: boolean;
-  className?: string;
+/** 4D cube mark (square). */
+export function Logo({ size = 32 }: { size?: number }) {
+  return <img src="/4d-icon.png" width={size} height={size} alt="4D Climate Solutions" className="shrink-0" />;
 }
 
-export function Logo({ compact = false, className }: LogoProps) {
-  if (compact) {
-    return (
-      <img
-        src="/logo-4d-mark.png"
-        alt="4D Climate Solutions"
-        className={`h-8 w-8 object-contain ${className ?? ''}`}
-      />
-    );
-  }
-  return (
-    <img
-      src="/logo-4d.png"
-      alt="4D Climate Solutions"
-      className={`h-12 max-w-[220px] object-contain ${className ?? ''}`}
-    />
-  );
+/** Full 4D Climate Solutions logo with tagline. */
+export function FullLogo({ height = 56 }: { height?: number }) {
+  return <img src="/4d-logo.png" style={{ height }} className="w-auto max-w-none shrink-0" alt="4D Climate Solutions — creative · innovative · green · sustainable" />;
 }

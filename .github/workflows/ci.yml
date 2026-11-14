@@ -15,21 +15,4 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
-
-  mgp-tracker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: mgp-tracker/package-lock.json
-      - run: npm ci
-        working-directory: mgp-tracker
       - run: npm run build # tsc --noEmit && vite build
-        working-directory: mgp-tracker

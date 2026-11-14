@@ -1,5 +1,0 @@
-# Cloudflare Pages SPA fallback.
-# Real files (assets, sw.js, manifest, icons) are served first; any other path
-# falls back to index.html so client-side routes (deep links, refresh) work.
-# (Render uses its own rewrite rule; this file is harmless there.)
-/*    /index.html   200

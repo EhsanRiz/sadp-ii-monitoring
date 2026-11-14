@@ -1,225 +1,185 @@
-import { useEffect, lazy, Suspense, type ComponentType } from 'react';
-import {
-  Outlet,
-  Route,
-  Navigate,
-  useLocation,
-  useNavigate,
-  createBrowserRouter,
-  createRoutesFromElements,
-} from 'react-router-dom';
-import { Toaster } from 'sonner';
-import { RoleGate } from '@/components/RoleGate';
-import { AppShell } from '@/components/AppShell';
-import { PageFallback } from '@/components/PageFallback';
-import { LoginPage } from '@/pages/LoginPage';
-import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
-import { SetPasswordPage } from '@/pages/SetPasswordPage';
-import { SyncConflictsPage } from '@/pages/SyncConflictsPage';
-import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
-import { INITIAL_URL_TYPE } from '@/lib/initial-url';
-// Core day-to-day pages stay in the main bundle (no heavy deps, hot path).
-import { EnterprisesListPage } from '@/pages/enterprises/EnterprisesListPage';
-import { EnterpriseDetailPage } from '@/pages/enterprises/EnterpriseDetailPage';
-import { NewEnterprisePage } from '@/pages/enterprises/NewEnterprisePage';
-import { EssfEditPage } from '@/pages/enterprises/EssfEditPage';
-import { EmmpEditPage } from '@/pages/enterprises/EmmpEditPage';
-import { InspectionEditPage } from '@/pages/enterprises/InspectionEditPage';
-import { M1EditPage } from '@/pages/enterprises/M1EditPage';
-import { MonitoringVisitEditPage } from '@/pages/enterprises/MonitoringVisitEditPage';
-import { UnsavedChangesProvider } from '@/lib/use-unsaved-changes-guard';
-import { PublicLayout } from '@/components/public/PublicLayout';
-import { HomePage } from '@/pages/public/HomePage';
-import { AboutPage } from '@/pages/public/AboutPage';
-import { ResultsPage } from '@/pages/public/ResultsPage';
-import { PartnersPage } from '@/pages/public/PartnersPage';
+import { createContext, useContext, useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { LayoutGrid, Columns3, List, ListChecks, PlusCircle, Users, LogOut, History } from 'lucide-react';
+import { supabase } from './lib/supabase';
+import { DataProvider, useData } from './lib/data';
+import type { StageKey } from './lib/stages';
+import type { LifecycleStage } from './lib/lifecycle';
+import { Login } from './components/Login';
+import { Logo, FullLogo } from './components/Logo';
+import { Toaster, Button } from './components/ui';
+import { Summary } from './components/Summary';
+import { Board } from './components/Board';
+import { ListView } from './components/ListView';
+import { ActionsView } from './components/ActionsView';
+import { PlaceView } from './components/PlaceView';
+import { UsersView } from './components/UsersView';
+import { ActivityView } from './components/ActivityView';
+import { EnterpriseDrawer } from './components/EnterpriseDrawer';
+import { BellMenu } from './components/Tasks';
 
-/**
- * Lazy-load the heavy / infrequent routes into their own chunks so they don't
- * bloat the initial bundle that every field user downloads on a slow link:
- *   - Dashboard pulls in recharts
- *   - the .pdf routes + Reports pull in @react-pdf/renderer (and xlsx)
- *   - the admin section is super-admin-only
- * `lazyNamed` adapts our named exports to React.lazy's default-export contract.
- */
-function lazyNamed<T extends Record<string, ComponentType<object>>>(
-  loader: () => Promise<T>,
-  name: keyof T,
-) {
-  return lazy(() => loader().then((m) => ({ default: m[name] })));
+export type View = 'summary' | 'board' | 'list' | 'actions' | 'activity' | 'add' | 'users';
+export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d' | 'unplaced'; lifecycle?: LifecycleStage; district?: string; owner?: string }
+
+interface Nav {
+  view: View;
+  go: (v: View, f?: ListFilter) => void;
+  listFilter: ListFilter;
+  openItem: (trackingId: string) => void;
 }
+const NavCtx = createContext<Nav | null>(null);
+export const useNav = () => useContext(NavCtx)!;
 
-const DashboardPage = lazyNamed(() => import('@/pages/DashboardPage'), 'DashboardPage');
-const CoverPagePdfRoute = lazyNamed(() => import('@/pages/enterprises/CoverPagePdfRoute'), 'CoverPagePdfRoute');
-const EsmpPdfRoute = lazyNamed(() => import('@/pages/enterprises/EsmpPdfRoute'), 'EsmpPdfRoute');
-const M1PdfRoute = lazyNamed(() => import('@/pages/enterprises/M1PdfRoute'), 'M1PdfRoute');
-const ReportsHomePage = lazyNamed(() => import('@/pages/reports/ReportsHomePage'), 'ReportsHomePage');
-const ReportsArchivePage = lazyNamed(() => import('@/pages/reports/ReportsArchivePage'), 'ReportsArchivePage');
-const OrganizationsAdminPage = lazyNamed(() => import('@/pages/admin/OrganizationsAdminPage'), 'OrganizationsAdminPage');
-const UsersAdminPage = lazyNamed(() => import('@/pages/admin/UsersAdminPage'), 'UsersAdminPage');
-const DistrictsAdminPage = lazyNamed(() => import('@/pages/admin/DistrictsAdminPage'), 'DistrictsAdminPage');
-const CommunityCouncilsAdminPage = lazyNamed(() => import('@/pages/admin/CommunityCouncilsAdminPage'), 'CommunityCouncilsAdminPage');
-const ResourceCentersAdminPage = lazyNamed(() => import('@/pages/admin/ResourceCentersAdminPage'), 'ResourceCentersAdminPage');
-const EnterpriseTypesAdminPage = lazyNamed(() => import('@/pages/admin/EnterpriseTypesAdminPage'), 'EnterpriseTypesAdminPage');
-const AdminGeographyPage = lazyNamed(() => import('@/pages/admin/AdminGeographyPage'), 'AdminGeographyPage');
-
-/**
- * Root layout — wraps the entire app. Runs the invite/recovery redirect
- * once on mount and renders the Toaster portal + an <Outlet /> for child
- * routes.
- *
- * Lives inside the data router so it can use useLocation + useNavigate
- * normally.
- */
-function RootLayout() {
-  const location = useLocation();
-  const navigate = useNavigate();
+export function App() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
   useEffect(() => {
-    if (INITIAL_URL_TYPE && location.pathname !== '/set-password') {
-      navigate('/set-password', { replace: true });
-    }
-    // run once on mount — INITIAL_URL_TYPE is a module constant
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
   }, []);
 
+  if (session === undefined) return <Splash />;
   return (
     <>
-      <Toaster
-        position="top-right"
-        richColors
-        closeButton
-        toastOptions={{ duration: 4000 }}
-      />
-      {/* Outer Suspense for lazy routes that render without the AppShell
-          (the raw .pdf routes). Shell routes have their own inner boundary so
-          the nav stays put while a page chunk loads. */}
-      <Suspense fallback={<PageFallback />}>
-        <Outlet />
-      </Suspense>
+      <Toaster />
+      {session ? (
+        <DataProvider key={session.user.id} authUserId={session.user.id}>
+          <Shell />
+        </DataProvider>
+      ) : (
+        <Login />
+      )}
     </>
   );
 }
 
-/**
- * Top-level route table built as a data router so we can use the stable
- * `useBlocker` hook for unsaved-changes guards. RBAC matrix
- * (PHASE_1_DESIGN.md §4):
- *
- *   super_admin      → everything, all orgs
- *   team_leader      → read everything in own org
- *   me_officer       → read/write enterprises in own org
- *   field_supervisor → read/write enterprises in own org
- *
- * Admin section is super-admin-only; non-admins land directly on /dashboard.
- */
-export const appRouter = createBrowserRouter(
-  createRoutesFromElements(
-    <Route element={<RootLayout />}>
-      {/* Public website (no login). Monitoring lives behind /dashboard. */}
-      <Route element={<PublicLayout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/results" element={<ResultsPage />} />
-        <Route path="/partners" element={<PartnersPage />} />
-      </Route>
+function Splash() {
+  return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Loading…</div>;
+}
 
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/set-password" element={<SetPasswordPage />} />
-      <Route path="/unauthorized" element={<UnauthorizedPage />} />
+const VIEWS: { key: View; label: string; icon: typeof List; admin?: boolean; edit?: boolean }[] = [
+  { key: 'summary', label: 'Summary', icon: LayoutGrid },
+  { key: 'board', label: 'Board', icon: Columns3 },
+  { key: 'list', label: 'Enterprises', icon: List },
+  { key: 'actions', label: 'Actions', icon: ListChecks },
+  { key: 'activity', label: 'Activity', icon: History },
+  { key: 'add', label: 'Bulk add', icon: PlusCircle, edit: true },
+  { key: 'users', label: 'Users', icon: Users, admin: true },
+];
 
-      {/* Authenticated routes — anyone signed-in */}
-      <Route
-        element={
-          <RoleGate>
-            <AppShell />
-          </RoleGate>
-        }
-      >
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/enterprises" element={<EnterprisesListPage />} />
-        <Route path="/enterprises/new" element={<NewEnterprisePage />} />
-        {/* Wrap the enterprise detail page in an UnsavedChangesProvider so
-            the Details cover-page form AND the EnterpriseLifecycleEditor
-            can both register their dirty flag, and the page shows ONE
-            confirmation prompt on navigation (instead of two from
-            independent useBlocker instances). */}
-        <Route
-          path="/enterprises/:id"
-          element={
-            <UnsavedChangesProvider message="You have unsaved changes on this enterprise — leave anyway?">
-              <EnterpriseDetailPage />
-            </UnsavedChangesProvider>
-          }
-        />
-        <Route path="/enterprises/:id/essf" element={<EssfEditPage />} />
-        <Route path="/enterprises/:id/emmp" element={<EmmpEditPage />} />
-        <Route path="/enterprises/:id/inspections/new" element={<InspectionEditPage />} />
-        <Route path="/enterprises/:id/inspections/:visitId" element={<InspectionEditPage />} />
-        <Route path="/enterprises/:id/m1" element={<M1EditPage />} />
-        <Route
-          path="/enterprises/:id/monitoring-visits/new"
-          element={<MonitoringVisitEditPage />}
-        />
-        <Route
-          path="/enterprises/:id/monitoring-visits/:visitId"
-          element={<MonitoringVisitEditPage />}
-        />
+function readHash(): View {
+  const h = window.location.hash.replace('#', '') as View;
+  return VIEWS.some((v) => v.key === h) ? h : 'summary';
+}
 
-        {/* Reports */}
-        <Route path="/reports" element={<ReportsHomePage />} />
-        <Route path="/reports/:kind" element={<ReportsHomePage />} />
-        <Route path="/reports/archive" element={<ReportsArchivePage />} />
+function Shell() {
+  const { loading, error, me, isAdmin, canEdit, live } = useData();
+  const [view, setView] = useState<View>(readHash());
+  const [listFilter, setListFilter] = useState<ListFilter>({});
+  const [openId, setOpenId] = useState<string | null>(null);
 
-        {/* Phase 6 — offline queue conflict review */}
-        <Route path="/sync-conflicts" element={<SyncConflictsPage />} />
-      </Route>
+  useEffect(() => {
+    const h = () => setView(readHash());
+    window.addEventListener('hashchange', h);
+    return () => window.removeEventListener('hashchange', h);
+  }, []);
 
-      {/* Cover-page PDF — auth required, but renders raw PDF (not inside AppShell) */}
-      <Route
-        path="/enterprises/:id/cover-page.pdf"
-        element={
-          <RoleGate>
-            <CoverPagePdfRoute />
-          </RoleGate>
-        }
-      />
-      <Route
-        path="/enterprises/:id/m1.pdf"
-        element={
-          <RoleGate>
-            <M1PdfRoute />
-          </RoleGate>
-        }
-      />
-      <Route
-        path="/enterprises/:id/esmp.pdf"
-        element={
-          <RoleGate>
-            <EsmpPdfRoute />
-          </RoleGate>
-        }
-      />
+  const go = (v: View, f?: ListFilter) => {
+    setListFilter(f ?? {});
+    window.location.hash = v;
+    setView(v);
+    window.scrollTo(0, 0);
+  };
 
-      {/* Admin routes — Super Admin only */}
-      <Route
-        element={
-          <RoleGate roles={['super_admin']}>
-            <AppShell />
-          </RoleGate>
-        }
-      >
-        <Route path="/admin/organizations" element={<OrganizationsAdminPage />} />
-        <Route path="/admin/users" element={<UsersAdminPage />} />
-        <Route path="/admin/districts" element={<DistrictsAdminPage />} />
-        <Route path="/admin/community-councils" element={<CommunityCouncilsAdminPage />} />
-        <Route path="/admin/resource-centers" element={<ResourceCentersAdminPage />} />
-        <Route path="/admin/enterprise-types" element={<EnterpriseTypesAdminPage />} />
-        <Route path="/admin/geography" element={<AdminGeographyPage />} />
-      </Route>
+  if (loading) return <Splash />;
 
-      {/* Unknown paths fall back to the public home. */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Route>,
-  ),
-);
+  if (!me) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
+        <p className="text-sm text-slate-600">{error ? `Error: ${error}` : 'Your account is not active on the tracker. Contact your admin.'}</p>
+        <Button variant="secondary" onClick={() => supabase.auth.signOut()}>Sign out</Button>
+      </div>
+    );
+  }
+
+  const visible = VIEWS.filter((v) => (!v.admin || isAdmin) && (!v.edit || canEdit));
+
+  return (
+    <NavCtx.Provider value={{ view, go, listFilter, openItem: setOpenId }}>
+      <div className="min-h-screen pb-20 lg:pb-0">
+        <header className="sticky top-0 z-30 border-b bg-white/95 backdrop-blur print:static print:border-0">
+          <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-2.5">
+            <span className="sm:hidden"><Logo size={34} /></span>
+            <span className="hidden sm:block"><FullLogo height={36} /></span>
+            <div className="min-w-0 border-l border-slate-200 pl-3 leading-tight lg:hidden 2xl:block">
+              <div className="truncate text-sm font-bold text-brand-dark">MGP M1 Approval Tracker</div>
+              <div className="truncate text-[11px] text-fdbrown">SADP II · Central Region</div>
+            </div>
+            <nav className="ml-4 hidden items-center gap-0.5 lg:flex print:hidden">
+              {visible.map((v) => (
+                <button
+                  key={v.key}
+                  onClick={() => go(v.key)}
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium ${view === v.key ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  <v.icon size={16} />
+                  {v.label}
+                </button>
+              ))}
+            </nav>
+            <div className="ml-auto flex items-center gap-2 print:hidden">
+              <BellMenu />
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${live ? 'bg-brand-light text-brand-dark' : 'bg-amber-50 text-amber-800'}`}
+                title={live ? 'Changes by others appear instantly' : 'Reconnecting — changes will sync when back online'}
+              >
+                <span className="relative flex h-2 w-2">
+                  {live && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-logo opacity-60" />}
+                  <span className={`relative inline-flex h-2 w-2 rounded-full ${live ? 'bg-brand-logo' : 'bg-amber-500'}`} />
+                </span>
+                {live ? 'Live' : 'Reconnecting…'}
+              </span>
+              <span className="hidden whitespace-nowrap text-right text-xs leading-tight text-slate-500 sm:block">
+                <span className="font-medium text-slate-700">{me.full_name}</span>
+                <br />
+                {me.role.replace('_', ' ')}
+              </span>
+              <button onClick={() => supabase.auth.signOut()} className="rounded-md p-2 text-slate-500 hover:bg-slate-100" title="Sign out">
+                <LogOut size={18} />
+              </button>
+            </div>
+          </div>
+          <div className="flex h-1 print:hidden">
+            <div className="flex-1 bg-fdblue" />
+            <div className="flex-1 bg-fdlime" />
+            <div className="flex-1 bg-fdbrown-light" />
+            <div className="flex-1 bg-brand-logo" />
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-[1400px] px-4 py-5">
+          {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not refresh data: {error}</div>}
+          {view === 'summary' && <Summary />}
+          {view === 'board' && <Board />}
+          {view === 'list' && <ListView />}
+          {view === 'actions' && <ActionsView />}
+          {view === 'activity' && <ActivityView />}
+          {view === 'add' && canEdit && <PlaceView />}
+          {view === 'users' && isAdmin && <UsersView />}
+        </main>
+
+        {/* mobile bottom nav */}
+        <nav className="fixed inset-x-0 bottom-0 z-30 grid border-t bg-white lg:hidden print:hidden" style={{ gridTemplateColumns: `repeat(${visible.length}, 1fr)` }}>
+          {visible.map((v) => (
+            <button key={v.key} onClick={() => go(v.key)} className={`flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${view === v.key ? 'text-brand' : 'text-slate-500'}`}>
+              <v.icon size={18} />
+              {v.label.split(' ')[0]}
+            </button>
+          ))}
+        </nav>
+
+        <EnterpriseDrawer trackingId={openId} onClose={() => setOpenId(null)} />
+      </div>
+    </NavCtx.Provider>
+  );
+}
