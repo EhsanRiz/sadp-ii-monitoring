@@ -1,0 +1,12 @@
+{
+  // Cloudflare Workers static-assets config for the Vite/React PWA.
+  // Without this file, `wrangler deploy` tries to auto-configure Vite and
+  // fails on Vite 5 ("cannot be automatically configured").
+  "name": "sadp-ii-monitoring",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    // SPA fallback: unknown paths serve index.html so deep links/refresh work.
+    "not_found_handling": "single-page-application"
+  }
+}
