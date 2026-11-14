@@ -8,6 +8,7 @@ import { Button, Modal, toast } from './ui';
 import { MyTasksCard } from './Tasks';
 import { LifecycleRollup } from './LifecycleRollup';
 import { LifecycleFlow } from './LifecycleFlow';
+import { NeedsAttention } from './NeedsAttention';
 
 type Row =
   | { kind: 'stage'; key: StageKey; label: string; indent: number; strong?: boolean }
@@ -107,6 +108,9 @@ export function Summary() {
         <Kpi label="With 4D" value={count(['sadp_queries', 'under_review'], null)} sub={`${count(['sadp_queries'], null)} resolving queries`} tone="amber" />
         <Kpi label="With ISPs" value={count(['with_isp'], null)} sub={`${unplacedCount(null)} not yet placed`} tone="orange" />
       </div>
+
+      {/* Needs attention queue */}
+      <NeedsAttention />
 
       {/* Stacked progress bar */}
       <div className="rounded-xl border bg-white p-4">

@@ -7,6 +7,8 @@ import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/li
 import { changeStage, setLifecycleStage } from '../lib/mutations';
 import { StageFinanceEditor } from './StageFinanceEditor';
 import { EnterpriseJourney } from './EnterpriseJourney';
+import { deriveRisk } from '../lib/risk';
+import { RiskFlagChips } from './NeedsAttention';
 import { Button, Drawer, Modal, StageChip, LifecycleChip, inputCls, toast } from './ui';
 
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
@@ -35,6 +37,7 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
 
   if (!it) return null;
   const openQueries = it.actions.filter((a) => a.kind === 'sadp_query' && a.status === 'open');
+  const risk = deriveRisk(it);
 
   async function confirmMove() {
     if (!it || !target) return;
@@ -111,6 +114,16 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
       }
     >
       <div className="space-y-6">
+        {/* Risk flags */}
+        {risk.flags.length > 0 && (
+          <div className={`rounded-lg border px-3 py-2.5 ${risk.level === 'red' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+            <div className={`mb-1.5 flex items-center gap-1.5 text-xs font-semibold ${risk.level === 'red' ? 'text-red-700' : 'text-amber-800'}`}>
+              <AlertTriangle size={13} /> Needs attention
+            </div>
+            <RiskFlagChips flags={risk.flags} />
+          </div>
+        )}
+
         {/* Lifecycle milestone */}
         <section>
           <div className="mb-2 flex items-center gap-2">
