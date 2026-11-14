@@ -2,92 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-/* shadcn/ui CSS variables — 4D Climate Solutions brand palette.
- * Primary  #006838 (dark green) → 152° 100% 20%
- * Accent   #8DC63F (lime green) → 81° 56% 51%
- * Pulled from 4dcs.co.za theme-color meta + logo art.
- */
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 152 30% 12%;
+html, body { @apply bg-slate-50 text-slate-900 antialiased; }
 
-    --card: 0 0% 100%;
-    --card-foreground: 152 30% 12%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 152 30% 12%;
-
-    --primary: 152 100% 20%;            /* #006838 — dark green */
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 81 56% 51%;            /* #8DC63F — lime green */
-    --secondary-foreground: 152 30% 12%;
-
-    --muted: 152 12% 95%;
-    --muted-foreground: 152 10% 40%;
-
-    --accent: 81 56% 51%;               /* #8DC63F lime */
-    --accent-foreground: 152 30% 12%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
-
-    /* Semantic status tokens — green-leaning palette to live alongside the
-     * brand greens. Used for status pills, progress bars, chart series. */
-    --success: 152 71% 36%;             /* approved / compliant — sits between brand greens */
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;              /* submitted / partial */
-    --warning-foreground: 30 35% 12%;
-    --info: 199 89% 48%;                /* draft / in progress / informational */
-    --info-foreground: 0 0% 100%;
-
-    /* Subtle ambient backgrounds — used by status sub-cards and stat tiles
-     * so the page isn't a uniform white wall. */
-    --tint-success: 152 60% 96%;
-    --tint-warning: 40 100% 96%;
-    --tint-info: 199 80% 97%;
-    --tint-danger: 0 80% 97%;
-    --tint-neutral: 152 20% 97%;
-
-    --border: 152 15% 88%;
-    --input: 152 15% 88%;
-    --ring: 152 100% 20%;
-
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 152 30% 8%;
-    --foreground: 0 0% 98%;
-    --card: 152 30% 10%;
-    --card-foreground: 0 0% 98%;
-    --popover: 152 30% 10%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 81 56% 51%;
-    --primary-foreground: 152 30% 12%;
-    --secondary: 152 30% 18%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 152 30% 18%;
-    --muted-foreground: 152 12% 70%;
-    --accent: 152 30% 18%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 152 30% 20%;
-    --input: 152 30% 20%;
-    --ring: 81 56% 51%;
-  }
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  body { background: white; }
 }
 
-@layer base {
-  * {
-    @apply border-border;
+/* ---- Hover: rows tint + green accent bar; cards lift ---- */
+@layer components {
+  tbody tr {
+    transition: background-color 160ms ease, box-shadow 160ms ease;
   }
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings:
-      'rlig' 1,
-      'calt' 1;
+  tbody tr > td { transition: background-color 160ms ease, box-shadow 160ms ease; }
+  tbody tr:hover {
+    box-shadow: 0 1px 6px rgba(0, 107, 52, 0.12);
+    position: relative;
+    z-index: 1;
   }
+  tbody tr:hover > td { background-color: #e6f6ed !important; }
+  tbody tr:hover > td:first-child { box-shadow: inset 4px 0 0 #00a551; color: #006b34; }
+
+  .hover-row {
+    transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+  .hover-row:hover {
+    background-color: #e6f6ed;
+    box-shadow: inset 4px 0 0 #00a551;
+  }
+
+  .hover-lift {
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 107, 52, 0.14);
+    border-color: #00a551;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  tbody tr, .hover-row, .hover-lift { transition: none; }
+  .hover-lift:hover { transform: none; }
+}
+@media print {
+  tbody tr:hover { background: none !important; box-shadow: none; }
 }

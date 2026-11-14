@@ -1,19 +1,20 @@
 /**
- * Per-stage money tracking for an enterprise (migration 330).
+ * Per-milestone money tracking for an enterprise (migration 410).
  *
- * Stored as `enterprises.stage_finances` jsonb, keyed by stage ('m1' | 'm2').
+ * Stored as `mgp_tracking.stage_finances` jsonb, keyed by milestone ('m1'|'m2').
  * Mirrors the team's Round 3 contribution + SADP budget sheets:
  *   - Farmer (counterpart) contribution: contract amount, contributed to date
  *     (variance = contract − contributed).
  *   - SADP / Budget Allocation: amount, BA status + submission date.
  *   - Funds: allocated, depleted, "yet to report", plus the stage report status.
  *
- * All amounts are Maloti (LSL). Edits ride the enterprise_patch offline save
- * path, so this works offline on a field tablet.
+ * All amounts are Maloti (LSL).
  */
-import type { Json } from '@/types/database';
 
-/** Stages that have a money record (graduation is terminal, no money block). */
+/** Loosely-typed jsonb as it arrives from supabase-js. */
+export type Json = unknown;
+
+/** Milestones that have a money record (graduation is terminal, no money block). */
 export type MoneyStage = 'm1' | 'm2';
 export const MONEY_STAGES: MoneyStage[] = ['m1', 'm2'];
 
@@ -79,9 +80,7 @@ function parseOne(raw: unknown): StageFinance {
   const o = raw as Record<string, unknown>;
   for (const f of NUM_FIELDS) out[f] = coerceNum(o[f]);
   out.ba_status = BA_STATUSES.includes(o.ba_status as BaStatus) ? (o.ba_status as BaStatus) : null;
-  out.report_status = REPORT_STATUSES.includes(o.report_status as StageReportStatus)
-    ? (o.report_status as StageReportStatus)
-    : null;
+  out.report_status = REPORT_STATUSES.includes(o.report_status as StageReportStatus) ? (o.report_status as StageReportStatus) : null;
   out.ba_submitted_date = typeof o.ba_submitted_date === 'string' ? o.ba_submitted_date : null;
   out.report_date = typeof o.report_date === 'string' ? o.report_date : null;
   return out;
@@ -96,6 +95,16 @@ export function parseStageFinances(json: Json | null | undefined): StageFinances
     if (o[s] && typeof o[s] === 'object') map[s] = parseOne(o[s]);
   }
   return map;
+}
+
+/** Serialise a map back to jsonb, dropping stages with no data entered. */
+export function serializeStageFinances(map: StageFinancesMap): Record<string, StageFinance> {
+  const out: Record<string, StageFinance> = {};
+  for (const s of MONEY_STAGES) {
+    const f = map[s];
+    if (f && hasAnyFinance(f)) out[s] = f;
+  }
+  return out;
 }
 
 /** Get a stage's record, or a blank one when not tracked yet. */

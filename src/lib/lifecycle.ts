@@ -1,150 +1,68 @@
 /**
- * 11-milestone enterprise lifecycle tracker.
+ * Enterprise macro-stage on the M1 → M2 → Graduation journey (migration 410).
  *
- * Mirrors the columns on the programme Master Sheet so field teams share one
- * tracking vocabulary. After migration 282 all 11 milestones are MANUAL (stored in
- * `enterprises.lifecycle_status` jsonb). The "Upload" pill on the ESMP and M1
- * rows is a navigation action (deep-link into the relevant module's tab),
- * NOT a value — the user still has to mark Yes/No themselves once they've
- * uploaded / submitted.
- *
- * Storage shape (jsonb): one key per milestone id, value 'yes' | 'no' | 'n_a'.
- * Missing keys mean "not yet tracked" — shown as a blank cell, not a ✗.
- *
- * Read shape (from enterprise_lifecycle view): one row per enterprise with all
- * 11 columns hydrated (`'yes' | 'no' | 'n_a' | null`).
+ * This is a DIFFERENT axis from the approval workflow in `stages.ts`
+ * (approved / at_sadp / …): that tracks where an M1 report sits in the approval
+ * pipeline; this tracks which *milestone* the enterprise is on. Stored as
+ * `mgp_tracking.lifecycle_stage` ('m1' | 'm2' | 'graduated').
  */
+export type LifecycleStage = 'm1' | 'm2' | 'graduated';
 
-export type LifecycleValue = 'yes' | 'no' | 'n_a';
+/** Stages in journey order (left to right). */
+export const LIFECYCLE_STAGES: LifecycleStage[] = ['m1', 'm2', 'graduated'];
 
-/** A single milestone's metadata + how the UI sources its value. */
-export interface LifecycleMilestone {
-  /** stable id — matches the column name in enterprise_lifecycle */
-  id: LifecycleMilestoneId;
-  /** column header text (exact Master Sheet wording) */
+export interface LifecycleMeta {
+  id: LifecycleStage;
+  /** Short label for chips/badges, e.g. "M1". */
   label: string;
-  /** short label for tight contexts (mobile, dashboard) */
-  short: string;
-  /** All milestones are manual after migration 282. */
-  source: 'manual';
-  /**
-   * Optional deep-link target. When set, the editor renders an "Upload"
-   * pill alongside Yes/No/N/A that navigates to this URL (relative to the
-   * current enterprise detail page). Used by ESMP + M1 so the user can jump
-   * straight from the Progress tab into the module where they'd actually
-   * upload or finish the work.
-   */
-  upload_link?: { label: string; href: (enterpriseId: string) => string };
+  /** Full label for menus/descriptions, e.g. "Milestone 1". */
+  full: string;
+  /** One-line explanation of the stage. */
+  description: string;
+  /** Tailwind chip classes (bg/text/border) matching StageChip's language. */
+  chip: string;
+  /** Tailwind dot colour. */
+  dot: string;
 }
 
-export type LifecycleMilestoneId =
-  | 'contracts_signed'
-  | 'contract_available'
-  | 'beneficiary_contributed'
-  | 'sadp_contributed'
-  | 'business_plan'
-  | 'esmp'
-  | 'verified_borehole_site'
-  | 'budget_transfer'
-  | 'supervision'
-  | 'procurement'
-  | 'm1_submitted';
-
-/** Canonical milestone list in Master Sheet column order. */
-export const LIFECYCLE_MILESTONES: LifecycleMilestone[] = [
-  { id: 'contracts_signed',        label: 'Contracts signed',                       short: 'Contract',     source: 'manual' },
-  { id: 'contract_available',      label: 'Contract available',                     short: 'Contract PDF', source: 'manual' },
-  { id: 'beneficiary_contributed', label: 'Beneficiary contributed',                short: 'Benef. $',     source: 'manual' },
-  { id: 'sadp_contributed',        label: 'SADP contributed',                       short: 'SADP $',       source: 'manual' },
-  { id: 'business_plan',           label: 'Business plan',                          short: 'BP',           source: 'manual' },
-  {
-    id: 'esmp',
-    label: 'ESMP',
-    short: 'ESMP',
-    source: 'manual',
-    upload_link: {
-      label: 'Upload',
-      href: (id) => `/enterprises/${id}?tab=esmp`,
-    },
+export const LIFECYCLE_META: Record<LifecycleStage, LifecycleMeta> = {
+  m1: {
+    id: 'm1',
+    label: 'M1',
+    full: 'Milestone 1',
+    description: 'Farmer & SADP contribution, budget allocation, fund depletion, then M1 report approval.',
+    chip: 'bg-slate-100 text-slate-700 border-slate-200',
+    dot: 'bg-slate-400',
   },
-  { id: 'verified_borehole_site',  label: 'Verified site borehole selection',       short: 'Site verif.',  source: 'manual' },
-  { id: 'budget_transfer',         label: 'Budget and transfer (M1 budget)',        short: 'M1 budget',    source: 'manual' },
-  { id: 'supervision',             label: 'Supervision (drilling + site clearing)', short: 'Supervision',  source: 'manual' },
-  { id: 'procurement',             label: 'Procurement (equipment + materials)',    short: 'Procurement',  source: 'manual' },
-  {
-    id: 'm1_submitted',
-    label: 'Submission of M1 report',
-    short: 'M1',
-    source: 'manual',
-    upload_link: {
-      label: 'Upload',
-      href: (id) => `/enterprises/${id}?tab=m1`,
-    },
+  m2: {
+    id: 'm2',
+    label: 'M2',
+    full: 'Milestone 2',
+    description: 'The same steps as M1 for the second milestone, ending in M2 report approval.',
+    chip: 'bg-fdblue-light text-sky-800 border-fdblue/30',
+    dot: 'bg-fdblue',
   },
-];
+  graduated: {
+    id: 'graduated',
+    label: 'Graduated',
+    full: 'Graduated',
+    description: 'M2 complete and approved — the enterprise has completed the programme journey.',
+    chip: 'bg-brand-light text-brand-dark border-brand/30',
+    dot: 'bg-brand-logo',
+  },
+};
 
-/** Milestone ids that the user edits (all of them, after migration 282). */
-export const MANUAL_MILESTONE_IDS: LifecycleMilestoneId[] = LIFECYCLE_MILESTONES
-  .filter((m) => m.source === 'manual')
-  .map((m) => m.id);
-
-/** Glyph + tone for rendering a single cell value. */
-export function lifecycleGlyph(v: LifecycleValue | null | undefined):
-  { glyph: string; tone: 'success' | 'destructive' | 'muted' | 'empty'; label: string } {
-  switch (v) {
-    case 'yes': return { glyph: '✓', tone: 'success',     label: 'Yes' };
-    case 'no':  return { glyph: '✗', tone: 'destructive', label: 'No' };
-    case 'n_a': return { glyph: 'N/A', tone: 'muted',     label: 'Not applicable' };
-    default:    return { glyph: '–', tone: 'empty',       label: 'Not tracked' };
-  }
+/** Short display label for a stage value, or an em-dash when unset. */
+export function lifecycleLabel(s: LifecycleStage | null | undefined): string {
+  return s ? LIFECYCLE_META[s].label : '—';
 }
 
-/** Shape returned by the enterprise_lifecycle view. */
-export interface EnterpriseLifecycleRow {
-  enterprise_id: string;
-  organization_id: string;
-  district_id: string;
-  beneficiary_short_name: string;
-  enterprise_type_id: number;
-  contracts_signed:         LifecycleValue | null;
-  contract_available:       LifecycleValue | null;
-  beneficiary_contributed:  LifecycleValue | null;
-  sadp_contributed:         LifecycleValue | null;
-  business_plan:            LifecycleValue | null;
-  esmp:                     LifecycleValue | null;
-  verified_borehole_site:   LifecycleValue | null;
-  budget_transfer:          LifecycleValue | null;
-  supervision:              LifecycleValue | null;
-  procurement:              LifecycleValue | null;
-  m1_submitted:             LifecycleValue | null;
+/** Position of a stage in the journey (0 = M1). Useful for sorting/progress. */
+export function stageOrder(s: LifecycleStage): number {
+  return LIFECYCLE_STAGES.indexOf(s);
 }
 
-/**
- * Aggregate counts of 'yes' per milestone, grouped by some key (district id,
- * organization id, etc.). Pure function — used by Dashboard to build the
- * "Analysed beneficiary"-style district × milestone table.
- */
-export function aggregateLifecycle<K extends string | number>(
-  rows: EnterpriseLifecycleRow[],
-  groupBy: (r: EnterpriseLifecycleRow) => K,
-): Map<K, { total: number; counts: Record<LifecycleMilestoneId, number> }> {
-  const out = new Map<K, { total: number; counts: Record<LifecycleMilestoneId, number> }>();
-  for (const r of rows) {
-    const key = groupBy(r);
-    let bucket = out.get(key);
-    if (!bucket) {
-      bucket = {
-        total: 0,
-        counts: Object.fromEntries(
-          LIFECYCLE_MILESTONES.map((m) => [m.id, 0]),
-        ) as Record<LifecycleMilestoneId, number>,
-      };
-      out.set(key, bucket);
-    }
-    bucket.total += 1;
-    for (const m of LIFECYCLE_MILESTONES) {
-      if (r[m.id] === 'yes') bucket.counts[m.id] += 1;
-    }
-  }
-  return out;
+/** Normalise a possibly-missing stage to a safe default (guards old cached rows). */
+export function stageOrDefault(s: LifecycleStage | null | undefined): LifecycleStage {
+  return s && LIFECYCLE_STAGES.includes(s) ? s : 'm1';
 }

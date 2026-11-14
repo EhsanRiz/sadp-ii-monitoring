@@ -1,28 +1,32 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Publishable (client-safe) values for the SADP-II Supabase project.
+// Env vars override them if set on the host.
+const url = import.meta.env.VITE_SUPABASE_URL || 'https://urvecgqgxjwlznltjeap.supabase.co';
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_522ZXWxxc_5S8jidcTT3fg_felz9GLb';
 
-if (!url || !anonKey) {
-  // Don't throw — let the login page show a friendlier error.
-  console.error(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Copy .env.example to .env.local and fill in real values.',
-  );
+export const supabase = createClient(url, key, {
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'mgp-tracker-auth' },
+});
+
+export function normalizePhone(p: string): string {
+  const d = (p || '').replace(/\D/g, '');
+  return d.length === 8 ? `266${d}` : d;
 }
 
-/**
- * Typed Supabase client. Generate types after running migrations:
- *   supabase gen types typescript --linked > src/types/database.ts
- *
- * The placeholder in src/types/database.ts is sufficient to compile until
- * you've linked a real project.
- */
-export const supabase = createClient<Database>(url ?? 'http://localhost:54321', anonKey ?? 'placeholder-anon-key', {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-  },
-});
+export function phoneToEmail(p: string): string {
+  return `${normalizePhone(p)}@tracker.4dcs.co.za`;
+}
+
+export function formatPhone(p: string): string {
+  const d = p.startsWith('266') ? p.slice(3) : p;
+  return d.length === 8 ? `${d.slice(0, 4)} ${d.slice(4)}` : p;
+}
+
+/** Live input mask: keeps the 8 local digits and shows them as "xxxx xxxx". */
+export function maskPhone(raw: string): string {
+  let d = (raw || '').replace(/\D/g, '');
+  if (d.length > 8 && d.startsWith('266')) d = d.slice(3);
+  d = d.slice(0, 8);
+  return d.length > 4 ? `${d.slice(0, 4)} ${d.slice(4)}` : d;
+}

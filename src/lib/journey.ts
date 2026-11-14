@@ -1,12 +1,12 @@
 /**
  * Derives the per-enterprise "journey" — the M1 → M2 → Graduation strip shown
- * on the enterprise page — from the macro stage (lifecycle_stage) and the
+ * in the enterprise drawer — from the macro stage (lifecycle_stage) and the
  * per-stage money (stage_finances).
  *
- * Pure + tested: the component renders whatever this returns. Each step gets a
- * status (done / active / pending / flag) and a short detail string.
+ * Pure: the component renders whatever this returns. Each step gets a status
+ * (done / active / pending / flag) and a short detail string.
  */
-import { stageOrder, type LifecycleStage } from '@/lib/stage';
+import { stageOrder, type LifecycleStage } from './lifecycle';
 import {
   MONEY_STAGES,
   stageFinanceOrEmpty,
@@ -15,10 +15,10 @@ import {
   hasAnyFinance,
   formatLslShort,
   parseStageFinances,
+  type Json,
   type MoneyStage,
   type StageFinance,
-} from '@/lib/stage-finances';
-import type { Json } from '@/types/database';
+} from './stage-finances';
 
 export type NodeStatus = 'done' | 'active' | 'pending' | 'flag';
 
@@ -70,7 +70,6 @@ function fdNode(f: StageFinance): { status: NodeStatus; detail: string } {
     return { status: 'done', detail: pct != null ? `${pct}% depleted` : 'Reported' };
   }
   if (!inMotion) return { status: 'pending', detail: '—' };
-  // Everything allocated has been reported → done.
   if (f.yet_to_report_lsl != null && f.yet_to_report_lsl === 0 && (f.funds_depleted_lsl ?? 0) > 0) {
     return { status: 'done', detail: pct != null ? `${pct}% depleted` : 'Reported' };
   }
@@ -103,10 +102,7 @@ const DONE_PAST: Record<JourneyNode['key'], string> = {
  * current one with no data is shown as not-started. The current stage, and any
  * stage with data entered, is driven by that data.
  */
-export function deriveJourney(
-  currentStage: LifecycleStage,
-  stageFinances: Json | null | undefined,
-): Journey {
+export function deriveJourney(currentStage: LifecycleStage, stageFinances: Json | null | undefined): Journey {
   const map = parseStageFinances(stageFinances);
   const curOrder = stageOrder(currentStage);
 
@@ -130,14 +126,12 @@ export function deriveJourney(
       report: `${stage.toUpperCase()} report`,
     };
 
-    const nodes: JourneyNode[] = (['farmer', 'ba', 'fd', 'report'] as JourneyNode['key'][]).map(
-      (key) => {
-        if (!hasData && past) return { key, label: labels[key], status: 'done', detail: DONE_PAST[key] };
-        if (!hasData && future) return { key, label: labels[key], status: 'pending', detail: '—' };
-        const d = derived[key];
-        return { key, label: labels[key], status: d.status, detail: d.detail };
-      },
-    );
+    const nodes: JourneyNode[] = (['farmer', 'ba', 'fd', 'report'] as JourneyNode['key'][]).map((key) => {
+      if (!hasData && past) return { key, label: labels[key], status: 'done', detail: DONE_PAST[key] };
+      if (!hasData && future) return { key, label: labels[key], status: 'pending', detail: '—' };
+      const d = derived[key];
+      return { key, label: labels[key], status: d.status, detail: d.detail };
+    });
 
     return { stage, isCurrent: stage === currentStage, nodes };
   });
