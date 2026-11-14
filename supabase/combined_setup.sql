@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
 );
 
 COMMENT ON TABLE public.organizations IS
-  'Implementing partners. Phase 1 expects two rows: 4D, RSDA. Seeded by 110_seed_organizations.sql.';
+  'Implementing partner (4D Climate Solutions). Seeded by 110_seed_organizations.sql.';
 
 CREATE TABLE IF NOT EXISTS public.rounds (
   id          smallint    PRIMARY KEY,
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS public.districts (
   UNIQUE (organization_id, name)
 );
 COMMENT ON TABLE public.districts IS
-  'Each district belongs to exactly ONE organization (4D OR RSDA, never both). organization_id is set at creation and is the root of ownership for everything under this district.';
+  'Each district belongs to exactly ONE organization. organization_id is set at creation and is the root of ownership for everything under this district.';
 
 CREATE TABLE IF NOT EXISTS public.community_councils (
   id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -723,11 +723,10 @@ ALTER TABLE public.user_profiles
 -- 110_seed_organizations.sql
 -- ============================================================================
 -- 110_seed_organizations.sql
--- The two implementing partners. Run after migrations 010-100.
+-- The implementing partner (4D Climate Solutions). Run after migrations 010-100.
 
 INSERT INTO public.organizations (code, name)
-VALUES ('4D',   '4D Climate Solutions'),
-       ('RSDA', 'RSDA')
+VALUES ('4D', '4D Climate Solutions')
 ON CONFLICT (code) DO NOTHING;
 
 -- ============================================================================
@@ -777,30 +776,11 @@ INSERT INTO public.enterprise_types (id, code, name, category) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
--- 140_seed_rsda_districts.sql
--- ============================================================================
--- 140_seed_rsda_districts.sql
--- The 4 RSDA districts in southern Lesotho.
--- Community Councils, Resource Centers, and Villages for RSDA are added
--- incrementally via the Geography admin UI as the data is collected (RSDA's
--- catalog hasn't been received yet).
-
-INSERT INTO public.districts (organization_id, name)
-SELECT (SELECT id FROM public.organizations WHERE code='RSDA'), d
-  FROM (VALUES
-    ('Mafeteng'),
-    ('Mohale''s Hoek'),
-    ('Quithing'),
-    ('Qacha''s Nek')
-  ) AS t(d)
-ON CONFLICT (organization_id, name) DO NOTHING;
-
--- ============================================================================
 -- VERIFY (run separately after the above completes)
 -- ============================================================================
--- SELECT count(*) FROM public.organizations;       -- expected: 2  (4D, RSDA)
+-- SELECT count(*) FROM public.organizations;       -- expected: 1  (4D)
 -- SELECT count(*) FROM public.rounds;              -- expected: 2
 -- SELECT count(*) FROM public.enterprise_types;    -- expected: 17
 -- SELECT o.code, count(*) FROM public.districts d
 --   JOIN public.organizations o ON o.id = d.organization_id
---   GROUP BY o.code;                               -- expected: 4D=3, RSDA=4
+--   GROUP BY o.code;                               -- expected: 4D=3
