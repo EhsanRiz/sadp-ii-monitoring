@@ -17,13 +17,33 @@ const GROUPS: Record<'pending' | 'with_4d', StageKey[]> = {
 type Row = { kind: 'placed'; name: string; district: string; it: Item } | { kind: 'unplaced'; name: string; district: string; c: CatalogRow };
 
 export function ListView() {
-  const { items, unplaced, canEdit, reload } = useData();
+  const { items, unplaced, catalog, canEdit, reload } = useData();
   const { listFilter, openItem } = useNav();
   const [search, setSearch] = useState('');
   const [district, setDistrict] = useState(listFilter.district ?? '');
   const [stage, setStage] = useState<StageFilter>(listFilter.stage ?? '');
   const [lifecycle, setLifecycle] = useState<'' | LifecycleStage>(listFilter.lifecycle ?? '');
+  const [sp, setSp] = useState('');
+  const [type, setType] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Filter options from the full catalog. Service providers are deduped
+  // case-insensitively (the data has e.g. "Nthuseng Kahlolo" / "nthuseng kahlolo").
+  const spOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of catalog) {
+      const v = c.service_provider?.trim();
+      if (!v) continue;
+      const k = v.toLowerCase();
+      const cur = m.get(k);
+      if (!cur || (/[A-Z]/.test(v) && !/[A-Z]/.test(cur))) m.set(k, v);
+    }
+    return Array.from(m.values()).sort((a, b) => a.localeCompare(b));
+  }, [catalog]);
+  const typeOptions = useMemo(
+    () => Array.from(new Set(catalog.map((c) => c.enterprise_type).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)),
+    [catalog],
+  );
 
   useEffect(() => {
     setDistrict(listFilter.district ?? '');
@@ -50,7 +70,13 @@ export function ListView() {
     if (r.kind === 'unplaced') return false; // unplaced enterprises have no milestone yet
     return r.it.lifecycle_stage === lifecycle;
   };
-  const shown = rows.filter((r) => matches(r.name, search) && (!district || r.district === district) && inStage(r) && inLifecycle(r));
+  const rowSp = (r: Row) => (r.kind === 'placed' ? r.it.service_provider : r.c.service_provider);
+  const rowType = (r: Row) => (r.kind === 'placed' ? r.it.enterprise_type : r.c.enterprise_type);
+  const inSp = (r: Row) => !sp || rowSp(r)?.toLowerCase() === sp.toLowerCase();
+  const inType = (r: Row) => !type || rowType(r) === type;
+  const shown = rows.filter(
+    (r) => matches(r.name, search) && (!district || r.district === district) && inStage(r) && inLifecycle(r) && inSp(r) && inType(r),
+  );
   const nUnplaced = shown.filter((r) => r.kind === 'unplaced').length;
 
   async function place(c: CatalogRow, s: StageKey) {
@@ -60,15 +86,16 @@ export function ListView() {
   }
 
   function exportCsv() {
-    const head = ['Enterprise', 'District', 'Milestone', 'Type', 'Community council', 'Stage', 'Whiteboard ref', 'In stage since', 'Days in stage', 'Open SADP queries', 'Open actions', 'Checklist done', 'Next due', 'Note', 'Action plan'];
+    const head = ['Enterprise', 'District', 'Milestone', 'Type', 'Service provider', 'Community council', 'Stage', 'Whiteboard ref', 'In stage since', 'Days in stage', 'Open SADP queries', 'Open actions', 'Checklist done', 'Next due', 'Note', 'Action plan'];
     const lines = shown.map((r) => {
-      if (r.kind === 'unplaced') return [r.name, r.district, '', r.c.enterprise_type ?? '', r.c.community_council ?? '', 'Not yet placed', '', '', '', '', '', '', '', '', ''];
+      if (r.kind === 'unplaced') return [r.name, r.district, '', r.c.enterprise_type ?? '', r.c.service_provider ?? '', r.c.community_council ?? '', 'Not yet placed', '', '', '', '', '', '', '', '', ''];
       const i = r.it;
       return [
         i.name,
         i.district,
         LIFECYCLE_META[i.lifecycle_stage].full,
         i.enterprise_type ?? '',
+        i.service_provider ?? '',
         i.community_council ?? '',
         STAGE[i.stage].label,
         STAGE[i.stage].code,
@@ -119,6 +146,22 @@ export function ListView() {
             </option>
           ))}
         </select>
+        <select className={selectCls} value={sp} onChange={(e) => setSp(e.target.value)} title="Filter by service provider">
+          <option value="">All service providers</option>
+          {spOptions.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select className={selectCls} value={type} onChange={(e) => setType(e.target.value)} title="Filter by enterprise type">
+          <option value="">All types</option>
+          {typeOptions.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
         <div className="ml-auto flex gap-2">
           <Button variant="secondary" onClick={exportCsv}>
             <Download size={15} /> Excel (CSV)
@@ -133,6 +176,8 @@ export function ListView() {
         {shown.length} enterprise{shown.length === 1 ? '' : 's'}
         {stageLabel && <> · {stageLabel}</>}
         {lifecycle && <> · {LIFECYCLE_META[lifecycle].full}</>}
+        {sp && <> · {sp}</>}
+        {type && <> · {type}</>}
         {district && <> · {district}</>}
         {nUnplaced > 0 && canEdit && (
           <span className="ml-1 text-fdbrown">

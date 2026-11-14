@@ -13,6 +13,7 @@ export interface CatalogRow {
   enterprise_type: string | null;
   community_council: string | null;
   phone: string | null;
+  service_provider: string | null;
 }
 
 export interface TrackingRow {
@@ -75,6 +76,7 @@ export interface Item extends TrackingRow {
   enterprise_type: string | null;
   community_council: string | null;
   phone: string | null;
+  service_provider: string | null;
   actions: ActionRow[];
   openActions: number;
   openQueries: number;
@@ -204,6 +206,7 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
           enterprise_type: c?.enterprise_type ?? null,
           community_council: c?.community_council ?? null,
           phone: c?.phone ?? null,
+          service_provider: c?.service_provider ?? null,
           actions: acts,
           openActions: open.length,
           openQueries: open.filter((a) => a.kind === 'sadp_query').length,

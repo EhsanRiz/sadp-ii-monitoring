@@ -93,6 +93,7 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
             <span>{it.district}</span>
             {it.enterprise_type && <span>· {it.enterprise_type}</span>}
             {it.community_council && <span>· {it.community_council}</span>}
+            {it.service_provider && <span>· <span className="text-slate-400">SP</span> {it.service_provider}</span>}
             {it.phone && (
               <a href={`tel:${it.phone}`} className="inline-flex items-center gap-1 text-brand">
                 · <Phone size={11} /> {it.phone}
