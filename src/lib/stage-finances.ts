@@ -35,6 +35,10 @@ export interface StageFinance {
   yet_to_report_lsl: number | null;
   report_status: StageReportStatus | null;
   report_date: string | null;
+  /** Report submitted to the PFO (Project Field Officer, SADP). */
+  pfo_submitted_date: string | null;
+  /** Report approved by SADP. */
+  sadp_approved_date: string | null;
 }
 
 export type StageFinancesMap = Partial<Record<MoneyStage, StageFinance>>;
@@ -52,6 +56,8 @@ export function emptyStageFinance(): StageFinance {
     yet_to_report_lsl: null,
     report_status: null,
     report_date: null,
+    pfo_submitted_date: null,
+    sadp_approved_date: null,
   };
 }
 
@@ -83,6 +89,8 @@ function parseOne(raw: unknown): StageFinance {
   out.report_status = REPORT_STATUSES.includes(o.report_status as StageReportStatus) ? (o.report_status as StageReportStatus) : null;
   out.ba_submitted_date = typeof o.ba_submitted_date === 'string' ? o.ba_submitted_date : null;
   out.report_date = typeof o.report_date === 'string' ? o.report_date : null;
+  out.pfo_submitted_date = typeof o.pfo_submitted_date === 'string' ? o.pfo_submitted_date : null;
+  out.sadp_approved_date = typeof o.sadp_approved_date === 'string' ? o.sadp_approved_date : null;
   return out;
 }
 
@@ -131,8 +139,20 @@ export function hasAnyFinance(f: StageFinance): boolean {
     f.ba_status != null ||
     f.report_status != null ||
     !!f.ba_submitted_date ||
-    !!f.report_date
+    !!f.report_date ||
+    !!f.pfo_submitted_date ||
+    !!f.sadp_approved_date
   );
+}
+
+/** Days from PFO submission to SADP approval (the approval turnaround), or null. */
+export function approvalTurnaroundDays(f: StageFinance): number | null {
+  if (!f.pfo_submitted_date || !f.sadp_approved_date) return null;
+  const submitted = new Date(`${f.pfo_submitted_date}T00:00:00`).getTime();
+  const approved = new Date(`${f.sadp_approved_date}T00:00:00`).getTime();
+  if (!Number.isFinite(submitted) || !Number.isFinite(approved)) return null;
+  const days = Math.round((approved - submitted) / 86_400_000);
+  return days >= 0 ? days : null; // ignore approved-before-submitted (data entry slip)
 }
 
 /** Format an LSL amount as "M100,000"; em-dash when unset. */
