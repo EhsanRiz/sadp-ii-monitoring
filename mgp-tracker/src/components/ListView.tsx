@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { useData, daysSince, fmtDate, type Item, type CatalogRow } from '../lib/data';
 import { STAGES, STAGE, type StageKey } from '../lib/stages';
+import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
 import { placeEnterprise } from '../lib/mutations';
 import { useNav } from '../App';
 import { Filters, matches } from './Filters';
-import { Button, StageChip, Empty, selectCls } from './ui';
+import { Button, StageChip, LifecycleChip, Empty, selectCls } from './ui';
 
 type StageFilter = '' | StageKey | 'pending' | 'with_4d' | 'unplaced';
 const GROUPS: Record<'pending' | 'with_4d', StageKey[]> = {
@@ -21,6 +22,7 @@ export function ListView() {
   const [search, setSearch] = useState('');
   const [district, setDistrict] = useState(listFilter.district ?? '');
   const [stage, setStage] = useState<StageFilter>(listFilter.stage ?? '');
+  const [lifecycle, setLifecycle] = useState<'' | LifecycleStage>('');
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,7 +44,12 @@ export function ListView() {
     if (r.kind === 'unplaced') return false;
     return stage === 'pending' || stage === 'with_4d' ? GROUPS[stage].includes(r.it.stage) : r.it.stage === stage;
   };
-  const shown = rows.filter((r) => matches(r.name, search) && (!district || r.district === district) && inStage(r));
+  const inLifecycle = (r: Row) => {
+    if (!lifecycle) return true;
+    if (r.kind === 'unplaced') return false; // unplaced enterprises have no milestone yet
+    return r.it.lifecycle_stage === lifecycle;
+  };
+  const shown = rows.filter((r) => matches(r.name, search) && (!district || r.district === district) && inStage(r) && inLifecycle(r));
   const nUnplaced = shown.filter((r) => r.kind === 'unplaced').length;
 
   async function place(c: CatalogRow, s: StageKey) {
@@ -52,13 +59,14 @@ export function ListView() {
   }
 
   function exportCsv() {
-    const head = ['Enterprise', 'District', 'Type', 'Community council', 'Stage', 'Whiteboard ref', 'In stage since', 'Days in stage', 'Open SADP queries', 'Open actions', 'Checklist done', 'Next due', 'Note', 'Action plan'];
+    const head = ['Enterprise', 'District', 'Milestone', 'Type', 'Community council', 'Stage', 'Whiteboard ref', 'In stage since', 'Days in stage', 'Open SADP queries', 'Open actions', 'Checklist done', 'Next due', 'Note', 'Action plan'];
     const lines = shown.map((r) => {
-      if (r.kind === 'unplaced') return [r.name, r.district, r.c.enterprise_type ?? '', r.c.community_council ?? '', 'Not yet placed', '', '', '', '', '', '', '', '', ''];
+      if (r.kind === 'unplaced') return [r.name, r.district, '', r.c.enterprise_type ?? '', r.c.community_council ?? '', 'Not yet placed', '', '', '', '', '', '', '', '', ''];
       const i = r.it;
       return [
         i.name,
         i.district,
+        LIFECYCLE_META[i.lifecycle_stage].full,
         i.enterprise_type ?? '',
         i.community_council ?? '',
         STAGE[i.stage].label,
@@ -102,6 +110,14 @@ export function ListView() {
             </option>
           ))}
         </select>
+        <select className={selectCls} value={lifecycle} onChange={(e) => setLifecycle(e.target.value as '' | LifecycleStage)} title="Filter by milestone (M1 / M2 / Graduated)">
+          <option value="">All milestones</option>
+          {LIFECYCLE_STAGES.map((s) => (
+            <option key={s} value={s}>
+              {LIFECYCLE_META[s].full}
+            </option>
+          ))}
+        </select>
         <div className="ml-auto flex gap-2">
           <Button variant="secondary" onClick={exportCsv}>
             <Download size={15} /> Excel (CSV)
@@ -115,6 +131,7 @@ export function ListView() {
       <div className="text-sm text-slate-500">
         {shown.length} enterprise{shown.length === 1 ? '' : 's'}
         {stageLabel && <> · {stageLabel}</>}
+        {lifecycle && <> · {LIFECYCLE_META[lifecycle].full}</>}
         {district && <> · {district}</>}
         {nUnplaced > 0 && canEdit && (
           <span className="ml-1 text-fdbrown">
@@ -127,12 +144,13 @@ export function ListView() {
         <Empty>No enterprises match.</Empty>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-white">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2.5">#</th>
                 <th className="px-3 py-2.5">Enterprise</th>
                 <th className="px-3 py-2.5">District</th>
+                <th className="px-3 py-2.5">Milestone</th>
                 <th className="px-3 py-2.5">Stage</th>
                 <th className="px-3 py-2.5 text-right">Days</th>
                 <th className="px-3 py-2.5">Action plan</th>
@@ -151,6 +169,7 @@ export function ListView() {
                         <div className="text-xs text-slate-500">{[c.enterprise_type, c.community_council].filter(Boolean).join(' · ')}</div>
                       </td>
                       <td className="px-3 py-2">{r.district}</td>
+                      <td className="px-3 py-2 text-slate-300">—</td>
                       <td className="px-3 py-2">
                         {canEdit ? (
                           <select
@@ -187,6 +206,9 @@ export function ListView() {
                       {i.note && <div className="mt-0.5 text-xs italic text-slate-500">“{i.note}”</div>}
                     </td>
                     <td className="px-3 py-2">{i.district}</td>
+                    <td className="px-3 py-2">
+                      <LifecycleChip stage={i.lifecycle_stage} size="sm" />
+                    </td>
                     <td className="px-3 py-2">
                       <StageChip stage={i.stage} size="sm" />
                     </td>

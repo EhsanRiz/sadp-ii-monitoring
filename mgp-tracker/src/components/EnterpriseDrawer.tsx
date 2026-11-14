@@ -3,8 +3,9 @@ import { Trash2, ArrowRight, Phone, AlertTriangle } from 'lucide-react';
 import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { STAGES, STAGE, type StageKey } from '../lib/stages';
-import { changeStage } from '../lib/mutations';
-import { Button, Drawer, Modal, StageChip, inputCls, toast } from './ui';
+import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
+import { changeStage, setLifecycleStage } from '../lib/mutations';
+import { Button, Drawer, Modal, StageChip, LifecycleChip, inputCls, toast } from './ui';
 
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
   const { itemById, history, users, items, canEdit, isAdmin, userName, reload, me } = useData();
@@ -15,6 +16,7 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   const [note, setNote] = useState('');
   const [queries, setQueries] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyLc, setBusyLc] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -53,6 +55,14 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
     reload();
   }
 
+  async function changeLifecycle(s: LifecycleStage) {
+    if (!it || s === it.lifecycle_stage || busyLc) return;
+    setBusyLc(true);
+    await setLifecycleStage(it.id, it.name, s);
+    setBusyLc(false);
+    reload();
+  }
+
   async function remove() {
     if (it!.enterprise_id) {
       // keep it out of the enterprise list and totals (e.g. withdrawn)
@@ -87,7 +97,8 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
               </a>
             )}
           </div>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <LifecycleChip stage={it.lifecycle_stage} />
             <StageChip stage={it.stage} />
             <span className="text-xs text-slate-500">
               {STAGE[it.stage].code} · for {daysSince(it.stage_since)} days
@@ -97,6 +108,32 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
       }
     >
       <div className="space-y-6">
+        {/* Lifecycle milestone */}
+        <section>
+          <div className="mb-2 flex items-center gap-2">
+            <h3 className="text-sm font-semibold">Milestone</h3>
+            <span className="text-xs text-slate-400">M1 → M2 → Graduation</span>
+          </div>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            {LIFECYCLE_STAGES.map((s) => {
+              const active = s === it.lifecycle_stage;
+              return (
+                <button
+                  key={s}
+                  disabled={!canEdit || busyLc || active}
+                  onClick={() => changeLifecycle(s)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-default ${
+                    active ? 'bg-white text-brand-dark shadow-sm ring-1 ring-brand/20' : 'text-slate-600 enabled:hover:bg-white/60'
+                  }`}
+                >
+                  {LIFECYCLE_META[s].label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-xs text-slate-500">{LIFECYCLE_META[it.lifecycle_stage].description}</p>
+        </section>
+
         {/* Move */}
         {canEdit && (
           <section>
