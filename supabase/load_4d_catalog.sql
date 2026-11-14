@@ -1,10 +1,5 @@
 -- 4D catalog load: 3 districts, 27 CCs, 17 RCs, 140 villages
 
--- 0. Clean up the erroneous 'Quthing' row (keep 'Quithing')
-DELETE FROM public.districts
- WHERE name = 'Quthing'
-   AND organization_id = (SELECT id FROM public.organizations WHERE code='RSDA');
-
 -- 1. Insert 4D districts
 INSERT INTO public.districts (organization_id, name)
 SELECT (SELECT id FROM public.organizations WHERE code='4D'), d

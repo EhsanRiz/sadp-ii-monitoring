@@ -8,8 +8,7 @@ Reads the normalized CSVs in ../../extracted_catalog/ and upserts:
   - resource_centers (17 rows)
   - villages (~140 rows)
 
-All scoped to the '4D' organization. RSDA's catalog loads via a parallel script
-once their data is received.
+All scoped to the '4D' organization.
 
 Prereqs:
   - Run migrations 010-100 first

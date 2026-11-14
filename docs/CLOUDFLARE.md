@@ -9,6 +9,12 @@ This repo already contains the two config bits the move needs:
 - `public/_redirects` — SPA fallback (`/* /index.html 200`) so deep links and
   refresh work. Served to `dist/_redirects` at build.
 - `.node-version` (`22`) — pins the Node version Cloudflare builds with, matching CI.
+- `wrangler.jsonc` — for a Cloudflare **Workers** project (where the deploy step
+  runs `wrangler deploy`), this ships `dist/` as **static assets** with SPA
+  routing. Without it, `wrangler deploy` tries to auto-configure the Vite plugin,
+  which requires Vite ≥ 6 (this app is on Vite 5) and the deploy fails. If you
+  instead use a classic **Pages** project (build command + output dir, no deploy
+  command), `wrangler.jsonc` is simply ignored.
 
 Everything below is done once in the Cloudflare dashboard + your DNS. None of it
 needs a code change.
