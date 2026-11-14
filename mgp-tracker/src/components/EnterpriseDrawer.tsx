@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
 import { STAGES, STAGE, type StageKey } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
 import { changeStage, setLifecycleStage } from '../lib/mutations';
+import { StageFinanceEditor } from './StageFinanceEditor';
+import { EnterpriseJourney } from './EnterpriseJourney';
 import { Button, Drawer, Modal, StageChip, LifecycleChip, inputCls, toast } from './ui';
 
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
@@ -133,6 +135,19 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
           </div>
           <p className="mt-1.5 text-xs text-slate-500">{LIFECYCLE_META[it.lifecycle_stage].description}</p>
         </section>
+
+        {/* Journey strip */}
+        <EnterpriseJourney stage={it.lifecycle_stage} stageFinances={it.stage_finances} />
+
+        {/* Per-milestone finances */}
+        <StageFinanceEditor
+          trackingId={it.id}
+          name={it.name}
+          stageFinances={it.stage_finances}
+          currentStage={it.lifecycle_stage}
+          readOnly={!canEdit}
+          onSaved={reload}
+        />
 
         {/* Move */}
         {canEdit && (

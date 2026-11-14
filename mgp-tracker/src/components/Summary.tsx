@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useNav, type ListFilter } from '../App';
 import { Button, Modal, toast } from './ui';
 import { MyTasksCard } from './Tasks';
+import { LifecycleRollup } from './LifecycleRollup';
 
 type Row =
   | { kind: 'stage'; key: StageKey; label: string; indent: number; strong?: boolean }
@@ -201,6 +202,9 @@ export function Summary() {
         </table>
       </div>
       <p className="-mt-3 text-xs text-slate-500 print:hidden">Click any number to see the enterprises behind it.</p>
+
+      {/* Lifecycle rollups */}
+      <LifecycleRollup />
 
       {/* Recent movement */}
       <div className="rounded-xl border bg-white print:hidden">
