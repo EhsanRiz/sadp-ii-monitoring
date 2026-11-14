@@ -13,29 +13,36 @@ import { useData } from '../lib/data';
 import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
-import { MONEY_STAGES, parseStageFinances, formatLsl, formatLslShort } from '../lib/stage-finances';
+import { MONEY_STAGES, parseStageFinances, approvalTurnaroundDays, formatLsl, formatLslShort } from '../lib/stage-finances';
 
 const MILESTONE_ICON: Record<LifecycleStage, LucideIcon> = { m1: Sprout, m2: Leaf, graduated: GraduationCap };
 
 type Counts = Record<LifecycleStage, number>;
 interface Money { contract: number; contributed: number; sadp: number; allocated: number; depleted: number }
+/** Approval turnaround sums + counts, per milestone. */
+interface Turn { m1Sum: number; m1N: number; m2Sum: number; m2N: number }
 
 const blankCounts = (): Counts => ({ m1: 0, m2: 0, graduated: 0 });
 const blankMoney = (): Money => ({ contract: 0, contributed: 0, sadp: 0, allocated: 0, depleted: 0 });
+const blankTurn = (): Turn => ({ m1Sum: 0, m1N: 0, m2Sum: 0, m2N: 0 });
+const avg = (sum: number, n: number): number | null => (n > 0 ? Math.round(sum / n) : null);
 
 export function LifecycleRollup() {
   const { items } = useData();
   const { go } = useNav();
 
-  const { counts, totalCounts, money, totalMoney, anyMoney } = useMemo(() => {
+  const { counts, totalCounts, money, totalMoney, anyMoney, turn, totalTurn, anyTurn } = useMemo(() => {
     const counts: Record<string, Counts> = {};
     const money: Record<string, Money> = {};
+    const turn: Record<string, Turn> = {};
     for (const d of DISTRICTS) {
       counts[d] = blankCounts();
       money[d] = blankMoney();
+      turn[d] = blankTurn();
     }
     const totalCounts = blankCounts();
     const totalMoney = blankMoney();
+    const totalTurn = blankTurn();
 
     for (const it of items) {
       const d = (DISTRICTS as readonly string[]).includes(it.district) ? it.district : null;
@@ -55,10 +62,20 @@ export function LifecycleRollup() {
         };
         add(totalMoney);
         if (d) add(money[d]);
+
+        const t = approvalTurnaroundDays(f);
+        if (t != null) {
+          const addTurn = (tn: Turn) => {
+            if (s === 'm1') { tn.m1Sum += t; tn.m1N++; } else { tn.m2Sum += t; tn.m2N++; }
+          };
+          addTurn(totalTurn);
+          if (d) addTurn(turn[d]);
+        }
       }
     }
     const anyMoney = Object.values(totalMoney).some((v) => v > 0);
-    return { counts, totalCounts, money, totalMoney, anyMoney };
+    const anyTurn = totalTurn.m1N > 0 || totalTurn.m2N > 0;
+    return { counts, totalCounts, money, totalMoney, anyMoney, turn, totalTurn, anyTurn };
   }, [items]);
 
   const rows: { key: string; label: string; district?: string }[] = [
@@ -67,7 +84,8 @@ export function LifecycleRollup() {
   ];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
       {/* Milestones */}
       <div className="rounded-xl border bg-white p-4">
         <h3 className="mb-0.5 text-sm font-semibold">Enterprise milestones</h3>
@@ -170,6 +188,45 @@ export function LifecycleRollup() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+      </div>
+
+      {/* Report approval time (PFO → SADP) */}
+      <div className="rounded-xl border bg-white p-4">
+        <h3 className="mb-0.5 text-sm font-semibold">Report approval time</h3>
+        <p className="mb-3 text-xs text-slate-500">Average days from report submitted to the PFO to approved by SADP — (n) = reports measured.</p>
+        {!anyTurn ? (
+          <p className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+            No approval dates captured yet. Open an enterprise → Stage finances and fill in “Submitted to PFO” / “Approved by SADP”.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {rows.map((r) => {
+              const tn = r.district ? turn[r.district] : totalTurn;
+              const m1 = avg(tn.m1Sum, tn.m1N);
+              const m2 = avg(tn.m2Sum, tn.m2N);
+              return (
+                <div key={r.key} className="rounded-lg border border-slate-200 p-2.5">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{r.label}</div>
+                  <div className="mt-1 flex items-baseline justify-between gap-2">
+                    <span className="text-[11px] text-slate-500">M1</span>
+                    <span className="tabular-nums">
+                      <b className={m1 != null && m1 > 30 ? 'text-amber-700' : ''}>{m1 == null ? '—' : `${m1}d`}</b>
+                      {tn.m1N > 0 && <span className="ml-1 text-[10px] text-slate-400">({tn.m1N})</span>}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-2">
+                    <span className="text-[11px] text-slate-500">M2</span>
+                    <span className="tabular-nums">
+                      <b className={m2 != null && m2 > 30 ? 'text-amber-700' : ''}>{m2 == null ? '—' : `${m2}d`}</b>
+                      {tn.m2N > 0 && <span className="ml-1 text-[10px] text-slate-400">({tn.m2N})</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
