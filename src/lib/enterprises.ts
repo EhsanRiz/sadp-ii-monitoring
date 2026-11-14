@@ -13,6 +13,7 @@ import type {
   EnterpriseRow,
   EsmpStatus,
   Json,
+  LifecycleStage,
   Milestone1ReportStatus,
 } from '@/types/database';
 
@@ -25,6 +26,8 @@ export interface EnterpriseListFilters {
   esmpStatus?: EsmpStatus | null;
   milestone1Status?: Milestone1ReportStatus | null;
   drillingStatus?: DrillingStatus | null;
+  /** Macro lifecycle stage: M1 / M2 / Graduated. null = no stage filter. */
+  stage?: LifecycleStage | null;
   completeness?: 'minimal' | 'cover_page_ready' | null;
   /**
    * Maseru monitoring Zone (1-9), or the string 'unzoned' to match enterprises
@@ -68,6 +71,7 @@ export function useEnterprises(filters: EnterpriseListFilters = {}) {
       if (filters.esmpStatus) q = q.eq('esmp_status', filters.esmpStatus);
       if (filters.milestone1Status) q = q.eq('milestone1_report_status', filters.milestone1Status);
       if (filters.drillingStatus) q = q.eq('drilling_status', filters.drillingStatus);
+      if (filters.stage) q = q.eq('lifecycle_stage', filters.stage);
       if (filters.completeness) q = q.eq('registration_completeness', filters.completeness);
       if (filters.zone === 'unzoned') q = q.is('zone', null);
       else if (typeof filters.zone === 'number') q = q.eq('zone', filters.zone);

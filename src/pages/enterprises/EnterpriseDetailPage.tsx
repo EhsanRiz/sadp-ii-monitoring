@@ -43,6 +43,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/StatusBadge';
 import { EnterpriseLifecycleEditor } from '@/components/enterprise/EnterpriseLifecycleEditor';
+import { EnterpriseStageControl, StageBadge } from '@/components/enterprise/EnterpriseStageControl';
 import { BoreholeSupervisionForm } from '@/components/enterprise/BoreholeSupervisionForm';
 import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSchema';
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
@@ -326,6 +327,7 @@ export function EnterpriseDetailPage() {
             enterpriseTypeId={enterprise.enterprise_type_id ?? null}
             districtId={enterprise.district_id ?? null}
           />
+          <StageBadge stage={enterprise.lifecycle_stage} className="px-2.5 py-1 text-xs" />
           <Badge variant={enterprise.registration_completeness === 'cover_page_ready' ? 'default' : 'outline'}>
             {enterprise.registration_completeness === 'cover_page_ready' ? 'Cover-page ready' : 'Minimal'}
           </Badge>
@@ -681,6 +683,10 @@ export function EnterpriseDetailPage() {
         </TabsContent>
 
         <TabsContent value="progress" className="space-y-4">
+          <EnterpriseStageControl
+            enterpriseId={enterprise.id}
+            stage={enterprise.lifecycle_stage}
+          />
           <EnterpriseLifecycleEditor
             enterpriseId={enterprise.id}
             lifecycle={lifecycleMap.data?.[enterprise.id] ?? null}

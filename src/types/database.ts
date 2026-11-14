@@ -53,6 +53,11 @@ export type DrillingStatus =
   | 'in_progress'
   | 'drilled'
   | 'not_drilled';
+/**
+ * Macro lifecycle stage on the M1 -> M2 -> Graduated journey (migration 320).
+ * Coarse pointer that sits above the 11-milestone lifecycle_status tracker.
+ */
+export type LifecycleStage = 'm1' | 'm2' | 'graduated';
 export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE';
 export type SubmissionStatus = 'draft' | 'submitted' | 'approved';
 export type EnterpriseEsmpComputedStatus = 'not_started' | 'in_progress' | 'complete' | 'legacy_pdf';
@@ -322,6 +327,7 @@ export interface Database {
           business_plan_status: BusinessPlanStatus;
           milestone1_report_status: Milestone1ReportStatus;
           lifecycle_status: Json;
+          lifecycle_stage: LifecycleStage;
           borehole_supervision: Json;
           drilling_status: DrillingStatus;
           budget_lsl: number | null;
@@ -370,6 +376,7 @@ export interface Database {
           business_plan_status?: BusinessPlanStatus;
           milestone1_report_status?: Milestone1ReportStatus;
           lifecycle_status?: Json;
+          lifecycle_stage?: LifecycleStage;
           borehole_supervision?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;
@@ -417,6 +424,7 @@ export interface Database {
           business_plan_status?: BusinessPlanStatus;
           milestone1_report_status?: Milestone1ReportStatus;
           lifecycle_status?: Json;
+          lifecycle_stage?: LifecycleStage;
           borehole_supervision?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;
