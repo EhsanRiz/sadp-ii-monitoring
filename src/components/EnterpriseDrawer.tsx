@@ -138,7 +138,7 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
         </section>
 
         {/* Journey strip */}
-        <EnterpriseJourney stage={it.lifecycle_stage} stageFinances={it.stage_finances} />
+        <EnterpriseJourney stage={it.lifecycle_stage} stageFinances={it.stage_finances} approvalStage={it.stage} />
 
         {/* Per-milestone finances */}
         <StageFinanceEditor

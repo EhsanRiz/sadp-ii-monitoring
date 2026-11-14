@@ -3,15 +3,19 @@
  * columns (M1: Farmer → Budget → Fund dep. → Report, then M2: the same, then
  * Graduated), with each enterprise shown as a chip under its *current* step.
  *
- * Enterprises aren't dragged — they move along automatically as their milestone
- * and stage_finances change. Derived from deriveJourney (the first step that
- * isn't "done" in the current milestone is where the enterprise sits).
+ * The M1 report column is driven by the approval workflow (this is the M1
+ * Approval Tracker): an enterprise whose report has reached 4D/SADP sits at
+ * "M1 report", with a colour dot showing its exact approval stage. Enterprises
+ * aren't dragged — they move along automatically as their data changes.
+ *
+ * Filterable by district, service provider and enterprise type.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useData, type Item } from '../lib/data';
 import { useNav } from '../App';
-import { DISTRICT_SHORT } from '../lib/stages';
-import { deriveJourney } from '../lib/journey';
+import { DISTRICTS, DISTRICT_SHORT, STAGE } from '../lib/stages';
+import { deriveJourney, M1_REPORT_REACHED } from '../lib/journey';
+import { selectCls } from './ui';
 
 type FlowStep =
   | 'm1:farmer' | 'm1:ba' | 'm1:fd' | 'm1:report'
@@ -37,31 +41,98 @@ const BAND: Record<'m1' | 'm2' | 'grad', { tag: string; head: string; bar: strin
 };
 
 function currentStep(it: Item): FlowStep {
-  if (it.lifecycle_stage === 'graduated') return 'graduated';
-  const journey = deriveJourney(it.lifecycle_stage, it.stage_finances);
-  const js = journey.stages.find((s) => s.stage === it.lifecycle_stage);
-  const open = js?.nodes.find((n) => n.status !== 'done');
-  return `${it.lifecycle_stage}:${open ? open.key : 'report'}` as FlowStep;
+  const ls = it.lifecycle_stage;
+  if (ls === 'graduated') return 'graduated';
+  if (ls === 'm1') {
+    // The M1 report step is the approval pipeline; everything there sits at "M1 report".
+    if (M1_REPORT_REACHED.has(it.stage)) return 'm1:report';
+    const js = deriveJourney('m1', it.stage_finances).stages.find((s) => s.stage === 'm1')!;
+    const open = js.nodes.find((n) => n.key !== 'report' && n.status !== 'done');
+    return open ? (`m1:${open.key}` as FlowStep) : 'm1:report';
+  }
+  const js = deriveJourney('m2', it.stage_finances).stages.find((s) => s.stage === 'm2')!;
+  const open = js.nodes.find((n) => n.status !== 'done');
+  return open ? (`m2:${open.key}` as FlowStep) : 'm2:report';
 }
 
 export function LifecycleFlow() {
   const { items } = useData();
   const { openItem } = useNav();
+  const [district, setDistrict] = useState('');
+  const [sp, setSp] = useState('');
+  const [type, setType] = useState('');
+
+  const spOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const it of items) {
+      const v = it.service_provider?.trim();
+      if (!v) continue;
+      const k = v.toLowerCase();
+      const cur = m.get(k);
+      if (!cur || (/[A-Z]/.test(v) && !/[A-Z]/.test(cur))) m.set(k, v);
+    }
+    return Array.from(m.values()).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+  const typeOptions = useMemo(
+    () => Array.from(new Set(items.map((i) => i.enterprise_type).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)),
+    [items],
+  );
 
   const byStep = useMemo(() => {
+    const filtered = items.filter(
+      (it) =>
+        (!district || it.district === district) &&
+        (!sp || it.service_provider?.toLowerCase() === sp.toLowerCase()) &&
+        (!type || it.enterprise_type === type),
+    );
     const m = new Map<FlowStep, Item[]>();
     for (const col of COLUMNS) m.set(col.key, []);
-    for (const it of items) m.get(currentStep(it))!.push(it);
+    for (const it of filtered) m.get(currentStep(it))!.push(it);
     for (const list of m.values()) list.sort((a, b) => a.name.localeCompare(b.name));
     return m;
-  }, [items]);
+  }, [items, district, sp, type]);
+
+  const active = district || sp || type;
 
   return (
     <div className="rounded-xl border bg-white p-4 print:hidden">
       <h3 className="text-sm font-semibold">Lifecycle flow</h3>
       <p className="mb-3 text-xs text-slate-500">
-        Each enterprise sits under its current step on the M1 → M2 → Graduation journey, and moves along as its finances are filled in. Click a card to open it.
+        Each enterprise sits under its current step on the M1 → M2 → Graduation journey, and moves along as it progresses. The M1 report column is the SADP approval pipeline. Click a card to open it.
       </p>
+
+      {/* Filters */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-xs">
+          {['', ...DISTRICTS].map((d) => (
+            <button
+              key={d || 'all'}
+              onClick={() => setDistrict(d)}
+              className={`rounded px-2 py-1 ${district === d ? 'bg-brand text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+              {d ? DISTRICT_SHORT[d] : 'All'}
+            </button>
+          ))}
+        </div>
+        <select className={`${selectCls} py-1.5 text-xs`} value={sp} onChange={(e) => setSp(e.target.value)} title="Filter by service provider">
+          <option value="">All service providers</option>
+          {spOptions.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select className={`${selectCls} py-1.5 text-xs`} value={type} onChange={(e) => setType(e.target.value)} title="Filter by enterprise type">
+          <option value="">All types</option>
+          {typeOptions.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+        {active && (
+          <button onClick={() => { setDistrict(''); setSp(''); setType(''); }} className="text-xs text-slate-500 hover:text-brand hover:underline">
+            Clear
+          </button>
+        )}
+      </div>
+
       <div className="overflow-x-auto pb-1">
         <div className="flex min-w-max items-start gap-2">
           {COLUMNS.map((col, i) => {
@@ -86,11 +157,12 @@ export function LifecycleFlow() {
                         <button
                           key={it.id}
                           onClick={() => openItem(it.id)}
-                          className="block w-full truncate rounded-md border border-slate-200 bg-white px-2 py-1 text-left text-xs transition hover:border-brand hover:bg-brand-light/50"
-                          title={`${it.name} · ${it.district}`}
+                          className="flex w-full items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-left text-xs transition hover:border-brand hover:bg-brand-light/50"
+                          title={`${it.name} · ${it.district}${it.lifecycle_stage === 'm1' ? ` · M1: ${STAGE[it.stage].label}` : ''}`}
                         >
-                          <span className="font-medium">{it.name}</span>
-                          <span className="ml-1 text-[10px] text-slate-400">{DISTRICT_SHORT[it.district] ?? ''}</span>
+                          {it.lifecycle_stage === 'm1' && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STAGE[it.stage].dot}`} />}
+                          <span className="min-w-0 flex-1 truncate font-medium">{it.name}</span>
+                          <span className="shrink-0 text-[10px] text-slate-400">{DISTRICT_SHORT[it.district] ?? ''}</span>
                         </button>
                       ))
                     )}

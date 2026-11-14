@@ -8,11 +8,13 @@
 import { Check, Flag, GraduationCap, ChevronRight } from 'lucide-react';
 import { deriveJourney, type NodeStatus } from '../lib/journey';
 import { LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
+import { type StageKey } from '../lib/stages';
 import { type Json } from '../lib/stage-finances';
 
 interface Props {
   stage: LifecycleStage;
   stageFinances: Json | null | undefined;
+  approvalStage?: StageKey | null;
 }
 
 function StatusDot({ status }: { status: NodeStatus }) {
@@ -36,8 +38,8 @@ const DETAIL_TONE: Record<NodeStatus, string> = {
   pending: 'text-slate-400',
 };
 
-export function EnterpriseJourney({ stage, stageFinances }: Props) {
-  const journey = deriveJourney(stage, stageFinances);
+export function EnterpriseJourney({ stage, stageFinances, approvalStage }: Props) {
+  const journey = deriveJourney(stage, stageFinances, approvalStage);
 
   return (
     <section>
