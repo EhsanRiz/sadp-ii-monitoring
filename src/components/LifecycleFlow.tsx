@@ -26,7 +26,7 @@ const COLUMNS: { key: FlowStep; band: 'm1' | 'm2' | 'grad'; label: string }[] = 
   { key: 'm1:farmer', band: 'm1', label: 'Farmer contr.' },
   { key: 'm1:ba', band: 'm1', label: 'Budget alloc.' },
   { key: 'm1:fd', band: 'm1', label: 'Fund depletion' },
-  { key: 'm1:report', band: 'm1', label: 'M1 report' },
+  { key: 'm1:report', band: 'm1', label: 'Report (in approval)' },
   { key: 'm2:farmer', band: 'm2', label: 'Farmer contr.' },
   { key: 'm2:ba', band: 'm2', label: 'Budget alloc.' },
   { key: 'm2:fd', band: 'm2', label: 'Fund depletion' },
@@ -142,8 +142,8 @@ export function LifecycleFlow() {
               <div key={col.key} className="flex items-start gap-2">
                 <div className="w-44 shrink-0 overflow-hidden rounded-lg border border-slate-200">
                   <div className={`h-1 ${band.bar}`} />
-                  <div className={`flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-semibold ${band.head}`}>
-                    <span className="truncate">
+                  <div className={`flex min-h-[2.75rem] items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-semibold ${band.head}`}>
+                    <span className="leading-tight">
                       {band.tag && <span className="mr-1 rounded bg-white/60 px-1 text-[10px]">{band.tag}</span>}
                       {col.label}
                     </span>

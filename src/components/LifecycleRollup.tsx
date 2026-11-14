@@ -8,11 +8,14 @@
  * library, same card/bar language as the rest of the Summary.
  */
 import { useMemo } from 'react';
+import { Sprout, Leaf, GraduationCap, type LucideIcon } from 'lucide-react';
 import { useData } from '../lib/data';
 import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
 import { MONEY_STAGES, parseStageFinances, formatLsl, formatLslShort } from '../lib/stage-finances';
+
+const MILESTONE_ICON: Record<LifecycleStage, LucideIcon> = { m1: Sprout, m2: Leaf, graduated: GraduationCap };
 
 type Counts = Record<LifecycleStage, number>;
 interface Money { contract: number; contributed: number; sadp: number; allocated: number; depleted: number }
@@ -68,30 +71,57 @@ export function LifecycleRollup() {
       {/* Milestones */}
       <div className="rounded-xl border bg-white p-4">
         <h3 className="mb-0.5 text-sm font-semibold">Enterprise milestones</h3>
-        <p className="mb-3 text-xs text-slate-500">Where each enterprise sits on the M1 → M2 → Graduation journey. Click a number to see them.</p>
-        <div className="space-y-2.5">
+        <p className="mb-3 text-xs text-slate-500">Where each enterprise sits on the M1 → M2 → Graduation journey. Click to see them.</p>
+
+        {/* Headline tiles */}
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          {LIFECYCLE_STAGES.map((s) => {
+            const Icon = MILESTONE_ICON[s];
+            const n = totalCounts[s];
+            const total = totalCounts.m1 + totalCounts.m2 + totalCounts.graduated;
+            return (
+              <button
+                key={s}
+                onClick={() => go('list', { lifecycle: s })}
+                className="relative overflow-hidden rounded-lg border border-slate-200 p-3 text-left transition hover:border-brand hover:shadow-sm"
+                title={LIFECYCLE_META[s].description}
+              >
+                <span className={`absolute inset-y-0 left-0 w-1 ${LIFECYCLE_META[s].dot}`} />
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                  <Icon size={13} /> {LIFECYCLE_META[s].full}
+                </div>
+                <div className="mt-0.5 text-2xl font-bold tabular-nums">{n}</div>
+                <div className="text-[11px] text-slate-400">{total ? Math.round((n / total) * 100) : 0}% of {total}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* By district */}
+        <div className="space-y-2">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">By district</div>
           {rows.map((r) => {
             const c = r.district ? counts[r.district] : totalCounts;
             const tot = c.m1 + c.m2 + c.graduated;
             return (
               <div key={r.key} className="flex items-center gap-3">
                 <span className={`w-12 shrink-0 text-xs ${r.key === 'total' ? 'font-semibold text-slate-700' : 'text-slate-500'}`}>{r.label}</span>
-                <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-slate-100" title={`${tot} enterprise${tot === 1 ? '' : 's'}`}>
+                <div className="flex h-3.5 flex-1 overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-200/60" title={`${tot} enterprise${tot === 1 ? '' : 's'}`}>
                   {LIFECYCLE_STAGES.map((s) =>
-                    c[s] ? <div key={s} className={LIFECYCLE_META[s].dot} style={{ width: `${(c[s] / Math.max(tot, 1)) * 100}%` }} title={`${LIFECYCLE_META[s].full}: ${c[s]}`} /> : null,
+                    c[s] ? <div key={s} className={`${LIFECYCLE_META[s].dot} transition-all`} style={{ width: `${(c[s] / Math.max(tot, 1)) * 100}%` }} title={`${LIFECYCLE_META[s].full}: ${c[s]}`} /> : null,
                   )}
                 </div>
-                <div className="flex shrink-0 gap-2 text-xs tabular-nums">
+                <div className="flex shrink-0 gap-1.5 text-xs tabular-nums">
                   {LIFECYCLE_STAGES.map((s) => (
                     <button
                       key={s}
                       onClick={() => go('list', { lifecycle: s, district: r.district })}
-                      className="inline-flex items-center gap-1 rounded px-1 hover:bg-brand-light disabled:opacity-40"
+                      className="inline-flex items-center gap-1 rounded px-1 hover:bg-brand-light disabled:opacity-30"
                       disabled={!c[s]}
                       title={`${LIFECYCLE_META[s].full}${r.district ? ` · ${r.district}` : ''}`}
                     >
                       <span className={`h-1.5 w-1.5 rounded-full ${LIFECYCLE_META[s].dot}`} />
-                      {LIFECYCLE_META[s].label} <b>{c[s]}</b>
+                      <b>{c[s]}</b>
                     </button>
                   ))}
                 </div>
