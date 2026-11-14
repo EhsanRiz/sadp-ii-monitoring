@@ -3,7 +3,9 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEnterprises, useEnterpriseLifecycle, MASERU_ZONES, zoneLabel, type EnterpriseListFilters } from '@/lib/enterprises';
 import { LIFECYCLE_MILESTONES, lifecycleGlyph, type LifecycleMilestoneId, type LifecycleValue } from '@/lib/lifecycle';
-import type { DrillingStatus, EnterpriseRow, EsmpStatus, Milestone1ReportStatus } from '@/types/database';
+import { LIFECYCLE_STAGES, STAGE_META } from '@/lib/stage';
+import { StageBadge } from '@/components/enterprise/EnterpriseStageControl';
+import type { DrillingStatus, EnterpriseRow, EsmpStatus, LifecycleStage, Milestone1ReportStatus } from '@/types/database';
 import { useDistricts, useEnterpriseTypes, useOrganizations, useResourceCenters } from '@/lib/catalogs';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -133,6 +135,7 @@ export function EnterprisesListPage() {
       esmpStatus:       (searchParams.get('esmp')      as EsmpStatus               | null) ?? null,
       milestone1Status: (searchParams.get('m1')        as Milestone1ReportStatus   | null) ?? null,
       drillingStatus:   (searchParams.get('drilling')  as DrillingStatus           | null) ?? null,
+      stage:            (searchParams.get('stage')     as LifecycleStage            | null) ?? null,
       completeness:     (searchParams.get('completeness') as 'minimal' | 'cover_page_ready' | null) ?? null,
       zone:             searchParams.get('zone')
         ? (searchParams.get('zone') === 'unzoned' ? 'unzoned' : Number(searchParams.get('zone')))
@@ -180,6 +183,7 @@ export function EnterprisesListPage() {
         esmp:         next.esmpStatus ?? null,
         m1:           next.milestone1Status ?? null,
         drilling:     next.drillingStatus ?? null,
+        stage:        next.stage ?? null,
         completeness: next.completeness ?? null,
         zone:         next.zone == null ? null : String(next.zone),
       });
@@ -203,6 +207,7 @@ export function EnterprisesListPage() {
     + (filters.esmpStatus ? 1 : 0)
     + (filters.milestone1Status ? 1 : 0)
     + (filters.drillingStatus ? 1 : 0)
+    + (filters.stage ? 1 : 0)
     + (filters.completeness ? 1 : 0)
     + (filters.zone != null ? 1 : 0)
     + (activityId !== '__all' ? 1 : 0);
@@ -458,8 +463,25 @@ export function EnterprisesListPage() {
               </Select>
             </div>
           </div>
-          {/* Row 2: Type + Zone (Maseru) + Activity + Status (Activity = milestone column from the matrix) */}
+          {/* Row 2: Stage + Type + Zone (Maseru) + Activity + Status (Activity = milestone column from the matrix) */}
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label>Stage</Label>
+              <Select
+                value={filters.stage ?? '__all'}
+                onValueChange={(v) =>
+                  setFilters({ ...filters, stage: v === '__all' ? null : (v as LifecycleStage) })
+                }
+              >
+                <SelectTrigger><SelectValue placeholder="All stages" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">All stages</SelectItem>
+                  {LIFECYCLE_STAGES.map((s) => (
+                    <SelectItem key={s} value={s}>{STAGE_META[s].full}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label>Enterprise type</Label>
               <Select
@@ -614,7 +636,8 @@ export function EnterprisesListPage() {
                       </div>
                       <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <StageBadge stage={e.lifecycle_stage} />
                       {e.zone != null && (
                         <Badge variant="secondary" className="text-[10px]">
                           Zone {e.zone}
@@ -646,6 +669,7 @@ export function EnterprisesListPage() {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 pl-2 pr-3 sticky left-0 bg-background z-10 min-w-[180px]">Beneficiary</th>
                     <th className="py-2 pr-3 min-w-[90px]">District</th>
+                    <th className="py-2 pr-3 min-w-[84px]">Stage</th>
                     {LIFECYCLE_MILESTONES.map((m) => (
                       <th
                         key={m.id}
@@ -690,6 +714,9 @@ export function EnterprisesListPage() {
                         </td>
                         <td className="py-1.5 pr-3 text-muted-foreground">
                           {districts?.find((d) => d.id === e.district_id)?.name ?? '—'}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <StageBadge stage={e.lifecycle_stage} />
                         </td>
                         {LIFECYCLE_MILESTONES.map((m) => {
                           const value: LifecycleValue | null = (lc?.[m.id] as LifecycleValue | null) ?? null;
