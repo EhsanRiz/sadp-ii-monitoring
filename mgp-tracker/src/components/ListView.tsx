@@ -22,12 +22,13 @@ export function ListView() {
   const [search, setSearch] = useState('');
   const [district, setDistrict] = useState(listFilter.district ?? '');
   const [stage, setStage] = useState<StageFilter>(listFilter.stage ?? '');
-  const [lifecycle, setLifecycle] = useState<'' | LifecycleStage>('');
+  const [lifecycle, setLifecycle] = useState<'' | LifecycleStage>(listFilter.lifecycle ?? '');
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     setDistrict(listFilter.district ?? '');
     setStage(listFilter.stage ?? '');
+    setLifecycle(listFilter.lifecycle ?? '');
   }, [listFilter]);
 
   const rows = useMemo<Row[]>(() => {

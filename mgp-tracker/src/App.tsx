@@ -4,6 +4,7 @@ import { LayoutGrid, Columns3, List, ListChecks, PlusCircle, Users, LogOut, Hist
 import { supabase } from './lib/supabase';
 import { DataProvider, useData } from './lib/data';
 import type { StageKey } from './lib/stages';
+import type { LifecycleStage } from './lib/lifecycle';
 import { Login } from './components/Login';
 import { Logo, FullLogo } from './components/Logo';
 import { Toaster, Button } from './components/ui';
@@ -18,7 +19,7 @@ import { EnterpriseDrawer } from './components/EnterpriseDrawer';
 import { BellMenu } from './components/Tasks';
 
 export type View = 'summary' | 'board' | 'list' | 'actions' | 'activity' | 'add' | 'users';
-export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d' | 'unplaced'; district?: string; owner?: string }
+export interface ListFilter { stage?: StageKey | 'pending' | 'with_4d' | 'unplaced'; lifecycle?: LifecycleStage; district?: string; owner?: string }
 
 interface Nav {
   view: View;
