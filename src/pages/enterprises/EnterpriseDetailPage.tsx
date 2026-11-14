@@ -45,6 +45,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { EnterpriseLifecycleEditor } from '@/components/enterprise/EnterpriseLifecycleEditor';
 import { EnterpriseStageControl, StageBadge } from '@/components/enterprise/EnterpriseStageControl';
 import { StageFinanceEditor } from '@/components/enterprise/StageFinanceEditor';
+import { EnterpriseJourney } from '@/components/enterprise/EnterpriseJourney';
 import { BoreholeSupervisionForm } from '@/components/enterprise/BoreholeSupervisionForm';
 import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSchema';
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
@@ -684,6 +685,10 @@ export function EnterpriseDetailPage() {
         </TabsContent>
 
         <TabsContent value="progress" className="space-y-4">
+          <EnterpriseJourney
+            stage={enterprise.lifecycle_stage}
+            stageFinances={enterprise.stage_finances}
+          />
           <EnterpriseStageControl
             enterpriseId={enterprise.id}
             stage={enterprise.lifecycle_stage}

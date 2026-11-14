@@ -132,6 +132,15 @@ export function formatLsl(n: number | null | undefined): string {
   return `M${Math.round(n).toLocaleString('en-US')}`;
 }
 
+/** Compact LSL for tight chips: "M60k", "M1.2M", "M0"; em-dash when unset. */
+export function formatLslShort(n: number | null | undefined): string {
+  if (n == null) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `M${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (abs >= 1_000) return `M${Math.round(n / 1_000)}k`;
+  return `M${Math.round(n)}`;
+}
+
 export const BA_STATUS_META: Record<BaStatus, { label: string; tone: 'neutral' | 'progress' | 'success' | 'flag' }> = {
   pending: { label: 'Pending', tone: 'neutral' },
   submitted: { label: 'Submitted', tone: 'progress' },
