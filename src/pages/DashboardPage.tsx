@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useEnterpriseTypes, useOrganizations, useDistricts } from '@/lib/catalogs';
 import { useEnterpriseLifecycle } from '@/lib/enterprises';
+import { FinanceRollupCard } from '@/components/dashboard/FinanceRollupCard';
 import {
   LIFECYCLE_MILESTONES,
   aggregateLifecycle,
@@ -70,6 +71,8 @@ export function DashboardPage() {
             orgCode={myOrg?.code ?? 'Your org'}
             orgName={myOrg?.name ?? ''}
           />}
+
+      <FinanceRollupCard />
 
       <Card className="border-primary/20 bg-gradient-to-br from-tint-success/50 to-background">
         <CardHeader>
