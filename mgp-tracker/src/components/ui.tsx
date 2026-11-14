@@ -1,6 +1,7 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { STAGE, type StageKey } from '../lib/stages';
+import { LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
 
 // ---------- Toasts ----------
 type Toast = { id: number; text: string; kind: 'ok' | 'err' };
@@ -62,6 +63,20 @@ export function StageChip({ stage, size = 'md' }: { stage: StageKey; size?: 'sm'
     <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border font-medium ${s.color} ${size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-0.5 text-xs'}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
       {s.label}
+    </span>
+  );
+}
+
+// ---------- Lifecycle chip (M1 / M2 / Graduated) ----------
+export function LifecycleChip({ stage, size = 'md' }: { stage: LifecycleStage; size?: 'sm' | 'md' }) {
+  const m = LIFECYCLE_META[stage];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border font-medium ${m.chip} ${size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-0.5 text-xs'}`}
+      title={m.full}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} />
+      {m.label}
     </span>
   );
 }

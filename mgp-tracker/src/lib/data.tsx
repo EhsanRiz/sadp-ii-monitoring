@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from './supabase';
 import { STAGE, type StageKey } from './stages';
+import { type LifecycleStage } from './lifecycle';
+import { type Json } from './stage-finances';
 import { toast } from '../components/ui';
 
 export interface CatalogRow {
@@ -19,6 +21,8 @@ export interface TrackingRow {
   custom_name: string | null;
   custom_district: string | null;
   stage: StageKey;
+  lifecycle_stage: LifecycleStage;
+  stage_finances: Json;
   note: string | null;
   stage_since: string;
   updated_by: string | null;
