@@ -328,6 +328,7 @@ export interface Database {
           milestone1_report_status: Milestone1ReportStatus;
           lifecycle_status: Json;
           lifecycle_stage: LifecycleStage;
+          stage_finances: Json;
           borehole_supervision: Json;
           drilling_status: DrillingStatus;
           budget_lsl: number | null;
@@ -377,6 +378,7 @@ export interface Database {
           milestone1_report_status?: Milestone1ReportStatus;
           lifecycle_status?: Json;
           lifecycle_stage?: LifecycleStage;
+          stage_finances?: Json;
           borehole_supervision?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;
@@ -425,6 +427,7 @@ export interface Database {
           milestone1_report_status?: Milestone1ReportStatus;
           lifecycle_status?: Json;
           lifecycle_stage?: LifecycleStage;
+          stage_finances?: Json;
           borehole_supervision?: Json;
           drilling_status?: DrillingStatus;
           budget_lsl?: number | null;

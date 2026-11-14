@@ -44,6 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/StatusBadge';
 import { EnterpriseLifecycleEditor } from '@/components/enterprise/EnterpriseLifecycleEditor';
 import { EnterpriseStageControl, StageBadge } from '@/components/enterprise/EnterpriseStageControl';
+import { StageFinanceEditor } from '@/components/enterprise/StageFinanceEditor';
 import { BoreholeSupervisionForm } from '@/components/enterprise/BoreholeSupervisionForm';
 import type { BoreholeSupervisionResponses } from '@/forms/boreholeSupervisionSchema';
 import { BackfillFromBinderCard } from '@/components/enterprise/BackfillFromBinderCard';
@@ -686,6 +687,11 @@ export function EnterpriseDetailPage() {
           <EnterpriseStageControl
             enterpriseId={enterprise.id}
             stage={enterprise.lifecycle_stage}
+          />
+          <StageFinanceEditor
+            enterpriseId={enterprise.id}
+            stageFinances={enterprise.stage_finances}
+            currentStage={enterprise.lifecycle_stage}
           />
           <EnterpriseLifecycleEditor
             enterpriseId={enterprise.id}
