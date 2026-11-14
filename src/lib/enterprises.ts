@@ -18,7 +18,7 @@ import type {
 } from '@/types/database';
 
 export interface EnterpriseListFilters {
-  /** Super-admin convenience: filter to a specific org (e.g. '4D' or 'RSDA'). */
+  /** Super-admin convenience: filter to a specific org by code (e.g. '4D'). */
   organizationCode?: string | null;
   districtId?: string | null;
   resourceCenterId?: string | null;

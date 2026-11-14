@@ -1,8 +1,8 @@
 /**
  * 11-milestone enterprise lifecycle tracker.
  *
- * Mirrors the columns on RSDA's Master Sheet so 4D + RSDA share one tracking
- * vocabulary. After migration 282 all 11 milestones are MANUAL (stored in
+ * Mirrors the columns on the programme Master Sheet so field teams share one
+ * tracking vocabulary. After migration 282 all 11 milestones are MANUAL (stored in
  * `enterprises.lifecycle_status` jsonb). The "Upload" pill on the ESMP and M1
  * rows is a navigation action (deep-link into the relevant module's tab),
  * NOT a value — the user still has to mark Yes/No themselves once they've
@@ -21,7 +21,7 @@ export type LifecycleValue = 'yes' | 'no' | 'n_a';
 export interface LifecycleMilestone {
   /** stable id — matches the column name in enterprise_lifecycle */
   id: LifecycleMilestoneId;
-  /** column header text (exact RSDA wording) */
+  /** column header text (exact Master Sheet wording) */
   label: string;
   /** short label for tight contexts (mobile, dashboard) */
   short: string;
@@ -50,7 +50,7 @@ export type LifecycleMilestoneId =
   | 'procurement'
   | 'm1_submitted';
 
-/** Canonical milestone list in RSDA column order. */
+/** Canonical milestone list in Master Sheet column order. */
 export const LIFECYCLE_MILESTONES: LifecycleMilestone[] = [
   { id: 'contracts_signed',        label: 'Contracts signed',                       short: 'Contract',     source: 'manual' },
   { id: 'contract_available',      label: 'Contract available',                     short: 'Contract PDF', source: 'manual' },
