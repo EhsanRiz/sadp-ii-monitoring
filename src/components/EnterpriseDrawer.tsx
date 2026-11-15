@@ -11,6 +11,8 @@ import { deriveRisk } from '../lib/risk';
 import { RiskFlagChips } from './NeedsAttention';
 import { deriveReadiness, TIER_META } from '../lib/readiness';
 import { ReadinessBar, MissingChips } from './GraduationReadiness';
+import { deriveReportSla, SLA_TARGET_DAYS } from '../lib/sla';
+import { SlaBadge } from './ReportSla';
 import { Button, Drawer, Modal, StageChip, LifecycleChip, inputCls, toast } from './ui';
 
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
@@ -41,6 +43,7 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   const openQueries = it.actions.filter((a) => a.kind === 'sadp_query' && a.status === 'open');
   const risk = deriveRisk(it);
   const readiness = deriveReadiness(it);
+  const sla = deriveReportSla(it);
 
   async function confirmMove() {
     if (!it || !target) return;
@@ -124,6 +127,14 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
               <AlertTriangle size={13} /> Needs attention
             </div>
             <RiskFlagChips flags={risk.flags} />
+          </div>
+        )}
+
+        {/* Report awaiting SADP approval — SLA clock */}
+        {sla.waiting && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <SlaBadge sla={sla} />
+            <span>awaiting SADP approval{sla.level === 'breach' ? ` — over the ${SLA_TARGET_DAYS}-day SLA` : ''}</span>
           </div>
         )}
 

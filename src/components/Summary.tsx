@@ -9,6 +9,7 @@ import { MyTasksCard } from './Tasks';
 import { LifecycleRollup } from './LifecycleRollup';
 import { LifecycleFlow } from './LifecycleFlow';
 import { NeedsAttention } from './NeedsAttention';
+import { ReportSla } from './ReportSla';
 import { GraduationReadiness } from './GraduationReadiness';
 import { GraduationFunnel } from './GraduationFunnel';
 
@@ -113,6 +114,9 @@ export function Summary() {
 
       {/* Needs attention queue */}
       <NeedsAttention />
+
+      {/* Report approval SLA / bottleneck chase queue */}
+      <ReportSla />
 
       {/* Stacked progress bar */}
       <div className="rounded-xl border bg-white p-4">
