@@ -1,4 +1,4 @@
-# MGP M1 Approval Tracker — tracker.4dcs.co.za
+# MGP Tracker — tracker.4dcs.co.za
 
 A web tool for the SADP II Matching Grants (MGP) team to track each enterprise's
 M1 report through the **approval workflow** and its **M1 → M2 → Graduation

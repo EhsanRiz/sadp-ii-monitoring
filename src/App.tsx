@@ -50,7 +50,7 @@ export function App() {
           <Shell />
         </DataProvider>
       ) : (
-        <Login />
+        <Login onBack={() => setEntered(false)} />
       )}
     </>
   );
@@ -115,8 +115,8 @@ function Shell() {
             <span className="sm:hidden"><Logo size={34} /></span>
             <span className="hidden sm:block"><FullLogo height={36} /></span>
             <div className="min-w-0 border-l border-slate-200 pl-3 leading-tight lg:hidden 2xl:block">
-              <div className="truncate text-sm font-bold text-brand-dark">MGP M1 Approval Tracker</div>
-              <div className="truncate text-[11px] text-fdbrown">SADP II · Central Region</div>
+              <div className="truncate text-sm font-bold text-brand-dark">MGP Tracker</div>
+              <div className="truncate text-[11px] text-fdbrown">Matching Grants Programme · Central Region</div>
             </div>
             <nav className="ml-4 hidden items-center gap-0.5 lg:flex print:hidden">
               {visible.map((v) => (

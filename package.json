@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "SADP II MGP — M1 Approval Tracker (tracker.4dcs.co.za)",
+  "description": "SADP II MGP — Matching Grants Programme Tracker, Central Region (tracker.4dcs.co.za)",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
