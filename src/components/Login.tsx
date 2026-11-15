@@ -53,8 +53,8 @@ export function Login() {
         <div className="mb-6 flex flex-col items-center text-center">
           <FullLogo height={64} />
           <div className="mt-5 h-1 w-24 rounded-full bg-gradient-to-r from-fdblue via-fdlime to-fdbrown-light" />
-          <h1 className="mt-4 text-xl font-bold text-brand-dark">MGP M1 Approval Tracker</h1>
-          <p className="text-sm text-fdbrown">SADP II Matching Grants · Central Region</p>
+          <h1 className="mt-4 text-xl font-bold text-brand-dark">MGP Tracker</h1>
+          <p className="text-sm text-fdbrown">SADP II · Matching Grants Programme · Central Region</p>
         </div>
 
         <div className="rounded-xl border bg-white p-5 shadow-sm">
