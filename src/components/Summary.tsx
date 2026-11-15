@@ -11,6 +11,7 @@ import { LifecycleFlow } from './LifecycleFlow';
 import { NeedsAttention } from './NeedsAttention';
 import { ReportSla } from './ReportSla';
 import { FinancialCompliance } from './FinancialCompliance';
+import { DataCompleteness } from './DataCompleteness';
 import { GraduationReadiness } from './GraduationReadiness';
 import { GraduationFunnel } from './GraduationFunnel';
 
@@ -229,6 +230,9 @@ export function Summary() {
 
       {/* Lifecycle flow (enterprises under each journey step) */}
       <LifecycleFlow />
+
+      {/* Data-completeness report (which enterprises are missing data) */}
+      <DataCompleteness />
 
       {/* Recent movement */}
       <div className="rounded-xl border bg-white print:hidden">
