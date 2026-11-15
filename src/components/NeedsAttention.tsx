@@ -10,6 +10,7 @@ import { useData } from '../lib/data';
 import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { deriveRisk, FLAG_CHIP, type RiskFlag } from '../lib/risk';
+import { ExpandableList } from './ExpandableList';
 
 export function RiskFlagChips({ flags, max }: { flags: RiskFlag[]; max?: number }) {
   const shown = max ? flags.slice(0, max) : flags;
@@ -79,8 +80,8 @@ export function NeedsAttention() {
           {redN + amberN === 0 ? 'Nothing needs attention — every enterprise is on track. 🎉' : 'None in this view.'}
         </p>
       ) : (
-        <ul className="max-h-96 divide-y overflow-y-auto">
-          {rows.map(({ it, risk }) => (
+        <ExpandableList
+          items={rows.map(({ it, risk }) => (
             <li key={it.id}>
               <button onClick={() => openItem(it.id)} className="hover-row flex w-full items-start gap-2.5 px-4 py-2.5 text-left">
                 <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${risk.level === 'red' ? 'bg-red-500' : 'bg-amber-500'}`} />
@@ -96,7 +97,7 @@ export function NeedsAttention() {
               </button>
             </li>
           ))}
-        </ul>
+        />
       )}
     </div>
   );

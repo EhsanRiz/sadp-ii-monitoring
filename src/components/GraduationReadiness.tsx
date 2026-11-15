@@ -9,6 +9,7 @@ import { useData, type Item } from '../lib/data';
 import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { deriveReadiness, TIER_META, type Readiness, type MissingStep } from '../lib/readiness';
+import { ExpandableList } from './ExpandableList';
 
 export function ReadinessBar({ pct, tier }: { pct: number; tier: Readiness['tier'] }) {
   return (
@@ -84,11 +85,11 @@ export function GraduationReadiness() {
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-slate-500">{closeOnly ? 'None close to graduation in this view yet.' : 'No enterprises to show.'}</p>
       ) : (
-        <ul className="max-h-96 divide-y overflow-y-auto">
-          {rows.map(({ it, r }) => (
+        <ExpandableList
+          items={rows.map(({ it, r }) => (
             <Row key={it.id} it={it} r={r} onOpen={() => openItem(it.id)} />
           ))}
-        </ul>
+        />
       )}
     </div>
   );

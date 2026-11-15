@@ -9,6 +9,7 @@ import { useData, type Item } from '../lib/data';
 import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { deriveReportSla, SLA_META, SLA_TARGET_DAYS, type ReportSla as Sla } from '../lib/sla';
+import { ExpandableList } from './ExpandableList';
 
 const LEVEL_ORDER = { breach: 0, warn: 1, ok: 2 } as const;
 
@@ -79,11 +80,11 @@ export function ReportSla() {
           {overdueOnly ? 'No reports over the SLA in this view.' : 'No reports waiting on SADP approval right now.'}
         </p>
       ) : (
-        <ul className="max-h-96 divide-y overflow-y-auto">
-          {rows.map(({ it, s }) => (
+        <ExpandableList
+          items={rows.map(({ it, s }) => (
             <Row key={it.id} it={it} s={s} onOpen={() => openItem(it.id)} />
           ))}
-        </ul>
+        />
       )}
     </div>
   );

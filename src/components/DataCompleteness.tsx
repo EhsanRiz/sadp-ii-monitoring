@@ -10,6 +10,7 @@ import { useData, type Item } from '../lib/data';
 import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { deriveCompleteness, COMPLETENESS_FIELDS, GROUP_META, type Completeness } from '../lib/completeness';
+import { ExpandableList } from './ExpandableList';
 
 export function DataCompleteness() {
   const { items } = useData();
@@ -98,11 +99,11 @@ export function DataCompleteness() {
             <span className="text-slate-500">{activeField ? <>Missing <b className="text-slate-700">{activeField.label}</b></> : 'Least complete first'} · {rows.length}</span>
             {activeField && <button onClick={() => setField('')} className="text-slate-500 hover:text-brand hover:underline">Clear filter</button>}
           </div>
-          <ul className="max-h-96 divide-y overflow-y-auto">
-            {rows.map(({ it, c }) => (
+          <ExpandableList
+            items={rows.map(({ it, c }) => (
               <Row key={it.id} it={it} c={c} onOpen={() => openItem(it.id)} />
             ))}
-          </ul>
+          />
         </>
       )}
     </div>
