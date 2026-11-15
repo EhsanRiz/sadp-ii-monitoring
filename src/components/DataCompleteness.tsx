@@ -70,7 +70,7 @@ export function DataCompleteness() {
           {/* Missing by field */}
           <div className="border-b p-4">
             <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">Missing by field — click to filter</div>
-            <div className="space-y-1.5">
+            <div className="max-w-5xl space-y-1.5">
               {byField.map(({ field: f, count }) => {
                 const active = field === f.id;
                 const pct = Math.round((count / Math.max(1, gapN)) * 100);

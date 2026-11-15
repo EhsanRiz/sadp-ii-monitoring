@@ -105,7 +105,7 @@ function Row({ it, r, onOpen }: { it: Item; r: Readiness; onOpen: () => void }) 
             <span className="shrink-0 text-xs text-slate-400">{it.district}</span>
           </div>
           <div className="mt-1.5 flex items-center gap-2">
-            <div className="min-w-0 flex-1"><ReadinessBar pct={r.pct} tier={r.tier} /></div>
+            <div className="w-full max-w-[240px]"><ReadinessBar pct={r.pct} tier={r.tier} /></div>
             <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-500">{r.pct}%</span>
           </div>
           <div className="mt-1"><MissingChips missing={r.missing} max={2} /></div>
