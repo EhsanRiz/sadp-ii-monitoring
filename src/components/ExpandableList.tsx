@@ -15,7 +15,7 @@ export function ExpandableList({ items, initial = 5 }: { items: ReactNode[]; ini
   const ref = useRef<HTMLDivElement>(null);
   const shown = open ? items : items.slice(0, initial);
 
-  if (items.length <= initial) return <ul className="divide-y">{shown}</ul>;
+  if (items.length <= initial) return <ul className="max-w-5xl divide-y">{shown}</ul>;
 
   const collapse = () => {
     setOpen(false);
@@ -24,7 +24,7 @@ export function ExpandableList({ items, initial = 5 }: { items: ReactNode[]; ini
   };
 
   return (
-    <div ref={ref}>
+    <div ref={ref} className="max-w-5xl">
       <ul className="divide-y">{shown}</ul>
       {open ? (
         <div className="sticky bottom-0 z-10 border-t border-slate-200 bg-white/90 backdrop-blur-sm">

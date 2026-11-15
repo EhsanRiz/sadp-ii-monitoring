@@ -103,15 +103,13 @@ function Row({ it, s, onOpen }: { it: Item; s: Sla; onOpen: () => void }) {
           </div>
           <div className="mt-1.5 flex items-center gap-2">
             <span className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{sourceLabel(s)}</span>
-            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100" title={`SLA target ${SLA_TARGET_DAYS} days`}>
+            <div className="h-1.5 w-full max-w-[220px] overflow-hidden rounded-full bg-slate-100" title={`SLA target ${SLA_TARGET_DAYS} days`}>
               <div className={`h-full ${meta.bar}`} style={{ width: `${pct}%` }} />
             </div>
+            <span className={`shrink-0 text-sm font-semibold tabular-nums ${meta.text}`}>{s.days}d</span>
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className={`text-sm font-semibold tabular-nums ${meta.text}`}>{s.days}d</span>
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.chip}`}>{meta.label}</span>
-        </div>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.chip}`}>{meta.label}</span>
       </button>
     </li>
   );
