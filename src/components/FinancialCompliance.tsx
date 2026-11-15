@@ -11,6 +11,7 @@ import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { formatLsl, formatLslShort } from '../lib/stage-finances';
 import { deriveCompliance, aggregateCompliance, type EntCompliance } from '../lib/compliance';
+import { ExpandableList } from './ExpandableList';
 
 type View = 'all' | 'shortfall' | 'unreported';
 
@@ -98,11 +99,11 @@ export function FinancialCompliance() {
           {totals.flaggedCount === 0 ? 'No outstanding financial compliance exposure.' : 'None in this view.'}
         </p>
       ) : (
-        <ul className="max-h-96 divide-y overflow-y-auto">
-          {rows.map(({ it, c }) => (
+        <ExpandableList
+          items={rows.map(({ it, c }) => (
             <Row key={it.id} it={it} c={c} onOpen={() => openItem(it.id)} />
           ))}
-        </ul>
+        />
       )}
     </div>
   );
