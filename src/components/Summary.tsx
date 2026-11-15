@@ -9,6 +9,7 @@ import { MyTasksCard } from './Tasks';
 import { LifecycleRollup } from './LifecycleRollup';
 import { LifecycleFlow } from './LifecycleFlow';
 import { NeedsAttention } from './NeedsAttention';
+import { GraduationReadiness } from './GraduationReadiness';
 
 type Row =
   | { kind: 'stage'; key: StageKey; label: string; indent: number; strong?: boolean }
@@ -210,6 +211,9 @@ export function Summary() {
 
       {/* Lifecycle rollups */}
       <LifecycleRollup />
+
+      {/* Graduation readiness ranking */}
+      <GraduationReadiness />
 
       {/* Lifecycle flow (enterprises under each journey step) */}
       <LifecycleFlow />

@@ -9,6 +9,8 @@ import { StageFinanceEditor } from './StageFinanceEditor';
 import { EnterpriseJourney } from './EnterpriseJourney';
 import { deriveRisk } from '../lib/risk';
 import { RiskFlagChips } from './NeedsAttention';
+import { deriveReadiness, TIER_META } from '../lib/readiness';
+import { ReadinessBar, MissingChips } from './GraduationReadiness';
 import { Button, Drawer, Modal, StageChip, LifecycleChip, inputCls, toast } from './ui';
 
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
@@ -38,6 +40,7 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   if (!it) return null;
   const openQueries = it.actions.filter((a) => a.kind === 'sadp_query' && a.status === 'open');
   const risk = deriveRisk(it);
+  const readiness = deriveReadiness(it);
 
   async function confirmMove() {
     if (!it || !target) return;
@@ -149,6 +152,21 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
           </div>
           <p className="mt-1.5 text-xs text-slate-500">{LIFECYCLE_META[it.lifecycle_stage].description}</p>
         </section>
+
+        {/* Graduation readiness */}
+        {readiness.tier !== 'graduated' && (
+          <section>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Graduation readiness</h3>
+              <span className="flex items-center gap-2">
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${TIER_META[readiness.tier].chip}`}>{TIER_META[readiness.tier].label}</span>
+                <span className="text-xs font-semibold tabular-nums text-slate-600">{readiness.pct}%</span>
+              </span>
+            </div>
+            <ReadinessBar pct={readiness.pct} tier={readiness.tier} />
+            <div className="mt-2"><MissingChips missing={readiness.missing} max={8} /></div>
+          </section>
+        )}
 
         {/* Journey strip */}
         <EnterpriseJourney stage={it.lifecycle_stage} stageFinances={it.stage_finances} approvalStage={it.stage} />
