@@ -6,6 +6,7 @@ import { DataProvider, useData } from './lib/data';
 import type { StageKey } from './lib/stages';
 import type { LifecycleStage } from './lib/lifecycle';
 import { Login } from './components/Login';
+import { Landing } from './components/Landing';
 import { Logo, FullLogo } from './components/Logo';
 import { Toaster, Button } from './components/ui';
 import { Summary } from './components/Summary';
@@ -32,6 +33,7 @@ export const useNav = () => useContext(NavCtx)!;
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [entered, setEntered] = useState(false);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -39,6 +41,7 @@ export function App() {
   }, []);
 
   if (session === undefined) return <Splash />;
+  if (!entered) return <Landing onEnter={() => setEntered(true)} signedIn={!!session} />;
   return (
     <>
       <Toaster />
