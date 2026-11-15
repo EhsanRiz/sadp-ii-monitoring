@@ -22,9 +22,9 @@ import { parseStageFinances, MONEY_STAGES, type MoneyStage } from './stage-finan
 export type SlaLevel = 'breach' | 'warn' | 'ok';
 
 /** Approve within this many days of PFO submission; past it is an SLA breach. */
-export const SLA_TARGET_DAYS = 30;
+export const SLA_TARGET_DAYS = 14;
 /** Approaching the target — worth chasing before it breaches. */
-export const SLA_WARN_DAYS = 21;
+export const SLA_WARN_DAYS = 10;
 
 export const SLA_META: Record<SlaLevel, { label: string; chip: string; bar: string; text: string }> = {
   breach: { label: 'Overdue', chip: 'border-red-200 bg-red-50 text-red-700', bar: 'bg-red-500', text: 'text-red-700' },
