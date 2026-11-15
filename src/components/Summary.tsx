@@ -10,6 +10,7 @@ import { LifecycleRollup } from './LifecycleRollup';
 import { LifecycleFlow } from './LifecycleFlow';
 import { NeedsAttention } from './NeedsAttention';
 import { GraduationReadiness } from './GraduationReadiness';
+import { GraduationFunnel } from './GraduationFunnel';
 
 type Row =
   | { kind: 'stage'; key: StageKey; label: string; indent: number; strong?: boolean }
@@ -211,6 +212,9 @@ export function Summary() {
 
       {/* Lifecycle rollups */}
       <LifecycleRollup />
+
+      {/* Graduation funnel (cohort conversion M1 → M2 → Graduated) */}
+      <GraduationFunnel />
 
       {/* Graduation readiness ranking */}
       <GraduationReadiness />
