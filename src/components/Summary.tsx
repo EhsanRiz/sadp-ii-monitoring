@@ -10,6 +10,7 @@ import { LifecycleRollup } from './LifecycleRollup';
 import { LifecycleFlow } from './LifecycleFlow';
 import { NeedsAttention } from './NeedsAttention';
 import { ReportSla } from './ReportSla';
+import { FinancialCompliance } from './FinancialCompliance';
 import { GraduationReadiness } from './GraduationReadiness';
 import { GraduationFunnel } from './GraduationFunnel';
 
@@ -216,6 +217,9 @@ export function Summary() {
 
       {/* Lifecycle rollups */}
       <LifecycleRollup />
+
+      {/* Financial compliance signals (shortfall + unreported funds) */}
+      <FinancialCompliance />
 
       {/* Graduation funnel (cohort conversion M1 → M2 → Graduated) */}
       <GraduationFunnel />
