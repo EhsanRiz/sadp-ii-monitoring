@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { supabase, phoneToEmail, maskPhone } from '../lib/supabase';
 import { Button, inputCls } from './ui';
 import { FullLogo } from './Logo';
 
-export function Login() {
+export function Login({ onBack }: { onBack?: () => void }) {
   const [mode, setMode] = useState<'signin' | 'activate'>('signin');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -48,13 +49,22 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white p-4">
+    <div className="flex min-h-screen flex-col bg-white">
+      {onBack && (
+        <div className="px-4 pt-4">
+          <button onClick={onBack} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand">
+            <ArrowLeft size={16} /> Back
+          </button>
+        </div>
+      )}
+      <div className="flex flex-1 items-center justify-center px-4 py-6">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
           <FullLogo height={64} />
           <div className="mt-5 h-1 w-24 rounded-full bg-gradient-to-r from-fdblue via-fdlime to-fdbrown-light" />
           <h1 className="mt-4 text-xl font-bold text-brand-dark">MGP Tracker</h1>
           <p className="text-sm text-fdbrown">SADP II · Matching Grants Programme · Central Region</p>
+          <p className="mt-2 max-w-xs text-xs text-slate-500">Real-time monitoring of every Matching Grants Programme enterprise across Lesotho's Central Region.</p>
         </div>
 
         <div className="rounded-xl border bg-white p-5 shadow-sm">
@@ -100,6 +110,8 @@ export function Login() {
             </form>
           )}
         </div>
+        <p className="mt-6 text-center text-xs text-slate-400">© {new Date().getFullYear()} 4D Climate Solutions · creative · innovative · green · sustainable</p>
+      </div>
       </div>
     </div>
   );

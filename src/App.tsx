@@ -50,7 +50,7 @@ export function App() {
           <Shell />
         </DataProvider>
       ) : (
-        <Login />
+        <Login onBack={() => setEntered(false)} />
       )}
     </>
   );
