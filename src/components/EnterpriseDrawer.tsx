@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Trash2, ArrowRight, Phone, AlertTriangle } from 'lucide-react';
+import { Trash2, ArrowRight, Phone, AlertTriangle, Save, Plus } from 'lucide-react';
 import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { STAGES, STAGE, type StageKey } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
 import { changeStage, setLifecycleStage } from '../lib/mutations';
-import { StageFinanceEditor } from './StageFinanceEditor';
+import { StageFinanceEditor, type FinanceEditorHandle } from './StageFinanceEditor';
 import { EnterpriseJourney } from './EnterpriseJourney';
 import { deriveRisk } from '../lib/risk';
 import { RiskFlagChips } from './NeedsAttention';
@@ -27,11 +27,22 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   const [busyLc, setBusyLc] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Floating save for the finance editor — save without scrolling to the bottom.
+  const financeRef = useRef<FinanceEditorHandle>(null);
+  const [financesDirty, setFinancesDirty] = useState(false);
+  const [savingFinances, setSavingFinances] = useState(false);
+
   useEffect(() => {
     setTarget(null);
     setNote('');
     setQueries('');
   }, [trackingId]);
+
+  async function saveFinances() {
+    setSavingFinances(true);
+    await financeRef.current?.save();
+    setSavingFinances(false);
+  }
 
   const hist = useMemo(() => (it ? history.filter((h) => h.tracking_id === it.id).reverse() : []), [history, it]);
   const owners = useMemo(
@@ -95,6 +106,18 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
       open
       onClose={onClose}
       wide
+      footer={
+        canEdit && financesDirty ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700">
+              <AlertTriangle size={13} /> Unsaved finance changes
+            </span>
+            <Button onClick={saveFinances} disabled={savingFinances} size="sm">
+              <Save size={13} /> {savingFinances ? 'Saving…' : 'Save finances'}
+            </Button>
+          </div>
+        ) : undefined
+      }
       title={
         <div>
           <div className="text-lg font-bold leading-tight">{it.name}</div>
@@ -184,12 +207,14 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
 
         {/* Per-milestone finances */}
         <StageFinanceEditor
+          ref={financeRef}
           trackingId={it.id}
           name={it.name}
           stageFinances={it.stage_finances}
           currentStage={it.lifecycle_stage}
           readOnly={!canEdit}
           onSaved={reload}
+          onDirtyChange={setFinancesDirty}
         />
 
         {/* Move */}
@@ -392,6 +417,16 @@ function ActionPlan({
     else onChange();
   }
 
+  /** Jump to the add box ready for a new follow-up, optionally pre-filled (e.g. from a query). */
+  function startFollowUp(prefill?: string) {
+    setKind('action');
+    if (prefill !== undefined) setDesc(prefill);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.scrollIntoView({ block: 'center' });
+    });
+  }
+
   return (
     <section>
       <div className="mb-2 flex items-center gap-3">
@@ -405,6 +440,14 @@ function ActionPlan({
               {doneCount} of {list.length} done
             </span>
           </>
+        )}
+        {canEdit && (
+          <button
+            onClick={() => startFollowUp()}
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 transition hover:border-brand hover:text-brand"
+          >
+            <Plus size={13} /> Follow-up
+          </button>
         )}
       </div>
 
@@ -442,6 +485,15 @@ function ActionPlan({
                     )}
                   </div>
                 </label>
+                {canEdit && a.kind === 'sadp_query' && (
+                  <button
+                    onClick={() => startFollowUp(`Follow up: ${a.description}`)}
+                    className="rounded p-1 text-slate-300 hover:bg-brand-light hover:text-brand"
+                    title="Add a follow-up for this query"
+                  >
+                    <Plus size={14} />
+                  </button>
+                )}
                 {canEdit && !done && (
                   <select
                     className="w-24 shrink-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 focus:border-brand"

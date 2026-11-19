@@ -82,7 +82,7 @@ export function LifecycleChip({ stage, size = 'md' }: { stage: LifecycleStage; s
 }
 
 // ---------- Drawer / Modal ----------
-export function Drawer({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean }) {
+export function Drawer({ open, onClose, title, children, wide, footer }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean; footer?: ReactNode }) {
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -101,6 +101,7 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        {footer && <div className="border-t bg-white px-5 py-3 shadow-[0_-2px_8px_rgba(15,23,42,0.06)]">{footer}</div>}
       </div>
     </div>
   );

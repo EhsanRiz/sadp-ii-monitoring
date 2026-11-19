@@ -10,7 +10,7 @@
  * report is marked approved the enterprise auto-graduates (the agreed model:
  * graduation is automatic on M2 completion).
  */
-import { useEffect, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Save, AlertCircle } from 'lucide-react';
 import {
   MONEY_STAGES,
@@ -42,6 +42,13 @@ interface Props {
   currentStage: LifecycleStage;
   readOnly?: boolean;
   onSaved: () => void;
+  /** Reports whether there are unsaved changes, so a parent can show a sticky save bar. */
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+/** Imperative handle so a parent (e.g. the drawer's floating save bar) can trigger a save. */
+export interface FinanceEditorHandle {
+  save: () => Promise<void>;
 }
 
 function num(v: string): number | null {
@@ -50,7 +57,10 @@ function num(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function StageFinanceEditor({ trackingId, name, stageFinances, currentStage, readOnly = false, onSaved }: Props) {
+export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(function StageFinanceEditor(
+  { trackingId, name, stageFinances, currentStage, readOnly = false, onSaved, onDirtyChange },
+  ref,
+) {
   const [draft, setDraft] = useState<StageFinancesMap>({});
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -59,6 +69,10 @@ export function StageFinanceEditor({ trackingId, name, stageFinances, currentSta
     setDraft(parseStageFinances(stageFinances));
     setDirty(false);
   }, [stageFinances, trackingId]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   function setField<K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) {
     setDraft((d) => {
@@ -81,6 +95,11 @@ export function StageFinanceEditor({ trackingId, name, stageFinances, currentSta
       onSaved();
     }
   }
+
+  // Expose the latest save() to a parent (floating save bar) without re-binding the handle.
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+  useImperativeHandle(ref, () => ({ save: () => onSaveRef.current() }), []);
 
   return (
     <section>
@@ -114,7 +133,7 @@ export function StageFinanceEditor({ trackingId, name, stageFinances, currentSta
       )}
     </section>
   );
-}
+});
 
 interface CardProps {
   stage: MoneyStage;

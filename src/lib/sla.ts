@@ -76,14 +76,20 @@ export function deriveReportSla(it: Item): ReportSla {
   const inflight: InflightReport[] = [];
   for (const s of MONEY_STAGES) {
     const f = map[s];
-    if (!f?.pfo_submitted_date || f.sadp_approved_date) continue; // not submitted, or already approved
+    // not submitted, or already approved (by date or status)
+    if (!f?.pfo_submitted_date || f.sadp_approved_date || f.report_status === 'approved') continue;
     const dw = daysSinceDate(f.pfo_submitted_date);
     if (dw == null) continue;
     inflight.push({ stage: s, submitted: f.pfo_submitted_date, daysWaiting: dw, level: slaLevel(dw) });
   }
 
-  // Pipeline fallback: sitting in the "At SADP" approval stage (awaiting approval).
-  const atSadpDays = it.stage === 'at_sadp' ? daysSince(it.stage_since) : null;
+  // Pipeline fallback: sitting in the "At SADP" approval stage (awaiting approval) — but
+  // only while the current milestone's report isn't already approved. Without this, an
+  // enterprise lingers in the queue after its approval date is filled in but before the
+  // approval stage is moved, so the card looks like it "doesn't update".
+  const curStage: MoneyStage = it.lifecycle_stage === 'm2' ? 'm2' : 'm1';
+  const curApproved = !!map[curStage]?.sadp_approved_date || map[curStage]?.report_status === 'approved';
+  const atSadpDays = it.stage === 'at_sadp' && !curApproved ? daysSince(it.stage_since) : null;
 
   const worstReport = inflight.reduce<InflightReport | null>((a, r) => (!a || r.daysWaiting > a.daysWaiting ? r : a), null);
   const reportDays = worstReport?.daysWaiting ?? null;
