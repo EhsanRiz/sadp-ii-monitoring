@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Trash2, ArrowRight, Phone, AlertTriangle, Save, Plus } from 'lucide-react';
-import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow } from '../lib/data';
+import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow, type QueryStatus } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { STAGES, STAGE, type StageKey } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
@@ -66,7 +66,7 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
         .map((l) => l.trim())
         .filter(Boolean);
       if (lines.length) {
-        const { error } = await supabase.from('mgp_actions').insert(lines.map((description) => ({ tracking_id: it.id, kind: 'sadp_query', description })));
+        const { error } = await supabase.from('mgp_actions').insert(lines.map((description) => ({ tracking_id: it.id, kind: 'sadp_query', description, query_status: 'raised' })));
         if (error) toast.err(errMsg(error));
       }
     }
@@ -329,6 +329,12 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   );
 }
 
+const QUERY_STATUS: { key: QueryStatus; label: string; short: string; chip: string }[] = [
+  { key: 'raised', label: 'Raised by SADP', short: 'Raised', chip: 'border-amber-200 bg-amber-50 text-amber-800' },
+  { key: 'addressing', label: 'Being addressed by 4D', short: 'Addressing', chip: 'border-fdblue/30 bg-fdblue-light text-sky-800' },
+  { key: 'responded', label: 'Responded to SADP', short: 'Responded', chip: 'border-brand/20 bg-brand-light text-brand-dark' },
+];
+
 function ActionPlan({
   trackingId,
   actions,
@@ -379,6 +385,7 @@ function ActionPlan({
         assigned_to: assignee && assignee !== 'other' ? assignee : null,
         owner: assignee === 'other' ? owner.trim() || null : null,
         due_date: due || null,
+        query_status: kind === 'sadp_query' ? 'raised' : null,
       });
     setBusy(false);
     if (error) return toast.err(errMsg(error));
@@ -413,6 +420,18 @@ function ActionPlan({
   async function del(a: ActionRow) {
     if (!window.confirm(`Delete “${a.description}”?`)) return;
     const { error } = await supabase.from('mgp_actions').delete().eq('id', a.id);
+    if (error) toast.err(errMsg(error));
+    else onChange();
+  }
+
+  async function setQueryStatus(a: ActionRow, status: QueryStatus) {
+    const { error } = await supabase.from('mgp_actions').update({ query_status: status }).eq('id', a.id);
+    if (error) toast.err(errMsg(error));
+    else onChange();
+  }
+
+  async function setQueryReasoning(a: ActionRow, text: string) {
+    const { error } = await supabase.from('mgp_actions').update({ query_reasoning: text.trim() || null }).eq('id', a.id);
     if (error) toast.err(errMsg(error));
     else onChange();
   }
@@ -457,7 +476,8 @@ function ActionPlan({
             const done = statusOf(a) === 'done';
             const late = !done && a.due_date && a.due_date < today;
             return (
-              <li key={a.id} className={`hover-row group flex items-start gap-3 px-3 py-2 ${done ? 'bg-slate-50' : ''}`}>
+              <li key={a.id} className={`hover-row group ${done ? 'bg-slate-50' : ''}`}>
+                <div className="flex items-start gap-3 px-3 py-2">
                 <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
                   <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#008C44]" checked={done} disabled={!canEdit} onChange={() => toggle(a)} />
                   <div className="min-w-0 flex-1">
@@ -514,6 +534,12 @@ function ActionPlan({
                     <Trash2 size={14} />
                   </button>
                 )}
+                </div>
+                {a.kind === 'sadp_query' && (
+                  <div className="border-t border-slate-100 px-3 py-2">
+                    <QueryWorkflow a={a} canEdit={canEdit} onStatus={setQueryStatus} onReasoning={setQueryReasoning} />
+                  </div>
+                )}
               </li>
             );
           })}
@@ -559,5 +585,67 @@ function ActionPlan({
         </form>
       )}
     </section>
+  );
+}
+
+function QueryWorkflow({
+  a,
+  canEdit,
+  onStatus,
+  onReasoning,
+}: {
+  a: ActionRow;
+  canEdit: boolean;
+  onStatus: (a: ActionRow, s: QueryStatus) => void;
+  onReasoning: (a: ActionRow, t: string) => void;
+}) {
+  const status: QueryStatus = a.query_status ?? 'raised';
+  const [reason, setReason] = useState(a.query_reasoning ?? '');
+  useEffect(() => setReason(a.query_reasoning ?? ''), [a.query_reasoning]);
+  const meta = QUERY_STATUS.find((q) => q.key === status)!;
+  const showReason = status === 'addressing' || status === 'responded';
+
+  if (!canEdit) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.chip}`}>{meta.label}</span>
+        {a.query_reasoning && <span className="text-slate-500">· {a.query_reasoning}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Query status</span>
+        <div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-[11px]">
+          {QUERY_STATUS.map((q, i) => (
+            <button
+              key={q.key}
+              onClick={() => onStatus(a, q.key)}
+              className={`rounded px-2 py-0.5 ${status === q.key ? 'bg-brand text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              title={q.label}
+            >
+              {i + 1}. {q.short}
+            </button>
+          ))}
+        </div>
+      </div>
+      {showReason && (
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-slate-500">Reasoning / response to SADP</span>
+          <textarea
+            className={inputCls}
+            rows={2}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            onBlur={() => {
+              if ((reason.trim() || null) !== (a.query_reasoning ?? null)) onReasoning(a, reason);
+            }}
+            placeholder="How 4D traced and addressed the query, and the reasoning sent back to SADP."
+          />
+        </label>
+      )}
+    </div>
   );
 }

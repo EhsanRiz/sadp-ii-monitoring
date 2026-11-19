@@ -31,6 +31,8 @@ export interface TrackingRow {
   created_at: string;
 }
 
+export type QueryStatus = 'raised' | 'addressing' | 'responded';
+
 export interface ActionRow {
   id: string;
   tracking_id: string;
@@ -46,6 +48,9 @@ export interface ActionRow {
   assigned_to: string | null;
   assigned_by: string | null;
   assigned_at: string | null;
+  /** SADP-query workflow (null = raised). */
+  query_status: QueryStatus | null;
+  query_reasoning: string | null;
 }
 
 export interface HistoryRow {
