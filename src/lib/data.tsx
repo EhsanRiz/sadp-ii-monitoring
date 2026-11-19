@@ -63,6 +63,17 @@ export interface HistoryRow {
   changed_at: string;
 }
 
+export interface FinanceLogRow {
+  id: string;
+  tracking_id: string;
+  stage: string | null;
+  field: string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_by: string | null;
+  changed_at: string;
+}
+
 export interface MgpUser {
   id: string;
   auth_user_id: string | null;
@@ -99,6 +110,7 @@ interface DataCtx {
   itemById: Record<string, Item>;
   unplaced: CatalogRow[];
   history: HistoryRow[];
+  financeLog: FinanceLogRow[];
   users: MgpUser[];
   userName: (id: string | null) => string;
   baselineAt: string | null;
@@ -115,11 +127,12 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
   const [tracking, setTracking] = useState<TrackingRow[]>([]);
   const [actions, setActions] = useState<ActionRow[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [financeLog, setFinanceLog] = useState<FinanceLogRow[]>([]);
   const [users, setUsers] = useState<MgpUser[]>([]);
   const [baselineAt, setBaselineAt] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const [cat, tr, ac, hi, us, st] = await Promise.all([
+    const [cat, tr, ac, hi, us, st, fl] = await Promise.all([
       supabase.rpc('mgp_enterprise_catalog'),
       supabase.from('mgp_tracking').select('*'),
       supabase.from('mgp_actions').select('*').order('created_at'),
@@ -129,8 +142,9 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
         .select('id, auth_user_id, full_name, phone, role, is_active, activated_at, created_at, pin_expires_at')
         .order('full_name'),
       supabase.from('mgp_settings').select('*'),
+      supabase.from('mgp_finance_log').select('*').order('changed_at', { ascending: false }).limit(300),
     ]);
-    const firstErr = [cat, tr, ac, hi, us, st].find((r) => r.error)?.error;
+    const firstErr = [cat, tr, ac, hi, us, st, fl].find((r) => r.error)?.error;
     if (firstErr) {
       setError(firstErr.message);
     } else {
@@ -139,6 +153,7 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
       setTracking((tr.data ?? []) as TrackingRow[]);
       setActions((ac.data ?? []) as ActionRow[]);
       setHistory((hi.data ?? []) as HistoryRow[]);
+      setFinanceLog((fl.data ?? []) as FinanceLogRow[]);
       setUsers((us.data ?? []) as MgpUser[]);
       const b = (st.data ?? []).find((r: { key: string }) => r.key === 'baseline_at');
       setBaselineAt(b ? (b.value as string) : null);
@@ -175,6 +190,7 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
         pending.current.push(payload.new as HistoryRow);
         scheduleReload();
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mgp_finance_log' }, scheduleReload)
       .subscribe((status) => {
         setLive(status === 'SUBSCRIBED');
         if (status === 'SUBSCRIBED') reload(); // catch anything missed while disconnected
@@ -233,13 +249,14 @@ export function DataProvider({ authUserId, children }: { authUserId: string; chi
       itemById: Object.fromEntries(items.map((i) => [i.id, i])),
       unplaced: catalog.filter((c) => !placed.has(c.enterprise_id)),
       history,
+      financeLog,
       users,
       userName: (id) => (id ? nameById.get(id) ?? 'Unknown' : '—'),
       baselineAt,
       live,
       reload,
     };
-  }, [loading, error, catalog, tracking, actions, history, users, baselineAt, live, reload, authUserId]);
+  }, [loading, error, catalog, tracking, actions, history, financeLog, users, baselineAt, live, reload, authUserId]);
 
   // Tell people when a colleague assigns them an item.
   useEffect(() => {

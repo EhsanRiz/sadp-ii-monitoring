@@ -12,6 +12,7 @@ import { NeedsAttention } from './NeedsAttention';
 import { ReportSla } from './ReportSla';
 import { FinancialCompliance } from './FinancialCompliance';
 import { DataCompleteness } from './DataCompleteness';
+import { UpdatesBanner, ContributionChanges } from './AdminUpdates';
 import { GraduationReadiness } from './GraduationReadiness';
 import { GraduationFunnel } from './GraduationFunnel';
 
@@ -84,6 +85,8 @@ export function Summary() {
 
   return (
     <div className="space-y-5">
+      <UpdatesBanner />
+
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">M1 report status by district</h2>
@@ -233,6 +236,9 @@ export function Summary() {
 
       {/* Data-completeness report (which enterprises are missing data) */}
       <DataCompleteness />
+
+      {/* Admin: recent contribution/fund amount changes */}
+      <ContributionChanges />
 
       {/* Recent movement */}
       <div className="rounded-xl border bg-white print:hidden">
