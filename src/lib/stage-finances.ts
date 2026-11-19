@@ -25,8 +25,11 @@ export type BaStatus = 'pending' | 'submitted' | 'approved' | 'partially_paid';
 export type StageReportStatus = 'pending' | 'submitted' | 'approved';
 
 export interface StageFinance {
+  /** Farmer's contracted counterpart contribution for this milestone. */
   farmer_contract_lsl: number | null;
   farmer_contributed_lsl: number | null;
+  /** SADP's contracted contribution for this milestone (contract basis; M1 160k, M2 240k). */
+  sadp_contract_lsl: number | null;
   sadp_contributed_lsl: number | null;
   ba_status: BaStatus | null;
   ba_submitted_date: string | null;
@@ -35,8 +38,12 @@ export interface StageFinance {
   yet_to_report_lsl: number | null;
   report_status: StageReportStatus | null;
   report_date: string | null;
+  /** Target date for this milestone's report (goes with the milestone dates). */
+  report_target_date: string | null;
   /** Report submitted to the PFO (Project Field Officer, SADP). */
   pfo_submitted_date: string | null;
+  /** Report approved by the PFO. */
+  pfo_approved_date: string | null;
   /** Report approved by SADP. */
   sadp_approved_date: string | null;
 }
@@ -48,6 +55,7 @@ export function emptyStageFinance(): StageFinance {
   return {
     farmer_contract_lsl: null,
     farmer_contributed_lsl: null,
+    sadp_contract_lsl: null,
     sadp_contributed_lsl: null,
     ba_status: null,
     ba_submitted_date: null,
@@ -56,7 +64,9 @@ export function emptyStageFinance(): StageFinance {
     yet_to_report_lsl: null,
     report_status: null,
     report_date: null,
+    report_target_date: null,
     pfo_submitted_date: null,
+    pfo_approved_date: null,
     sadp_approved_date: null,
   };
 }
@@ -64,6 +74,7 @@ export function emptyStageFinance(): StageFinance {
 const NUM_FIELDS = [
   'farmer_contract_lsl',
   'farmer_contributed_lsl',
+  'sadp_contract_lsl',
   'sadp_contributed_lsl',
   'funds_allocated_lsl',
   'funds_depleted_lsl',
@@ -89,7 +100,9 @@ function parseOne(raw: unknown): StageFinance {
   out.report_status = REPORT_STATUSES.includes(o.report_status as StageReportStatus) ? (o.report_status as StageReportStatus) : null;
   out.ba_submitted_date = typeof o.ba_submitted_date === 'string' ? o.ba_submitted_date : null;
   out.report_date = typeof o.report_date === 'string' ? o.report_date : null;
+  out.report_target_date = typeof o.report_target_date === 'string' ? o.report_target_date : null;
   out.pfo_submitted_date = typeof o.pfo_submitted_date === 'string' ? o.pfo_submitted_date : null;
+  out.pfo_approved_date = typeof o.pfo_approved_date === 'string' ? o.pfo_approved_date : null;
   out.sadp_approved_date = typeof o.sadp_approved_date === 'string' ? o.sadp_approved_date : null;
   return out;
 }
@@ -140,19 +153,47 @@ export function hasAnyFinance(f: StageFinance): boolean {
     f.report_status != null ||
     !!f.ba_submitted_date ||
     !!f.report_date ||
+    !!f.report_target_date ||
     !!f.pfo_submitted_date ||
+    !!f.pfo_approved_date ||
     !!f.sadp_approved_date
   );
 }
 
-/** Days from PFO submission to SADP approval (the approval turnaround), or null. */
+/** Days between two YYYY-MM-DD dates (to − from), or null when either is missing/invalid/negative. */
+function dateDiffDays(from: string | null, to: string | null): number | null {
+  if (!from || !to) return null;
+  const a = new Date(`${from}T00:00:00`).getTime();
+  const b = new Date(`${to}T00:00:00`).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const days = Math.round((b - a) / 86_400_000);
+  return days >= 0 ? days : null; // ignore approved-before-submitted (data-entry slip)
+}
+
+/** Days from PFO submission to SADP approval (the full approval turnaround), or null. */
 export function approvalTurnaroundDays(f: StageFinance): number | null {
-  if (!f.pfo_submitted_date || !f.sadp_approved_date) return null;
-  const submitted = new Date(`${f.pfo_submitted_date}T00:00:00`).getTime();
-  const approved = new Date(`${f.sadp_approved_date}T00:00:00`).getTime();
-  if (!Number.isFinite(submitted) || !Number.isFinite(approved)) return null;
-  const days = Math.round((approved - submitted) / 86_400_000);
-  return days >= 0 ? days : null; // ignore approved-before-submitted (data entry slip)
+  return dateDiffDays(f.pfo_submitted_date, f.sadp_approved_date);
+}
+
+/** Days from PFO submission to PFO approval (the PFO leg), or null. */
+export function pfoApprovalDays(f: StageFinance): number | null {
+  return dateDiffDays(f.pfo_submitted_date, f.pfo_approved_date);
+}
+
+/** Contract value for one milestone = farmer contract + SADP contract (null when neither set). */
+export function milestoneContract(f: StageFinance): number | null {
+  if (f.farmer_contract_lsl == null && f.sadp_contract_lsl == null) return null;
+  return (f.farmer_contract_lsl ?? 0) + (f.sadp_contract_lsl ?? 0);
+}
+
+/** Total contract value across the milestones (farmer + SADP, M1 + M2). */
+export function totalContract(map: StageFinancesMap): number {
+  let total = 0;
+  for (const s of MONEY_STAGES) {
+    const c = map[s] ? milestoneContract(map[s]!) : null;
+    if (c != null) total += c;
+  }
+  return total;
 }
 
 /** Format an LSL amount as "M100,000"; em-dash when unset. */

@@ -19,7 +19,11 @@ import {
   farmerVariance,
   pctDepleted,
   approvalTurnaroundDays,
+  pfoApprovalDays,
+  milestoneContract,
+  totalContract,
   formatLsl,
+  formatLslShort,
   emptyStageFinance,
   BA_STATUS_META,
   REPORT_STATUS_META,
@@ -115,6 +119,20 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
         )}
       </div>
 
+      {/* Contract value = SADP + Farmer across M1 + M2 */}
+      {(() => {
+        const farmer = MONEY_STAGES.reduce((a, s) => a + (draft[s]?.farmer_contract_lsl ?? 0), 0);
+        const sadp = MONEY_STAGES.reduce((a, s) => a + (draft[s]?.sadp_contract_lsl ?? 0), 0);
+        const total = totalContract(draft);
+        if (total <= 0) return null;
+        return (
+          <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-brand/20 bg-brand-light/40 px-3 py-2 text-sm">
+            <span className="font-semibold text-brand-dark">Contract value {formatLsl(total)}</span>
+            <span className="text-xs text-slate-600">= SADP {formatLslShort(sadp)} + Farmer {formatLslShort(farmer)}</span>
+          </div>
+        );
+      })()}
+
       <div className="space-y-3">
         {MONEY_STAGES.map((stage) => (
           <StageMoneyCard key={stage} stage={stage} value={stageFinanceOrEmpty(draft, stage)} active={currentStage === stage} readOnly={readOnly} onChange={setField} />
@@ -146,6 +164,8 @@ interface CardProps {
 function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardProps) {
   const variance = farmerVariance(f);
   const depleted = pctDepleted(f);
+  const contract = milestoneContract(f);
+  const pfoDays = pfoApprovalDays(f);
   const turnaround = approvalTurnaroundDays(f);
   const set = <K extends keyof StageFinance>(key: K, v: StageFinance[K]) => onChange(stage, key, v);
 
@@ -156,21 +176,30 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardPro
         {active && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold text-brand-dark">Current milestone</span>}
       </div>
 
-      {/* Farmer contribution */}
+      {/* Contract value = SADP + Farmer */}
       <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Farmer contribution</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contract value (SADP + Farmer)</legend>
         <div className="grid gap-2 sm:grid-cols-3">
-          <MoneyField label="Contract (M)" value={f.farmer_contract_lsl} onChange={(v) => set('farmer_contract_lsl', v)} id={`${stage}-fc`} />
-          <MoneyField label="Contributed (M)" value={f.farmer_contributed_lsl} onChange={(v) => set('farmer_contributed_lsl', v)} id={`${stage}-fp`} />
-          <ReadOut label="Outstanding" value={variance == null ? '—' : formatLsl(variance)} warn={variance != null && variance > 0} />
+          <MoneyField label="SADP contract (M)" value={f.sadp_contract_lsl} onChange={(v) => set('sadp_contract_lsl', v)} id={`${stage}-sadpc`} />
+          <MoneyField label="Farmer contract (M)" value={f.farmer_contract_lsl} onChange={(v) => set('farmer_contract_lsl', v)} id={`${stage}-fc`} />
+          <ReadOut label="Contract value" value={contract == null ? '—' : formatLsl(contract)} warn={false} />
         </div>
       </fieldset>
 
-      {/* SADP / Budget allocation */}
+      {/* Contributions to date */}
       <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">SADP &amp; budget allocation</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contributions to date</legend>
         <div className="grid gap-2 sm:grid-cols-3">
           <MoneyField label="SADP contributed (M)" value={f.sadp_contributed_lsl} onChange={(v) => set('sadp_contributed_lsl', v)} id={`${stage}-sadp`} />
+          <MoneyField label="Farmer contributed (M)" value={f.farmer_contributed_lsl} onChange={(v) => set('farmer_contributed_lsl', v)} id={`${stage}-fp`} />
+          <ReadOut label="Farmer outstanding" value={variance == null ? '—' : formatLsl(variance)} warn={variance != null && variance > 0} />
+        </div>
+      </fieldset>
+
+      {/* Budget allocation */}
+      <fieldset className="space-y-2" disabled={readOnly}>
+        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Budget allocation</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
           <Field label="BA status">
             <select className={inputCls} value={f.ba_status ?? ''} onChange={(e) => set('ba_status', (e.target.value || null) as BaStatus | null)}>
               <option value="">Not set</option>
@@ -203,21 +232,28 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardPro
           <Field label="Report date">
             <input type="date" className={inputCls} value={f.report_date ?? ''} onChange={(e) => set('report_date', e.target.value || null)} />
           </Field>
+          <Field label="Report target date">
+            <input type="date" className={inputCls} value={f.report_target_date ?? ''} onChange={(e) => set('report_target_date', e.target.value || null)} />
+          </Field>
           <ReadOut label="Depleted" value={depleted == null ? '—' : `${depleted}%`} warn={depleted != null && depleted >= 90} />
         </div>
       </fieldset>
 
-      {/* Report approval turnaround */}
+      {/* Report approval: Submitted to PFO → Approved by PFO → Approved by SADP */}
       <fieldset className="space-y-2" disabled={readOnly}>
         <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stage.toUpperCase()} report approval (PFO → SADP)</legend>
         <div className="grid gap-2 sm:grid-cols-3">
           <Field label="Submitted to PFO">
             <input type="date" className={inputCls} value={f.pfo_submitted_date ?? ''} onChange={(e) => set('pfo_submitted_date', e.target.value || null)} />
           </Field>
+          <Field label="Approved by PFO">
+            <input type="date" className={inputCls} value={f.pfo_approved_date ?? ''} onChange={(e) => set('pfo_approved_date', e.target.value || null)} />
+          </Field>
           <Field label="Approved by SADP">
             <input type="date" className={inputCls} value={f.sadp_approved_date ?? ''} onChange={(e) => set('sadp_approved_date', e.target.value || null)} />
           </Field>
-          <ReadOut label="Turnaround" value={turnaround == null ? '—' : `${turnaround} day${turnaround === 1 ? '' : 's'}`} warn={turnaround != null && turnaround > 30} />
+          <ReadOut label="PFO turnaround" value={pfoDays == null ? '—' : `${pfoDays} day${pfoDays === 1 ? '' : 's'}`} warn={pfoDays != null && pfoDays > 14} />
+          <ReadOut label="Full turnaround (→ SADP)" value={turnaround == null ? '—' : `${turnaround} day${turnaround === 1 ? '' : 's'}`} warn={turnaround != null && turnaround > 30} />
         </div>
       </fieldset>
     </div>

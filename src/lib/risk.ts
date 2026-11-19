@@ -72,6 +72,11 @@ export function deriveRisk(it: Item): Risk {
   if (variance != null && variance > 0) flags.push({ id: 'farmer', severity: 'med', label: `Farmer short ${formatLslShort(variance)}` });
   if ((f.yet_to_report_lsl ?? 0) > 0) flags.push({ id: 'unreported', severity: 'med', label: `Funds unreported ${formatLslShort(f.yet_to_report_lsl)}` });
 
+  // Report past its target date (and not yet approved).
+  if (f.report_target_date && f.report_status !== 'approved' && !f.sadp_approved_date && f.report_target_date < today) {
+    flags.push({ id: 'target', severity: 'med', label: `${ms.toUpperCase()} report past target ${daysSince(f.report_target_date)}d` });
+  }
+
   const highCount = flags.filter((fl) => fl.severity === 'high').length;
   const level: RiskLevel = highCount > 0 ? 'red' : flags.length > 0 ? 'amber' : 'green';
   return { level, flags, highCount };
