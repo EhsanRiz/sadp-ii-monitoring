@@ -10,7 +10,7 @@
  * are only *expected* once a report has been submitted/approved, so an
  * enterprise isn't dinged for data it can't have yet.
  */
-import { parseStageFinances, stageFinanceOrEmpty, type MoneyStage } from './stage-finances';
+import { parseStageFinances, parseContract, stageFinanceOrEmpty, type MoneyStage } from './stage-finances';
 import type { Item } from './data';
 
 export type FieldGroup = 'profile' | 'finance' | 'dates';
@@ -53,12 +53,13 @@ const fld = (id: string): MissingField => BY_ID.get(id)!;
 export function deriveCompleteness(it: Item): Completeness {
   const ms: MoneyStage = it.lifecycle_stage === 'm2' || it.lifecycle_stage === 'graduated' ? 'm2' : 'm1';
   const f = stageFinanceOrEmpty(parseStageFinances(it.stage_finances), ms);
+  const contract = parseContract(it.stage_finances);
   const reportSubmitted = f.report_status === 'submitted' || f.report_status === 'approved';
 
   const checks: { id: string; expected: boolean; filled: boolean }[] = [
     { id: 'service_provider', expected: true, filled: !!it.service_provider?.trim() },
     { id: 'enterprise_type', expected: true, filled: !!it.enterprise_type?.trim() },
-    { id: 'farmer_contract', expected: true, filled: f.farmer_contract_lsl != null },
+    { id: 'farmer_contract', expected: true, filled: contract.farmer_lsl != null },
     { id: 'farmer_contributed', expected: true, filled: f.farmer_contributed_lsl != null },
     { id: 'funds_allocated', expected: true, filled: f.funds_allocated_lsl != null },
     { id: 'funds_depleted', expected: true, filled: f.funds_depleted_lsl != null },

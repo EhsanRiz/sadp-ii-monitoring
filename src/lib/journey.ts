@@ -17,7 +17,6 @@ import { type StageKey } from './stages';
 import {
   MONEY_STAGES,
   stageFinanceOrEmpty,
-  farmerVariance,
   pctDepleted,
   hasAnyFinance,
   formatLslShort,
@@ -64,13 +63,14 @@ function m1ReportNode(stage: StageKey): { status: NodeStatus; detail: string } {
 }
 
 function farmerNode(f: StageFinance): { status: NodeStatus; detail: string } {
-  const contract = f.farmer_contract_lsl;
+  // Contract is enterprise-level now, so this node just shows what the farmer has
+  // contributed for this milestone; "done" for the milestone is driven by the
+  // report being approved (handled by the past/reached logic in deriveJourney).
   const paid = f.farmer_contributed_lsl;
-  if (contract == null && paid == null) return { status: 'pending', detail: 'Not recorded' };
-  const detail = `${formatLslShort(paid ?? 0)} / ${formatLslShort(contract)}`;
-  const variance = farmerVariance(f);
-  if (variance != null && variance <= 0) return { status: 'done', detail };
-  if ((paid ?? 0) > 0) return { status: 'active', detail };
+  if (paid == null) return { status: 'pending', detail: 'Not recorded' };
+  const detail = formatLslShort(paid);
+  if (f.report_status === 'approved') return { status: 'done', detail };
+  if (paid > 0) return { status: 'active', detail };
   return { status: 'pending', detail };
 }
 
