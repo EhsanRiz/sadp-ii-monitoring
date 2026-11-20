@@ -8,7 +8,7 @@
  */
 import { daysSince, type Item } from './data';
 import { STAGE, type StageKey } from './stages';
-import { parseStageFinances, stageFinanceOrEmpty, farmerVariance, formatLslShort } from './stage-finances';
+import { parseFinances, stageFinanceOrEmpty, farmerOutstanding, formatLslShort } from './stage-finances';
 
 export type RiskLevel = 'red' | 'amber' | 'green' | 'done';
 export type RiskSeverity = 'high' | 'med';
@@ -65,11 +65,13 @@ export function deriveRisk(it: Item): Risk {
   const overdue = it.actions.filter((a) => a.status === 'open' && a.due_date && a.due_date < today).length;
   if (overdue > 0) flags.push({ id: 'overdue', severity: 'med', label: `${overdue} overdue action${overdue === 1 ? '' : 's'}` });
 
-  // Current-milestone finance signals.
+  // Finance signals. Farmer shortfall is enterprise-level (contract − total paid);
+  // the funds / report-target checks read the current milestone.
   const ms = it.lifecycle_stage === 'm2' ? 'm2' : 'm1';
-  const f = stageFinanceOrEmpty(parseStageFinances(it.stage_finances), ms);
-  const variance = farmerVariance(f);
-  if (variance != null && variance > 0) flags.push({ id: 'farmer', severity: 'med', label: `Farmer short ${formatLslShort(variance)}` });
+  const { contract, stages } = parseFinances(it.stage_finances);
+  const f = stageFinanceOrEmpty(stages, ms);
+  const outstanding = farmerOutstanding(contract, stages);
+  if (outstanding != null && outstanding > 0) flags.push({ id: 'farmer', severity: 'med', label: `Farmer short ${formatLslShort(outstanding)}` });
   if ((f.yet_to_report_lsl ?? 0) > 0) flags.push({ id: 'unreported', severity: 'med', label: `Funds unreported ${formatLslShort(f.yet_to_report_lsl)}` });
 
   // Report past its target date (and not yet approved).

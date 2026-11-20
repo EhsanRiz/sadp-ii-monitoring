@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { STAGE, type StageKey } from './stages';
 import { LIFECYCLE_META, type LifecycleStage } from './lifecycle';
-import { serializeStageFinances, type StageFinancesMap } from './stage-finances';
+import { serializeFinances, type EnterpriseFinances } from './stage-finances';
 import { errMsg } from './data';
 import { toast } from '../components/ui';
 
@@ -37,18 +37,19 @@ export async function setLifecycleStage(trackingId: string, name: string, stage:
 }
 
 /**
- * Save the per-milestone money for an enterprise. Optionally advances the
- * lifecycle stage in the same write (e.g. auto-graduate when the M2 report is
- * approved) so the row never flickers between two saves.
+ * Save the money record (enterprise contract + per-milestone data) for an
+ * enterprise. Optionally advances the lifecycle stage in the same write (e.g.
+ * auto-graduate when the M2 report is approved) so the row never flickers
+ * between two saves.
  */
 export async function saveStageFinances(
   trackingId: string,
   name: string,
-  finances: StageFinancesMap,
+  finances: EnterpriseFinances,
   lifecycleStage?: LifecycleStage,
 ): Promise<boolean> {
   const patch: { stage_finances: Record<string, unknown>; lifecycle_stage?: LifecycleStage } = {
-    stage_finances: serializeStageFinances(finances),
+    stage_finances: serializeFinances(finances),
   };
   if (lifecycleStage) patch.lifecycle_stage = lifecycleStage;
   const { error } = await supabase.from('mgp_tracking').update(patch).eq('id', trackingId);

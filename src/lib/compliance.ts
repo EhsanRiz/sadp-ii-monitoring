@@ -13,7 +13,7 @@
  * funds" rollup shows the totals; this reframes them as a compliance gap and
  * feeds a chase queue of the enterprises carrying exposure.
  */
-import { parseStageFinances, MONEY_STAGES, farmerVariance } from './stage-finances';
+import { parseFinances, MONEY_STAGES, totalFarmerContributed } from './stage-finances';
 import type { Item } from './data';
 
 export interface EntCompliance {
@@ -32,18 +32,16 @@ export interface EntCompliance {
 }
 
 export function deriveCompliance(it: Item): EntCompliance {
-  const map = parseStageFinances(it.stage_finances);
-  let contract = 0;
-  let contributed = 0;
-  let farmerShortfall = 0;
+  const { contract: c, stages: map } = parseFinances(it.stage_finances);
+  // Contract is a single enterprise-level farmer figure; contributions are summed
+  // across the milestones. Shortfall = contract − contributed (floored at 0).
+  const contract = c.farmer_lsl ?? 0;
+  const contributed = totalFarmerContributed(map);
+  const farmerShortfall = c.farmer_lsl != null ? Math.max(0, contract - contributed) : 0;
   let unreported = 0;
   for (const s of MONEY_STAGES) {
     const f = map[s];
     if (!f) continue;
-    contract += f.farmer_contract_lsl ?? 0;
-    contributed += f.farmer_contributed_lsl ?? 0;
-    const v = farmerVariance(f);
-    if (v != null && v > 0) farmerShortfall += v;
     if ((f.yet_to_report_lsl ?? 0) > 0) unreported += f.yet_to_report_lsl!;
   }
   const exposure = farmerShortfall + unreported;

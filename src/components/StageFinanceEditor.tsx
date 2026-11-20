@@ -1,36 +1,38 @@
 /**
- * Per-milestone money editor for an enterprise (migration 410).
+ * Money editor for an enterprise (migration 410, reshaped 450).
  *
- * One card per money milestone (M1, M2), each with three blocks — farmer
- * contribution, SADP / budget allocation, and funds / report — plus live
- * read-outs (outstanding variance, % of funds depleted). Mirrors the team's
- * Round 3 contribution + SADP budget sheets. Amounts in Maloti (M).
+ * A single enterprise-level contract value (SADP + farmer) at the top — not
+ * split across milestones — then one card per money milestone (M1, M2) holding
+ * contributions to date, budget allocation, funds, and the report → PFO → SADP
+ * approval flow, including any rounds where SADP returned the report with
+ * queries. Amounts in Maloti (M).
  *
  * Explicit Save writes the whole stage_finances map atomically. When the M2
  * report is marked approved the enterprise auto-graduates (the agreed model:
  * graduation is automatic on M2 completion).
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Save, AlertCircle } from 'lucide-react';
+import { Save, AlertCircle, Plus, X, RotateCcw } from 'lucide-react';
 import {
   MONEY_STAGES,
-  parseStageFinances,
+  parseFinances,
   stageFinanceOrEmpty,
-  farmerVariance,
   pctDepleted,
   approvalTurnaroundDays,
   pfoApprovalDays,
-  milestoneContract,
-  totalContract,
+  contractTotal,
+  farmerOutstanding,
   formatLsl,
-  formatLslShort,
   emptyStageFinance,
+  STANDARD_CONTRACT,
   BA_STATUS_META,
   REPORT_STATUS_META,
   type Json,
   type MoneyStage,
   type StageFinance,
   type StageFinancesMap,
+  type ContractValue,
+  type SadpReturn,
   type BaStatus,
   type StageReportStatus,
 } from '../lib/stage-finances';
@@ -65,18 +67,26 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
   { trackingId, name, stageFinances, currentStage, readOnly = false, onSaved, onDirtyChange },
   ref,
 ) {
+  const [contract, setContract] = useState<ContractValue>({ sadp_lsl: null, farmer_lsl: null });
   const [draft, setDraft] = useState<StageFinancesMap>({});
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setDraft(parseStageFinances(stageFinances));
+    const ef = parseFinances(stageFinances);
+    setContract(ef.contract);
+    setDraft(ef.stages);
     setDirty(false);
   }, [stageFinances, trackingId]);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
+
+  function setContractField<K extends keyof ContractValue>(key: K, value: ContractValue[K]) {
+    setContract((c) => ({ ...c, [key]: value }));
+    setDirty(true);
+  }
 
   function setField<K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) {
     setDraft((d) => {
@@ -86,12 +96,20 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
     setDirty(true);
   }
 
+  function mutateReturns(stage: MoneyStage, fn: (rounds: SadpReturn[]) => SadpReturn[]) {
+    setDraft((d) => {
+      const base = d[stage] ?? emptyStageFinance();
+      return { ...d, [stage]: { ...base, sadp_returns: fn(base.sadp_returns) } };
+    });
+    setDirty(true);
+  }
+
   async function onSave() {
     setBusy(true);
     // Agreed model: approving the M2 report graduates the enterprise.
     const autoGrad: LifecycleStage | undefined =
       currentStage === 'm2' && draft.m2?.report_status === 'approved' ? 'graduated' : undefined;
-    const ok = await saveStageFinances(trackingId, name, draft, autoGrad);
+    const ok = await saveStageFinances(trackingId, name, { contract, stages: draft }, autoGrad);
     setBusy(false);
     if (ok) {
       if (autoGrad) toast.ok(`🎓 ${name} graduated`);
@@ -105,12 +123,15 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
   onSaveRef.current = onSave;
   useImperativeHandle(ref, () => ({ save: () => onSaveRef.current() }), []);
 
+  const total = contractTotal(contract);
+  const outstanding = farmerOutstanding(contract, draft);
+
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Stage finances</h3>
-          <p className="text-xs text-slate-500">Farmer &amp; SADP contributions, budget allocation and fund depletion per milestone. Amounts in Maloti (M).</p>
+          <p className="text-xs text-slate-500">One contract value per enterprise; contributions, funds and reports per milestone. Amounts in Maloti (M).</p>
         </div>
         {dirty && !readOnly && (
           <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-700">
@@ -119,23 +140,45 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
         )}
       </div>
 
-      {/* Contract value = SADP + Farmer across M1 + M2 */}
-      {(() => {
-        const farmer = MONEY_STAGES.reduce((a, s) => a + (draft[s]?.farmer_contract_lsl ?? 0), 0);
-        const sadp = MONEY_STAGES.reduce((a, s) => a + (draft[s]?.sadp_contract_lsl ?? 0), 0);
-        const total = totalContract(draft);
-        if (total <= 0) return null;
-        return (
-          <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-brand/20 bg-brand-light/40 px-3 py-2 text-sm">
-            <span className="font-semibold text-brand-dark">Contract value {formatLsl(total)}</span>
-            <span className="text-xs text-slate-600">= SADP {formatLslShort(sadp)} + Farmer {formatLslShort(farmer)}</span>
-          </div>
-        );
-      })()}
+      {/* Contract value — single enterprise-level figure (SADP + Farmer), not split by milestone */}
+      <fieldset className="mb-3 space-y-2 rounded-lg border border-brand/30 bg-brand-light/40 p-3" disabled={readOnly}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-brand-dark">Contract value (whole enterprise)</legend>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => { setContract({ ...STANDARD_CONTRACT }); setDirty(true); }}
+              className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-white px-2 py-0.5 text-[11px] font-medium text-brand-dark transition hover:bg-brand-light"
+            >
+              Use standard M500,000
+            </button>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <MoneyField label="SADP contract (M)" value={contract.sadp_lsl} onChange={(v) => setContractField('sadp_lsl', v)} id="contract-sadp" />
+          <MoneyField label="Farmer contract (M)" value={contract.farmer_lsl} onChange={(v) => setContractField('farmer_lsl', v)} id="contract-farmer" />
+          <ReadOut label="Contract value" value={total == null ? '—' : formatLsl(total)} warn={false} />
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <ReadOut
+            label="Farmer outstanding"
+            value={outstanding == null ? '—' : formatLsl(outstanding)}
+            warn={outstanding != null && outstanding > 0}
+          />
+        </div>
+      </fieldset>
 
       <div className="space-y-3">
         {MONEY_STAGES.map((stage) => (
-          <StageMoneyCard key={stage} stage={stage} value={stageFinanceOrEmpty(draft, stage)} active={currentStage === stage} readOnly={readOnly} onChange={setField} />
+          <StageMoneyCard
+            key={stage}
+            stage={stage}
+            value={stageFinanceOrEmpty(draft, stage)}
+            active={currentStage === stage}
+            readOnly={readOnly}
+            onChange={setField}
+            onMutateReturns={mutateReturns}
+          />
         ))}
       </div>
 
@@ -159,12 +202,11 @@ interface CardProps {
   active: boolean;
   readOnly: boolean;
   onChange: <K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) => void;
+  onMutateReturns: (stage: MoneyStage, fn: (rounds: SadpReturn[]) => SadpReturn[]) => void;
 }
 
-function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardProps) {
-  const variance = farmerVariance(f);
+function StageMoneyCard({ stage, value: f, active, readOnly, onChange, onMutateReturns }: CardProps) {
   const depleted = pctDepleted(f);
-  const contract = milestoneContract(f);
   const pfoDays = pfoApprovalDays(f);
   const turnaround = approvalTurnaroundDays(f);
   const set = <K extends keyof StageFinance>(key: K, v: StageFinance[K]) => onChange(stage, key, v);
@@ -176,23 +218,12 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardPro
         {active && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold text-brand-dark">Current milestone</span>}
       </div>
 
-      {/* Contract value = SADP + Farmer */}
-      <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contract value (SADP + Farmer)</legend>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <MoneyField label="SADP contract (M)" value={f.sadp_contract_lsl} onChange={(v) => set('sadp_contract_lsl', v)} id={`${stage}-sadpc`} />
-          <MoneyField label="Farmer contract (M)" value={f.farmer_contract_lsl} onChange={(v) => set('farmer_contract_lsl', v)} id={`${stage}-fc`} />
-          <ReadOut label="Contract value" value={contract == null ? '—' : formatLsl(contract)} warn={false} />
-        </div>
-      </fieldset>
-
-      {/* Contributions to date */}
+      {/* Contributions to date (this milestone) */}
       <fieldset className="space-y-2" disabled={readOnly}>
         <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contributions to date</legend>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           <MoneyField label="SADP contributed (M)" value={f.sadp_contributed_lsl} onChange={(v) => set('sadp_contributed_lsl', v)} id={`${stage}-sadp`} />
           <MoneyField label="Farmer contributed (M)" value={f.farmer_contributed_lsl} onChange={(v) => set('farmer_contributed_lsl', v)} id={`${stage}-fp`} />
-          <ReadOut label="Farmer outstanding" value={variance == null ? '—' : formatLsl(variance)} warn={variance != null && variance > 0} />
         </div>
       </fieldset>
 
@@ -256,7 +287,86 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange }: CardPro
           <ReadOut label="Full turnaround (→ SADP)" value={turnaround == null ? '—' : `${turnaround} day${turnaround === 1 ? '' : 's'}`} warn={turnaround != null && turnaround > 30} />
         </div>
       </fieldset>
+
+      {/* Returned by SADP — queries (zero or more rounds) */}
+      <SadpReturnsBlock stage={stage} rounds={f.sadp_returns} readOnly={readOnly} onMutate={onMutateReturns} />
     </div>
+  );
+}
+
+function emptyReturn(): SadpReturn {
+  return { returned_date: null, queries: null, resubmitted_date: null };
+}
+
+function SadpReturnsBlock({
+  stage,
+  rounds,
+  readOnly,
+  onMutate,
+}: {
+  stage: MoneyStage;
+  rounds: SadpReturn[];
+  readOnly: boolean;
+  onMutate: (stage: MoneyStage, fn: (r: SadpReturn[]) => SadpReturn[]) => void;
+}) {
+  const setRound = <K extends keyof SadpReturn>(idx: number, key: K, v: SadpReturn[K]) =>
+    onMutate(stage, (r) => r.map((x, i) => (i === idx ? { ...x, [key]: v } : x)));
+  const addRound = () => onMutate(stage, (r) => [...r, emptyReturn()]);
+  const removeRound = (idx: number) => onMutate(stage, (r) => r.filter((_, i) => i !== idx));
+
+  if (readOnly && rounds.length === 0) return null;
+
+  return (
+    <fieldset className="space-y-2 rounded-md border border-amber-200 bg-amber-50/60 p-2.5" disabled={readOnly}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <legend className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
+          <RotateCcw size={12} /> Returned by SADP — queries
+          {rounds.length > 0 && <span className="rounded-full bg-amber-200 px-1.5 text-[10px] font-semibold text-amber-900">{rounds.length}</span>}
+        </legend>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={addRound}
+            className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 transition hover:bg-amber-100"
+          >
+            <Plus size={12} /> {rounds.length === 0 ? 'Record a return' : 'Add another return'}
+          </button>
+        )}
+      </div>
+
+      {rounds.length === 0 && <p className="text-[11px] text-amber-700/80">Not returned — the report has not come back from SADP with queries.</p>}
+
+      <div className="space-y-2.5">
+        {rounds.map((r, idx) => (
+          <div key={idx} className="space-y-2 rounded-md border border-amber-200 bg-white p-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-amber-800">Return {idx + 1}</span>
+              {!readOnly && (
+                <button type="button" onClick={() => removeRound(idx)} className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-red-600" aria-label="Remove this return">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Received back from SADP">
+                <input type="date" className={inputCls} value={r.returned_date ?? ''} onChange={(e) => setRound(idx, 'returned_date', e.target.value || null)} />
+              </Field>
+              <Field label="Sent back to SADP">
+                <input type="date" className={inputCls} value={r.resubmitted_date ?? ''} onChange={(e) => setRound(idx, 'resubmitted_date', e.target.value || null)} />
+              </Field>
+            </div>
+            <Field label="Queries raised">
+              <textarea
+                className={`${inputCls} min-h-[56px] resize-y`}
+                placeholder="What did SADP ask to be fixed or clarified?"
+                value={r.queries ?? ''}
+                onChange={(e) => setRound(idx, 'queries', e.target.value || null)}
+              />
+            </Field>
+          </div>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

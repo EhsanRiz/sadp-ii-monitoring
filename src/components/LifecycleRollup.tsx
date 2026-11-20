@@ -13,7 +13,7 @@ import { useData } from '../lib/data';
 import { useNav } from '../App';
 import { DISTRICTS, DISTRICT_SHORT } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
-import { MONEY_STAGES, parseStageFinances, approvalTurnaroundDays, formatLsl, formatLslShort } from '../lib/stage-finances';
+import { MONEY_STAGES, parseFinances, approvalTurnaroundDays, formatLsl, formatLslShort } from '../lib/stage-finances';
 
 const MILESTONE_ICON: Record<LifecycleStage, LucideIcon> = { m1: Sprout, m2: Leaf, graduated: GraduationCap };
 
@@ -49,12 +49,16 @@ export function LifecycleRollup() {
       totalCounts[it.lifecycle_stage]++;
       if (d) counts[d][it.lifecycle_stage]++;
 
-      const map = parseStageFinances(it.stage_finances);
+      const { contract, stages: map } = parseFinances(it.stage_finances);
+      // Contract is a single enterprise-level farmer figure — count it once.
+      const addContract = (m: Money) => { m.contract += contract.farmer_lsl ?? 0; };
+      addContract(totalMoney);
+      if (d) addContract(money[d]);
+
       for (const s of MONEY_STAGES) {
         const f = map[s];
         if (!f) continue;
         const add = (m: Money) => {
-          m.contract += f.farmer_contract_lsl ?? 0;
           m.contributed += f.farmer_contributed_lsl ?? 0;
           m.sadp += f.sadp_contributed_lsl ?? 0;
           m.allocated += f.funds_allocated_lsl ?? 0;
