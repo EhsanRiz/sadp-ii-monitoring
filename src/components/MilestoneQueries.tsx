@@ -166,24 +166,28 @@ export function MilestoneQueries({
       {canEdit && (
         <div className="space-y-1.5 rounded-md border border-dashed border-amber-300 bg-white/60 p-2">
           {drafts.map((d, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} className="space-y-1.5 rounded-md border border-slate-200 bg-white p-2">
               <input
-                className={`${inputCls} h-8 flex-1`}
+                className={`${inputCls} h-8 w-full`}
                 placeholder={`${stage.toUpperCase()} query from SADP…`}
                 value={d.text}
                 onChange={(e) => setDrafts((ds) => ds.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
                 autoFocus={i === drafts.length - 1}
               />
-              <input
-                type="date"
-                className={`${inputCls} h-8 w-[150px]`}
-                title="Expected redressal date"
-                value={d.due}
-                onChange={(e) => setDrafts((ds) => ds.map((x, j) => (j === i ? { ...x, due: e.target.value } : x)))}
-              />
-              <button onClick={() => setDrafts((ds) => ds.filter((_, j) => j !== i))} className="rounded p-1 text-slate-300 hover:bg-slate-100 hover:text-red-600" title="Remove row">
-                <X size={14} />
-              </button>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                  Redress by
+                  <input
+                    type="date"
+                    className={`${inputCls} h-8 w-[150px]`}
+                    value={d.due}
+                    onChange={(e) => setDrafts((ds) => ds.map((x, j) => (j === i ? { ...x, due: e.target.value } : x)))}
+                  />
+                </label>
+                <button onClick={() => setDrafts((ds) => ds.filter((_, j) => j !== i))} className="ml-auto rounded p-1 text-slate-300 hover:bg-slate-100 hover:text-red-600" title="Remove row">
+                  <X size={14} />
+                </button>
+              </div>
             </div>
           ))}
           <div className="flex items-center gap-2">
