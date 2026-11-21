@@ -57,6 +57,8 @@ export interface ActionRow {
   sadp_sent_back_date: string | null;
   sadp_sent_back_by: string | null;
   sadp_sent_back_at: string | null;
+  /** Which milestone a SADP query belongs to ('m1'|'m2'); null for general actions. */
+  milestone: 'm1' | 'm2' | null;
 }
 
 export interface HistoryRow {

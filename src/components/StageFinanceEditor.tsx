@@ -43,8 +43,9 @@ import {
 import { LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
 import { deriveAutoStage } from '../lib/auto-stage';
 import { saveStageFinances } from '../lib/mutations';
-import { useData, fmtDate, fmtDateTime, type FinanceLogRow } from '../lib/data';
+import { useData, fmtDate, fmtDateTime, type FinanceLogRow, type ActionRow } from '../lib/data';
 import type { StageKey } from '../lib/stages';
+import { MilestoneQueries } from './MilestoneQueries';
 import { Button, inputCls, toast } from './ui';
 
 interface Props {
@@ -73,6 +74,7 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
   ref,
 ) {
   const { me, userName, itemById, isAdmin, financeLog } = useData();
+  const actions = itemById[trackingId]?.actions ?? [];
   const [contract, setContract] = useState<ContractValue>({ m1: null, m2: null, flat: null });
   const [draft, setDraft] = useState<StageFinancesMap>({});
   // New depletion readings being typed (not yet appended to history), per milestone.
@@ -117,16 +119,14 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
     setDirty(true);
   }
 
-  /** Fold any typed depletion readings into the draft as new locked history rows. */
+  /** Fold any typed depletion amounts into the draft as new locked history rows (added to the running total). */
   function draftWithDepletion(): StageFinancesMap {
     const out: StageFinancesMap = { ...draft };
     for (const s of MONEY_STAGES) {
       const raw = newDepleted[s];
       const amt = raw != null ? num(raw) : null;
-      if (amt == null) continue;
+      if (amt == null || amt <= 0) continue; // only a positive amount adds a row
       const base = out[s] ?? emptyStageFinance();
-      const latest = currentDepleted(base);
-      if (latest != null && amt === latest) continue; // unchanged — no new row
       const entry: SpendEntry = { amount: amt, at: new Date().toISOString(), by: me?.id ?? null };
       out[s] = { ...base, depletion: [...base.depletion, entry] };
     }
@@ -136,7 +136,6 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
   async function onSave() {
     setBusy(true);
     const stages = draftWithDepletion();
-    const actions = itemById[trackingId]?.actions ?? [];
 
     // Auto-advance lifecycle on report approval.
     const curMs: MoneyStage = currentStage === 'm2' ? 'm2' : 'm1';
@@ -194,6 +193,9 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
             newDepleted={newDepleted[stage] ?? ''}
             onNewDepleted={(v) => setDepletedInput(stage, v)}
             userName={userName}
+            trackingId={trackingId}
+            queries={actions.filter((a) => a.kind === 'sadp_query' && (a.milestone ?? 'm1') === stage)}
+            onQueriesChanged={onSaved}
           />
         ))}
       </div>
@@ -401,9 +403,12 @@ interface CardProps {
   newDepleted: string;
   onNewDepleted: (v: string) => void;
   userName: (id: string | null) => string;
+  trackingId: string;
+  queries: ActionRow[];
+  onQueriesChanged: () => void;
 }
 
-function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, onStampedDate, newDepleted, onNewDepleted, userName }: CardProps) {
+function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, onStampedDate, newDepleted, onNewDepleted, userName, trackingId, queries, onQueriesChanged }: CardProps) {
   const depleted = currentDepleted(f);
   const pct = pctDepleted(f);
   const pfoDays = pfoApprovalDays(f);
@@ -449,14 +454,14 @@ function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, 
 
         {!readOnly && (
           <div className="grid gap-2 sm:grid-cols-2">
-            <Field label="Record new depleted total (cumulative)">
+            <Field label="Add depletion (adds to the total)">
               <MoneyInput
                 value={newDepleted === '' ? null : Number(newDepleted)}
                 onChange={(v) => onNewDepleted(v == null ? '' : String(v))}
-                placeholder={depleted != null ? `was ${formatLsl(depleted)}` : '—'}
+                placeholder="amount spent"
               />
             </Field>
-            <p className="self-end pb-2 text-[11px] text-slate-400">Saved as a new locked entry stamped with your name and the date.</p>
+            <p className="self-end pb-2 text-[11px] text-slate-400">Added to the running total as a new locked entry stamped with your name and the date{depleted != null ? ` (now ${formatLsl(depleted)})` : ''}.</p>
           </div>
         )}
       </fieldset>
@@ -479,6 +484,9 @@ function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, 
           <p className="text-[11px] text-brand-dark">On save this {stage === 'm1' ? 'advances the enterprise to M2' : 'graduates the enterprise'} and marks it Approved.</p>
         )}
       </fieldset>
+
+      {/* SADP queries for this milestone */}
+      <MilestoneQueries trackingId={trackingId} stage={stage} queries={queries} canEdit={!readOnly} userName={userName} onChanged={onQueriesChanged} />
     </div>
   );
 }
