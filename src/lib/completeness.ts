@@ -28,7 +28,6 @@ export const COMPLETENESS_FIELDS: MissingField[] = [
   { id: 'farmer_contributed', label: 'Farmer contribution', group: 'finance' },
   { id: 'funds_allocated', label: 'Funds allocated', group: 'finance' },
   { id: 'funds_depleted', label: 'Funds depleted', group: 'finance' },
-  { id: 'report_status', label: 'Report status', group: 'finance' },
   { id: 'pfo_submitted', label: 'PFO submission date', group: 'dates' },
   { id: 'sadp_approved', label: 'SADP approval date', group: 'dates' },
 ];
@@ -54,7 +53,9 @@ export function deriveCompleteness(it: Item): Completeness {
   const ms: MoneyStage = it.lifecycle_stage === 'm2' || it.lifecycle_stage === 'graduated' ? 'm2' : 'm1';
   const f = stageFinanceOrEmpty(parseStageFinances(it.stage_finances), ms);
   const contract = parseContract(it.stage_finances);
-  const reportSubmitted = f.report_status === 'submitted' || f.report_status === 'approved';
+  // The report-date fields are only expected once the report has reached that phase,
+  // read from the board stage (reporting has begun once it's with 4D or SADP).
+  const reportReached = it.stage === 'under_review' || it.stage === 'at_sadp' || it.stage === 'sadp_queries' || it.stage === 'approved';
 
   const checks: { id: string; expected: boolean; filled: boolean }[] = [
     { id: 'service_provider', expected: true, filled: !!it.service_provider?.trim() },
@@ -63,9 +64,8 @@ export function deriveCompleteness(it: Item): Completeness {
     { id: 'farmer_contributed', expected: true, filled: f.farmer_contributed_lsl != null },
     { id: 'funds_allocated', expected: true, filled: f.allocated_lsl != null },
     { id: 'funds_depleted', expected: true, filled: f.depletion.length > 0 },
-    { id: 'report_status', expected: true, filled: f.report_status != null },
-    { id: 'pfo_submitted', expected: reportSubmitted, filled: !!f.pfo_submitted_date },
-    { id: 'sadp_approved', expected: f.report_status === 'approved', filled: !!f.sadp_approved_date },
+    { id: 'pfo_submitted', expected: reportReached, filled: !!f.pfo_submitted_date },
+    { id: 'sadp_approved', expected: it.stage === 'approved', filled: !!f.sadp_approved_date },
   ];
 
   const expected = checks.filter((c) => c.expected);

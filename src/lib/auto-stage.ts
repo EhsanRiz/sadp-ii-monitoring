@@ -35,7 +35,7 @@ export function deriveAutoStage(
   const f = stageFinanceOrEmpty(map, cur);
 
   // Approved by SADP.
-  if (f.sadp_approved_date || f.report_status === 'approved') return 'approved';
+  if (f.sadp_approved_date) return 'approved';
 
   const queries = actions.filter((a) => a.kind === 'sadp_query');
 

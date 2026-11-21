@@ -26,8 +26,6 @@ export const MONEY_STAGES: MoneyStage[] = ['m1', 'm2'];
 /** Budget-allocation approval state (kept in the data, not surfaced in the editor). */
 export type BaStatus = 'pending' | 'submitted' | 'approved' | 'partially_paid';
 
-/** Stage report (M1/M2) approval state — the journey gate. */
-export type StageReportStatus = 'pending' | 'submitted' | 'approved';
 
 /** One reading in a milestone's fund-depletion history (cumulative total to date). */
 export interface SpendEntry {
@@ -48,15 +46,26 @@ export interface StageFinance {
   allocated_lsl: number | null;
   /** Fund-depletion history — cumulative readings, each locked with who/when. */
   depletion: SpendEntry[];
-  report_status: StageReportStatus | null;
-  report_date: string | null;
+  // Report dates — each locked once set and stamped with who/when (admin-only revise).
   report_target_date: string | null;
+  report_target_by: string | null;
+  report_target_at: string | null;
   pfo_submitted_date: string | null;
+  pfo_submitted_by: string | null;
+  pfo_submitted_at: string | null;
   pfo_approved_date: string | null;
+  pfo_approved_by: string | null;
+  pfo_approved_at: string | null;
   sadp_approved_date: string | null;
+  sadp_approved_by: string | null;
+  sadp_approved_at: string | null;
   ba_status: BaStatus | null;
   ba_submitted_date: string | null;
 }
+
+/** The four stamped, lockable report dates (base key → used as `${base}_date/_by/_at`). */
+export type ReportDateKey = 'report_target' | 'pfo_submitted' | 'pfo_approved' | 'sadp_approved';
+export const REPORT_DATE_KEYS: ReportDateKey[] = ['report_target', 'pfo_submitted', 'pfo_approved', 'sadp_approved'];
 
 /** One side's contract amounts for a milestone. */
 export interface ContractCell {
@@ -96,12 +105,18 @@ export function emptyStageFinance(): StageFinance {
     farmer_contributed_lsl: null,
     allocated_lsl: null,
     depletion: [],
-    report_status: null,
-    report_date: null,
     report_target_date: null,
+    report_target_by: null,
+    report_target_at: null,
     pfo_submitted_date: null,
+    pfo_submitted_by: null,
+    pfo_submitted_at: null,
     pfo_approved_date: null,
+    pfo_approved_by: null,
+    pfo_approved_at: null,
     sadp_approved_date: null,
+    sadp_approved_by: null,
+    sadp_approved_at: null,
     ba_status: null,
     ba_submitted_date: null,
   };
@@ -114,7 +129,6 @@ export function emptyContract(): ContractValue {
 const NUM_FIELDS = ['sadp_contributed_lsl', 'farmer_contributed_lsl', 'allocated_lsl'] as const;
 
 const BA_STATUSES: BaStatus[] = ['pending', 'submitted', 'approved', 'partially_paid'];
-const REPORT_STATUSES: StageReportStatus[] = ['pending', 'submitted', 'approved'];
 
 function coerceNum(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
@@ -141,13 +155,12 @@ function parseOne(raw: unknown): StageFinance {
   const o = raw as Record<string, unknown>;
   for (const f of NUM_FIELDS) out[f] = coerceNum(o[f]);
   out.ba_status = BA_STATUSES.includes(o.ba_status as BaStatus) ? (o.ba_status as BaStatus) : null;
-  out.report_status = REPORT_STATUSES.includes(o.report_status as StageReportStatus) ? (o.report_status as StageReportStatus) : null;
   out.ba_submitted_date = coerceDate(o.ba_submitted_date);
-  out.report_date = coerceDate(o.report_date);
-  out.report_target_date = coerceDate(o.report_target_date);
-  out.pfo_submitted_date = coerceDate(o.pfo_submitted_date);
-  out.pfo_approved_date = coerceDate(o.pfo_approved_date);
-  out.sadp_approved_date = coerceDate(o.sadp_approved_date);
+  for (const base of REPORT_DATE_KEYS) {
+    out[`${base}_date`] = coerceDate(o[`${base}_date`]);
+    out[`${base}_by`] = typeof o[`${base}_by`] === 'string' ? (o[`${base}_by`] as string) : null;
+    out[`${base}_at`] = coerceDate(o[`${base}_at`]);
+  }
   out.depletion = Array.isArray(o.depletion) ? (o.depletion.map(parseSpend).filter(Boolean) as SpendEntry[]) : [];
   return out;
 }
@@ -199,9 +212,7 @@ export function hasAnyFinance(f: StageFinance): boolean {
     NUM_FIELDS.some((k) => f[k] != null) ||
     f.depletion.length > 0 ||
     f.ba_status != null ||
-    f.report_status != null ||
     !!f.ba_submitted_date ||
-    !!f.report_date ||
     !!f.report_target_date ||
     !!f.pfo_submitted_date ||
     !!f.pfo_approved_date ||
@@ -350,10 +361,4 @@ export const BA_STATUS_META: Record<BaStatus, { label: string; tone: 'neutral' |
   submitted: { label: 'Submitted', tone: 'progress' },
   approved: { label: 'Approved', tone: 'success' },
   partially_paid: { label: 'Partially paid', tone: 'flag' },
-};
-
-export const REPORT_STATUS_META: Record<StageReportStatus, { label: string; tone: 'neutral' | 'progress' | 'success' }> = {
-  pending: { label: 'Pending', tone: 'neutral' },
-  submitted: { label: 'Submitted', tone: 'progress' },
-  approved: { label: 'Approved', tone: 'success' },
 };

@@ -32,19 +32,18 @@ import {
   hasSplit,
   formatLsl,
   emptyStageFinance,
-  REPORT_STATUS_META,
   type Json,
   type MoneyStage,
   type StageFinance,
   type StageFinancesMap,
   type ContractValue,
   type SpendEntry,
-  type StageReportStatus,
+  type ReportDateKey,
 } from '../lib/stage-finances';
 import { LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
 import { deriveAutoStage } from '../lib/auto-stage';
 import { saveStageFinances } from '../lib/mutations';
-import { useData, fmtDate } from '../lib/data';
+import { useData, fmtDate, fmtDateTime, type FinanceLogRow } from '../lib/data';
 import type { StageKey } from '../lib/stages';
 import { Button, inputCls, toast } from './ui';
 
@@ -73,7 +72,7 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
   { trackingId, name, stageFinances, currentStage, readOnly = false, onSaved, onDirtyChange },
   ref,
 ) {
-  const { me, userName, itemById } = useData();
+  const { me, userName, itemById, isAdmin, financeLog } = useData();
   const [contract, setContract] = useState<ContractValue>({ m1: null, m2: null, flat: null });
   const [draft, setDraft] = useState<StageFinancesMap>({});
   // New depletion readings being typed (not yet appended to history), per milestone.
@@ -106,6 +105,18 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
     setDirty(true);
   }
 
+  /** Set a stamped report date (date + who + when), or clear all three. */
+  function setStampedDate(stage: MoneyStage, base: ReportDateKey, dateValue: string | null) {
+    setDraft((d) => {
+      const f = d[stage] ?? emptyStageFinance();
+      const next: StageFinance = dateValue
+        ? { ...f, [`${base}_date`]: dateValue, [`${base}_by`]: me?.id ?? null, [`${base}_at`]: new Date().toISOString() }
+        : { ...f, [`${base}_date`]: null, [`${base}_by`]: null, [`${base}_at`]: null };
+      return { ...d, [stage]: next };
+    });
+    setDirty(true);
+  }
+
   /** Fold any typed depletion readings into the draft as new locked history rows. */
   function draftWithDepletion(): StageFinancesMap {
     const out: StageFinancesMap = { ...draft };
@@ -130,7 +141,7 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
     // Auto-advance lifecycle on report approval.
     const curMs: MoneyStage = currentStage === 'm2' ? 'm2' : 'm1';
     const curF = stages[curMs];
-    const approved = !!curF?.sadp_approved_date || curF?.report_status === 'approved';
+    const approved = !!curF?.sadp_approved_date;
     let lifecycleStage: LifecycleStage | undefined;
     if (approved && currentStage === 'm1') lifecycleStage = 'm2';
     else if (approved && currentStage === 'm2') lifecycleStage = 'graduated';
@@ -167,7 +178,7 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
         )}
       </div>
 
-      <ContractContributions contract={contract} draft={draft} readOnly={readOnly} onChange={setField} />
+      <ContractContributions contract={contract} draft={draft} readOnly={readOnly} onChange={setField} trackingId={trackingId} financeLog={financeLog} userName={userName} />
 
       <div className="mt-3 space-y-3">
         {MONEY_STAGES.map((stage) => (
@@ -177,7 +188,9 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
             value={stageFinanceOrEmpty(draft, stage)}
             active={currentStage === stage}
             readOnly={readOnly}
+            isAdmin={isAdmin}
             onChange={setField}
+            onStampedDate={setStampedDate}
             newDepleted={newDepleted[stage] ?? ''}
             onNewDepleted={(v) => setDepletedInput(stage, v)}
             userName={userName}
@@ -207,11 +220,17 @@ function ContractContributions({
   draft,
   readOnly,
   onChange,
+  trackingId,
+  financeLog,
+  userName,
 }: {
   contract: ContractValue;
   draft: StageFinancesMap;
   readOnly: boolean;
   onChange: <K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) => void;
+  trackingId: string;
+  financeLog: FinanceLogRow[];
+  userName: (id: string | null) => string;
 }) {
   const split = hasSplit(contract);
   const totalSadp = contractSadp(contract);
@@ -220,6 +239,11 @@ function ContractContributions({
   const contribSadp = totalSadpContributed(draft);
   const contribFarmer = totalFarmerContributed(draft);
   const set = (stage: MoneyStage, key: 'sadp_contributed_lsl' | 'farmer_contributed_lsl', v: number | null) => onChange(stage, key, v);
+
+  // Who/when history of contribution edits (from the change-log the app records).
+  const contribHistory = financeLog
+    .filter((r) => r.tracking_id === trackingId && (r.field === 'farmer_contributed_lsl' || r.field === 'sadp_contributed_lsl'))
+    .slice(0, 8);
 
   return (
     <div className="space-y-3 rounded-lg border border-brand/30 bg-brand-light/40 p-3">
@@ -273,10 +297,10 @@ function ContractContributions({
               <tr key={s}>
                 <td className="px-3 py-1.5 text-xs font-medium text-slate-500">{s.toUpperCase()}</td>
                 <td className="px-2 py-1">
-                  <ContribInput value={draft[s]?.sadp_contributed_lsl ?? null} onChange={(v) => set(s, 'sadp_contributed_lsl', v)} readOnly={readOnly} id={`${s}-csadp`} />
+                  <MoneyInput value={draft[s]?.sadp_contributed_lsl ?? null} onChange={(v) => set(s, 'sadp_contributed_lsl', v)} disabled={readOnly} id={`${s}-csadp`} align="right" compact />
                 </td>
                 <td className="px-2 py-1">
-                  <ContribInput value={draft[s]?.farmer_contributed_lsl ?? null} onChange={(v) => set(s, 'farmer_contributed_lsl', v)} readOnly={readOnly} id={`${s}-cfarmer`} />
+                  <MoneyInput value={draft[s]?.farmer_contributed_lsl ?? null} onChange={(v) => set(s, 'farmer_contributed_lsl', v)} disabled={readOnly} id={`${s}-cfarmer`} align="right" compact />
                 </td>
               </tr>
             ))}
@@ -293,6 +317,25 @@ function ContractContributions({
           </tbody>
         </table>
       </div>
+
+      {contribHistory.length > 0 && (
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="flex items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            <History size={11} /> Contribution history
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {contribHistory.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
+                <span className="text-slate-600">
+                  <span className="font-medium text-slate-500">{(r.stage ?? '').toUpperCase()} {r.field === 'farmer_contributed_lsl' ? 'Farmer' : 'SADP'}</span>{' '}
+                  <span className="font-medium tabular-nums text-slate-700">{formatLsl(r.new_value == null ? null : Number(r.new_value))}</span>
+                </span>
+                <span className="shrink-0 text-slate-400">{userName(r.changed_by)} · {fmtDateTime(r.changed_at)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -311,19 +354,38 @@ function ContractRow({ label, sadp, farmer, total, nonStandard }: { label: strin
   );
 }
 
-function ContribInput({ value, onChange, readOnly, id }: { value: number | null; onChange: (v: number | null) => void; readOnly: boolean; id: string }) {
+/** Money input that formats with thousand separators as you type (e.g. 160,000). */
+function MoneyInput({
+  value,
+  onChange,
+  disabled,
+  id,
+  placeholder = '—',
+  align = 'left',
+  compact,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  disabled?: boolean;
+  id?: string;
+  placeholder?: string;
+  align?: 'left' | 'right';
+  compact?: boolean;
+}) {
+  const display = value == null ? '' : value.toLocaleString('en-US');
   return (
     <input
       id={id}
-      type="number"
+      type="text"
       inputMode="numeric"
-      min={0}
-      step={1000}
-      disabled={readOnly}
-      className={`${inputCls} h-8 w-full text-right tabular-nums`}
-      placeholder="—"
-      value={value ?? ''}
-      onChange={(e) => onChange(num(e.target.value))}
+      disabled={disabled}
+      className={`${inputCls} ${compact ? 'h-8' : ''} w-full tabular-nums ${align === 'right' ? 'text-right' : ''}`}
+      placeholder={placeholder}
+      value={display}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/[^0-9]/g, '');
+        onChange(digits === '' ? null : Number(digits));
+      }}
     />
   );
 }
@@ -333,18 +395,20 @@ interface CardProps {
   value: StageFinance;
   active: boolean;
   readOnly: boolean;
+  isAdmin: boolean;
   onChange: <K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) => void;
+  onStampedDate: (stage: MoneyStage, base: ReportDateKey, date: string | null) => void;
   newDepleted: string;
   onNewDepleted: (v: string) => void;
   userName: (id: string | null) => string;
 }
 
-function StageMoneyCard({ stage, value: f, active, readOnly, onChange, newDepleted, onNewDepleted, userName }: CardProps) {
+function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, onStampedDate, newDepleted, onNewDepleted, userName }: CardProps) {
   const depleted = currentDepleted(f);
   const pct = pctDepleted(f);
   const pfoDays = pfoApprovalDays(f);
   const turnaround = approvalTurnaroundDays(f);
-  const set = <K extends keyof StageFinance>(key: K, v: StageFinance[K]) => onChange(stage, key, v);
+  void onChange; // (report dates go through onStampedDate; contributions live in the top block)
 
   return (
     <div className={`space-y-3 rounded-lg border p-3 ${active ? 'border-brand/40 bg-brand-light/40' : 'border-slate-200'}`}>
@@ -386,15 +450,10 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange, newDeplet
         {!readOnly && (
           <div className="grid gap-2 sm:grid-cols-2">
             <Field label="Record new depleted total (cumulative)">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={1000}
-                className={`${inputCls} tabular-nums`}
+              <MoneyInput
+                value={newDepleted === '' ? null : Number(newDepleted)}
+                onChange={(v) => onNewDepleted(v == null ? '' : String(v))}
                 placeholder={depleted != null ? `was ${formatLsl(depleted)}` : '—'}
-                value={newDepleted}
-                onChange={(e) => onNewDepleted(e.target.value)}
               />
             </Field>
             <p className="self-end pb-2 text-[11px] text-slate-400">Saved as a new locked entry stamped with your name and the date.</p>
@@ -402,37 +461,21 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange, newDeplet
         )}
       </fieldset>
 
-      {/* Report approval: Submitted to PFO → Approved by PFO → Approved by SADP */}
-      <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stage.toUpperCase()} report approval (PFO → SADP)</legend>
+      {/* Report approval: locked, stamped dates — only an Admin can revise once set */}
+      <fieldset className="space-y-2">
+        <legend className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {stage.toUpperCase()} report approval (PFO → SADP)
+          <span className="inline-flex items-center gap-0.5 text-[10px] font-normal normal-case text-slate-400"><Lock size={10} /> locked once set{isAdmin ? ' · you can revise' : ' · admin to revise'}</span>
+        </legend>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Field label="Report status">
-            <select className={inputCls} value={f.report_status ?? ''} onChange={(e) => set('report_status', (e.target.value || null) as StageReportStatus | null)}>
-              <option value="">Not set</option>
-              {(Object.keys(REPORT_STATUS_META) as StageReportStatus[]).map((s) => (
-                <option key={s} value={s}>{REPORT_STATUS_META[s].label}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Report target date">
-            <input type="date" className={inputCls} value={f.report_target_date ?? ''} onChange={(e) => set('report_target_date', e.target.value || null)} />
-          </Field>
-          <Field label="Report date">
-            <input type="date" className={inputCls} value={f.report_date ?? ''} onChange={(e) => set('report_date', e.target.value || null)} />
-          </Field>
-          <Field label="Submitted to PFO">
-            <input type="date" className={inputCls} value={f.pfo_submitted_date ?? ''} onChange={(e) => set('pfo_submitted_date', e.target.value || null)} />
-          </Field>
-          <Field label="Approved by PFO">
-            <input type="date" className={inputCls} value={f.pfo_approved_date ?? ''} onChange={(e) => set('pfo_approved_date', e.target.value || null)} />
-          </Field>
-          <Field label="Approved by SADP">
-            <input type="date" className={inputCls} value={f.sadp_approved_date ?? ''} onChange={(e) => set('sadp_approved_date', e.target.value || null)} />
-          </Field>
+          <StampedDate label="Report target date" base="report_target" f={f} readOnly={readOnly} isAdmin={isAdmin} userName={userName} onChange={(d) => onStampedDate(stage, 'report_target', d)} />
+          <StampedDate label="Submitted to PFO" base="pfo_submitted" f={f} readOnly={readOnly} isAdmin={isAdmin} userName={userName} onChange={(d) => onStampedDate(stage, 'pfo_submitted', d)} />
+          <StampedDate label="Approved by PFO" base="pfo_approved" f={f} readOnly={readOnly} isAdmin={isAdmin} userName={userName} onChange={(d) => onStampedDate(stage, 'pfo_approved', d)} />
+          <StampedDate label="Approved by SADP" base="sadp_approved" f={f} readOnly={readOnly} isAdmin={isAdmin} userName={userName} onChange={(d) => onStampedDate(stage, 'sadp_approved', d)} />
           <ReadOut label="PFO turnaround" value={pfoDays == null ? '—' : `${pfoDays} day${pfoDays === 1 ? '' : 's'}`} warn={pfoDays != null && pfoDays > 14} />
           <ReadOut label="Full turnaround (→ SADP)" value={turnaround == null ? '—' : `${turnaround} day${turnaround === 1 ? '' : 's'}`} warn={turnaround != null && turnaround > 30} />
         </div>
-        {active && (f.sadp_approved_date || f.report_status === 'approved') && (
+        {active && f.sadp_approved_date && (
           <p className="text-[11px] text-brand-dark">On save this {stage === 'm1' ? 'advances the enterprise to M2' : 'graduates the enterprise'} and marks it Approved.</p>
         )}
       </fieldset>
@@ -440,7 +483,42 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange, newDeplet
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** A report date that locks once set; non-admins see it read-only, admins can revise. */
+function StampedDate({
+  label,
+  base,
+  f,
+  readOnly,
+  isAdmin,
+  userName,
+  onChange,
+}: {
+  label: string;
+  base: ReportDateKey;
+  f: StageFinance;
+  readOnly: boolean;
+  isAdmin: boolean;
+  userName: (id: string | null) => string;
+  onChange: (date: string | null) => void;
+}) {
+  const date = f[`${base}_date`];
+  const by = f[`${base}_by`];
+  const at = f[`${base}_at`];
+  const locked = readOnly || (!!date && !isAdmin);
+  const stamp = by || at ? `${userName(by)}${at ? ` · ${fmtDate(at.slice(0, 10))}` : ''}` : null;
+  return (
+    <Field label={<span className="flex items-center gap-1">{label}{date && <Lock size={10} className="text-slate-300" />}</span>}>
+      {locked && date ? (
+        <div className="flex h-[38px] items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm tabular-nums text-slate-600">{fmtDate(date)}</div>
+      ) : (
+        <input type="date" className={inputCls} value={date ?? ''} onChange={(e) => onChange(e.target.value || null)} />
+      )}
+      {stamp && <span className="mt-0.5 block text-[10px] text-slate-400">{stamp}</span>}
+    </Field>
+  );
+}
+
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
       <label className="block text-xs text-slate-600">{label}</label>

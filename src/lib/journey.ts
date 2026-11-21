@@ -70,7 +70,7 @@ function farmerNode(f: StageFinance): { status: NodeStatus; detail: string } {
   const paid = f.farmer_contributed_lsl;
   if (paid == null) return { status: 'pending', detail: 'Not recorded' };
   const detail = formatLslShort(paid);
-  if (f.report_status === 'approved') return { status: 'done', detail };
+  if (f.sadp_approved_date) return { status: 'done', detail };
   if (paid > 0) return { status: 'active', detail };
   return { status: 'pending', detail };
 }
@@ -87,7 +87,7 @@ function baNode(f: StageFinance): { status: NodeStatus; detail: string } {
 function fdNode(f: StageFinance): { status: NodeStatus; detail: string } {
   const pct = pctDepleted(f);
   const dep = currentDepleted(f);
-  if (f.report_status === 'approved') {
+  if (f.sadp_approved_date) {
     return { status: 'done', detail: pct != null ? `${pct}% depleted` : 'Reported' };
   }
   if (dep == null) return { status: 'pending', detail: '—' };
@@ -95,11 +95,9 @@ function fdNode(f: StageFinance): { status: NodeStatus; detail: string } {
 }
 
 function reportNode(f: StageFinance): { status: NodeStatus; detail: string } {
-  switch (f.report_status) {
-    case 'approved': return { status: 'done', detail: 'Approved' };
-    case 'submitted': return { status: 'active', detail: 'Submitted' };
-    default: return { status: 'pending', detail: 'Pending' };
-  }
+  if (f.sadp_approved_date) return { status: 'done', detail: 'Approved' };
+  if (f.pfo_submitted_date) return { status: 'active', detail: 'Submitted' };
+  return { status: 'pending', detail: 'Pending' };
 }
 
 const DONE_PAST: Record<JourneyNode['key'], string> = {

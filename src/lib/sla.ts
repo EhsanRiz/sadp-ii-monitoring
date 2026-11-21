@@ -76,8 +76,8 @@ export function deriveReportSla(it: Item): ReportSla {
   const inflight: InflightReport[] = [];
   for (const s of MONEY_STAGES) {
     const f = map[s];
-    // not submitted, or already approved (by date or status)
-    if (!f?.pfo_submitted_date || f.sadp_approved_date || f.report_status === 'approved') continue;
+    // not submitted, or already approved
+    if (!f?.pfo_submitted_date || f.sadp_approved_date) continue;
     const dw = daysSinceDate(f.pfo_submitted_date);
     if (dw == null) continue;
     inflight.push({ stage: s, submitted: f.pfo_submitted_date, daysWaiting: dw, level: slaLevel(dw) });
@@ -88,7 +88,7 @@ export function deriveReportSla(it: Item): ReportSla {
   // enterprise lingers in the queue after its approval date is filled in but before the
   // approval stage is moved, so the card looks like it "doesn't update".
   const curStage: MoneyStage = it.lifecycle_stage === 'm2' ? 'm2' : 'm1';
-  const curApproved = !!map[curStage]?.sadp_approved_date || map[curStage]?.report_status === 'approved';
+  const curApproved = !!map[curStage]?.sadp_approved_date;
   const atSadpDays = it.stage === 'at_sadp' && !curApproved ? daysSince(it.stage_since) : null;
 
   const worstReport = inflight.reduce<InflightReport | null>((a, r) => (!a || r.daysWaiting > a.daysWaiting ? r : a), null);
