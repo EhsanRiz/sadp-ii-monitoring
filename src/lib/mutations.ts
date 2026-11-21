@@ -70,7 +70,7 @@ export async function saveStageFinances(
 export async function syncAutoStage(trackingId: string): Promise<void> {
   const [{ data: t }, { data: acts }] = await Promise.all([
     supabase.from('mgp_tracking').select('stage, lifecycle_stage, stage_finances').eq('id', trackingId).single(),
-    supabase.from('mgp_actions').select('kind, status, sadp_received_date, sadp_sent_back_date').eq('tracking_id', trackingId),
+    supabase.from('mgp_actions').select('kind, status, milestone, sadp_received_date, sadp_sent_back_date').eq('tracking_id', trackingId),
   ]);
   if (!t) return;
   const next = deriveAutoStage(t.stage_finances, t.lifecycle_stage as LifecycleStage, acts ?? []);

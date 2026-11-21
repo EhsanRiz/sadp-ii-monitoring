@@ -21,6 +21,7 @@ import type { Json } from './stage-finances';
 export interface AutoStageActionLite {
   kind: string;
   status: string;
+  milestone: string | null;
   sadp_received_date: string | null;
   sadp_sent_back_date: string | null;
 }
@@ -37,7 +38,8 @@ export function deriveAutoStage(
   // Approved by SADP.
   if (f.sadp_approved_date) return 'approved';
 
-  const queries = actions.filter((a) => a.kind === 'sadp_query');
+  // Only the current milestone's queries drive the stage.
+  const queries = actions.filter((a) => a.kind === 'sadp_query' && (a.milestone ?? 'm1') === cur);
 
   // A SADP query has come back and hasn't been sent back yet → resolving queries.
   const openReceived = queries.some((a) => a.status === 'open' && !!a.sadp_received_date && !a.sadp_sent_back_date);

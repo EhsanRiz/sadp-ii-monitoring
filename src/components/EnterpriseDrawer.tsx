@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Trash2, Phone, AlertTriangle, Save, Plus, Lock } from 'lucide-react';
-import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow, type QueryStatus } from '../lib/data';
+import { Trash2, Phone, AlertTriangle, Save, Plus } from 'lucide-react';
+import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow } from '../lib/data';
 import { supabase } from '../lib/supabase';
-import { STAGES, STAGE, type StageKey } from '../lib/stages';
+import { STAGE } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
-import { changeStage, setLifecycleStage, syncAutoStage } from '../lib/mutations';
+import { setLifecycleStage } from '../lib/mutations';
 import { StageFinanceEditor, type FinanceEditorHandle } from './StageFinanceEditor';
 import { EnterpriseJourney } from './EnterpriseJourney';
 import { deriveRisk } from '../lib/risk';
@@ -15,17 +15,12 @@ import { deriveReportSla, SLA_TARGET_DAYS } from '../lib/sla';
 import { SlaBadge } from './ReportSla';
 import { Button, Drawer, Modal, StageChip, LifecycleChip, inputCls, toast } from './ui';
 
-/** Stages that can't be derived from the data — set manually (pre-submission). */
-const MANUAL_STAGE_KEYS: StageKey[] = ['under_review', 'with_isp', 'blocked_infra'];
-const MANUAL_STAGES = STAGES.filter((s) => MANUAL_STAGE_KEYS.includes(s.key));
-
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
   const { itemById, history, users, items, canEdit, isAdmin, userName, reload, me } = useData();
   const [removeReason, setRemoveReason] = useState('Withdrawn');
   const it = trackingId ? itemById[trackingId] : undefined;
 
   const [busyLc, setBusyLc] = useState(false);
-  const [busyStage, setBusyStage] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Floating save for the finance editor — save without scrolling to the bottom.
@@ -49,14 +44,6 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   const risk = deriveRisk(it);
   const readiness = deriveReadiness(it);
   const sla = deriveReportSla(it);
-
-  async function manualMove(stage: StageKey) {
-    if (!it || stage === it.stage || busyStage) return;
-    setBusyStage(true);
-    await changeStage(it.id, it.name, stage, null);
-    setBusyStage(false);
-    reload();
-  }
 
   async function changeLifecycle(s: LifecycleStage) {
     if (!it || s === it.lifecycle_stage || busyLc) return;
@@ -198,38 +185,6 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
           onDirtyChange={setFinancesDirty}
         />
 
-        {/* Section — mostly automatic; manual only for the pre-submission stages */}
-        {canEdit && (
-          <section>
-            <h3 className="mb-1 text-sm font-semibold">Section</h3>
-            <p className="mb-2 text-xs text-slate-500">
-              Moves to <b>At SADP</b>, <b>SADP Queries</b> and <b>Approved</b> happen automatically from the report dates and queries. Set a pre-submission section here if needed.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {MANUAL_STAGES.map((s) => {
-                const current = s.key === it.stage;
-                return (
-                  <button
-                    key={s.key}
-                    disabled={current || busyStage}
-                    onClick={() => manualMove(s.key)}
-                    className={`inline-flex items-center rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-default ${
-                      current ? 'border-brand bg-brand-light text-brand-dark ring-1 ring-brand/30' : 'border-slate-200 text-slate-600 hover:border-brand'
-                    }`}
-                  >
-                    <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${s.dot}`} />
-                    {s.short}
-                    {current && <span className="ml-1.5 text-[10px] text-slate-400">· current</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {!MANUAL_STAGE_KEYS.includes(it.stage) && (
-              <p className="mt-2 text-xs text-slate-400">Currently <b className="text-slate-600">{STAGE[it.stage].short}</b> (set automatically).</p>
-            )}
-          </section>
-        )}
-
         {it.note && (
           <div className="rounded-md bg-slate-50 px-3 py-2 text-sm italic text-slate-600">
             “{it.note}” <span className="not-italic text-xs text-slate-400">— latest note</span>
@@ -293,12 +248,6 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   );
 }
 
-const QUERY_STATUS: { key: QueryStatus; label: string; short: string; chip: string }[] = [
-  { key: 'raised', label: 'Raised by SADP', short: 'Raised', chip: 'border-amber-200 bg-amber-50 text-amber-800' },
-  { key: 'addressing', label: 'Being addressed by 4D', short: 'Addressing', chip: 'border-fdblue/30 bg-fdblue-light text-sky-800' },
-  { key: 'responded', label: 'Responded to SADP', short: 'Responded', chip: 'border-brand/20 bg-brand-light text-brand-dark' },
-];
-
 function ActionPlan({
   trackingId,
   actions,
@@ -314,7 +263,6 @@ function ActionPlan({
   userName: (id: string | null) => string;
   onChange: () => void;
 }) {
-  const [kind, setKind] = useState<'action' | 'sadp_query'>('action');
   const [desc, setDesc] = useState('');
   const { users } = useData();
   const activeUsers = users.filter((u) => u.is_active);
@@ -329,8 +277,8 @@ function ActionPlan({
 
   useEffect(() => setPendingTick({}), [actions]);
 
-  // Keep the order items were added (no jumping when ticked).
-  const list = [...actions].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  // General follow-ups only — SADP queries live in the milestone tabs now.
+  const list = actions.filter((a) => a.kind === 'action').sort((a, b) => a.created_at.localeCompare(b.created_at));
   const statusOf = (a: ActionRow) => pendingTick[a.id] ?? a.status;
   const doneCount = list.filter((a) => statusOf(a) === 'done').length;
   const pct = list.length ? Math.round((doneCount / list.length) * 100) : 0;
@@ -344,19 +292,15 @@ function ActionPlan({
       .from('mgp_actions')
       .insert({
         tracking_id: trackingId,
-        kind,
+        kind: 'action',
         description: text,
         assigned_to: assignee && assignee !== 'other' ? assignee : null,
         owner: assignee === 'other' ? owner.trim() || null : null,
         due_date: due || null,
-        query_status: kind === 'sadp_query' ? 'raised' : null,
-        // A SADP query is "received" the day it's logged (locked thereafter).
-        sadp_received_date: kind === 'sadp_query' ? new Date().toISOString().slice(0, 10) : null,
       });
     setBusy(false);
     if (error) return toast.err(errMsg(error));
     setDesc('');
-    if (kind === 'sadp_query') await syncAutoStage(trackingId);
     onChange();
     inputRef.current?.focus(); // ready for the next item
   }
@@ -372,19 +316,7 @@ function ActionPlan({
         return n;
       });
       toast.err(errMsg(error));
-    } else {
-      if (a.kind === 'sadp_query') await syncAutoStage(trackingId);
-      onChange();
-    }
-  }
-
-  async function setQueryDate(a: ActionRow, field: 'sadp_received_date' | 'sadp_sent_back_date', date: string) {
-    const { error } = await supabase.from('mgp_actions').update({ [field]: date || null }).eq('id', a.id);
-    if (error) toast.err(errMsg(error));
-    else {
-      await syncAutoStage(trackingId);
-      onChange();
-    }
+    } else onChange();
   }
 
   async function reassign(a: ActionRow, userId: string) {
@@ -403,21 +335,8 @@ function ActionPlan({
     else onChange();
   }
 
-  async function setQueryStatus(a: ActionRow, status: QueryStatus) {
-    const { error } = await supabase.from('mgp_actions').update({ query_status: status }).eq('id', a.id);
-    if (error) toast.err(errMsg(error));
-    else onChange();
-  }
-
-  async function setQueryReasoning(a: ActionRow, text: string) {
-    const { error } = await supabase.from('mgp_actions').update({ query_reasoning: text.trim() || null }).eq('id', a.id);
-    if (error) toast.err(errMsg(error));
-    else onChange();
-  }
-
-  /** Jump to the add box ready for a new follow-up, optionally pre-filled (e.g. from a query). */
+  /** Jump to the add box ready for a new follow-up, optionally pre-filled. */
   function startFollowUp(prefill?: string) {
-    setKind('action');
     if (prefill !== undefined) setDesc(prefill);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -460,10 +379,7 @@ function ActionPlan({
                 <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
                   <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#008C44]" checked={done} disabled={!canEdit} onChange={() => toggle(a)} />
                   <div className="min-w-0 flex-1">
-                    <div className={`text-sm ${done ? 'text-slate-400 line-through' : ''}`}>
-                      {a.kind === 'sadp_query' && <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900 no-underline">SADP query</span>}
-                      {a.description}
-                    </div>
+                    <div className={`text-sm ${done ? 'text-slate-400 line-through' : ''}`}>{a.description}</div>
                     {(a.owner || a.due_date || (done && a.done_at)) && (
                       <div className="text-xs text-slate-500">
                         {a.assigned_to ? (
@@ -484,15 +400,6 @@ function ActionPlan({
                     )}
                   </div>
                 </label>
-                {canEdit && a.kind === 'sadp_query' && (
-                  <button
-                    onClick={() => startFollowUp(`Follow up: ${a.description}`)}
-                    className="rounded p-1 text-slate-300 hover:bg-brand-light hover:text-brand"
-                    title="Add a follow-up for this query"
-                  >
-                    <Plus size={14} />
-                  </button>
-                )}
                 {canEdit && !done && (
                   <select
                     className="w-24 shrink-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 focus:border-brand"
@@ -514,11 +421,6 @@ function ActionPlan({
                   </button>
                 )}
                 </div>
-                {a.kind === 'sadp_query' && (
-                  <div className="border-t border-slate-100 px-3 py-2">
-                    <QueryWorkflow a={a} canEdit={canEdit} onStatus={setQueryStatus} onReasoning={setQueryReasoning} onDate={setQueryDate} userName={userName} />
-                  </div>
-                )}
               </li>
             );
           })}
@@ -528,14 +430,10 @@ function ActionPlan({
       {canEdit && (
         <form onSubmit={add} className="rounded-lg bg-slate-50 p-2.5">
           <div className="flex gap-2">
-            <select className="rounded-md border border-slate-300 bg-white px-2 text-xs font-medium" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} title="Type of item">
-              <option value="action">Action</option>
-              <option value="sadp_query">SADP query</option>
-            </select>
             <input
               ref={inputRef}
               className={inputCls}
-              placeholder={list.length ? 'Add another item… (press Enter)' : 'Add an item… (press Enter)'}
+              placeholder={list.length ? 'Add another follow-up… (press Enter)' : 'Add a follow-up… (press Enter)'}
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
             />
@@ -567,109 +465,3 @@ function ActionPlan({
   );
 }
 
-/** A query date that locks (becomes read-only) once set, with an optional who/when stamp. */
-function QueryDate({
-  label,
-  value,
-  locked,
-  stamp,
-  onChange,
-}: {
-  label: string;
-  value: string | null;
-  locked: boolean;
-  stamp?: string;
-  onChange: (date: string) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <span className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
-        {label}
-        {value && <Lock size={10} className="text-slate-300" />}
-      </span>
-      {locked && value ? (
-        <div className="flex h-8 items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-xs tabular-nums text-slate-600">{fmtDate(value)}</div>
-      ) : (
-        <input type="date" className={`${inputCls} h-8`} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
-      )}
-      {stamp && <span className="block text-[10px] text-slate-400">{stamp}</span>}
-    </div>
-  );
-}
-
-function QueryWorkflow({
-  a,
-  canEdit,
-  onStatus,
-  onReasoning,
-  onDate,
-  userName,
-}: {
-  a: ActionRow;
-  canEdit: boolean;
-  onStatus: (a: ActionRow, s: QueryStatus) => void;
-  onReasoning: (a: ActionRow, t: string) => void;
-  onDate: (a: ActionRow, field: 'sadp_received_date' | 'sadp_sent_back_date', date: string) => void;
-  userName: (id: string | null) => string;
-}) {
-  const status: QueryStatus = a.query_status ?? 'raised';
-  const [reason, setReason] = useState(a.query_reasoning ?? '');
-  useEffect(() => setReason(a.query_reasoning ?? ''), [a.query_reasoning]);
-  const meta = QUERY_STATUS.find((q) => q.key === status)!;
-  const showReason = status === 'addressing' || status === 'responded';
-  const sentStamp = a.sadp_sent_back_at ? `${userName(a.sadp_sent_back_by)} · ${fmtDate(a.sadp_sent_back_at.slice(0, 10))}` : undefined;
-
-  if (!canEdit) {
-    return (
-      <div className="space-y-1.5 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.chip}`}>{meta.label}</span>
-          {a.query_reasoning && <span className="text-slate-500">· {a.query_reasoning}</span>}
-        </div>
-        <div className="flex flex-wrap gap-x-4 text-slate-500">
-          {a.sadp_received_date && <span>Received from SADP {fmtDate(a.sadp_received_date)}</span>}
-          {a.sadp_sent_back_date && <span>Sent back {fmtDate(a.sadp_sent_back_date)}</span>}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2.5">
-      <div className="grid gap-2 sm:grid-cols-2">
-        <QueryDate label="Received from SADP" value={a.sadp_received_date} locked={!!a.sadp_received_date} onChange={(d) => onDate(a, 'sadp_received_date', d)} />
-        <QueryDate label="Sent back to SADP" value={a.sadp_sent_back_date} locked={!!a.sadp_sent_back_date} stamp={sentStamp} onChange={(d) => onDate(a, 'sadp_sent_back_date', d)} />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Query status</span>
-        <div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-[11px]">
-          {QUERY_STATUS.map((q, i) => (
-            <button
-              key={q.key}
-              onClick={() => onStatus(a, q.key)}
-              className={`rounded px-2 py-0.5 ${status === q.key ? 'bg-brand text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-              title={q.label}
-            >
-              {i + 1}. {q.short}
-            </button>
-          ))}
-        </div>
-      </div>
-      {showReason && (
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-medium text-slate-500">Reasoning / response to SADP</span>
-          <textarea
-            className={inputCls}
-            rows={2}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            onBlur={() => {
-              if ((reason.trim() || null) !== (a.query_reasoning ?? null)) onReasoning(a, reason);
-            }}
-            placeholder="How 4D traced and addressed the query, and the reasoning sent back to SADP."
-          />
-        </label>
-      )}
-    </div>
-  );
-}

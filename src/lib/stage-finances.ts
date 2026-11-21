@@ -308,9 +308,10 @@ export function totalDeficit(c: ContractValue, map: StageFinancesMap): number {
 
 // ---- Depletion helpers ----
 
-/** The current (latest) cumulative funds depleted for a milestone, or null. */
+/** Total funds depleted for a milestone — the sum of every recorded drawdown, or null. */
 export function currentDepleted(f: StageFinance): number | null {
-  return f.depletion.length ? f.depletion[f.depletion.length - 1].amount : null;
+  if (!f.depletion.length) return null;
+  return f.depletion.reduce((a, d) => a + d.amount, 0);
 }
 
 /** Percent of allocated funds depleted (latest ÷ allocated), or null. */
