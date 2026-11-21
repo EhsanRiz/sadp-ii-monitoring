@@ -70,11 +70,37 @@ export async function saveStageFinances(
 export async function syncAutoStage(trackingId: string): Promise<void> {
   const [{ data: t }, { data: acts }] = await Promise.all([
     supabase.from('mgp_tracking').select('stage, lifecycle_stage, stage_finances').eq('id', trackingId).single(),
-    supabase.from('mgp_actions').select('kind, status, milestone, sadp_received_date, sadp_sent_back_date').eq('tracking_id', trackingId),
+    supabase.from('mgp_actions').select('kind, status, milestone').eq('tracking_id', trackingId),
   ]);
   if (!t) return;
   const next = deriveAutoStage(t.stage_finances, t.lifecycle_stage as LifecycleStage, acts ?? []);
   if (next && next !== t.stage) {
     await supabase.from('mgp_tracking').update({ stage: next }).eq('id', trackingId);
   }
+}
+
+/**
+ * Mark a milestone's report pack resent to SADP (after its queries were addressed).
+ * Stamps who/when on the milestone's stage_finances and re-derives the board stage.
+ */
+export async function markReportResubmitted(trackingId: string, name: string, stage: 'm1' | 'm2', userId: string | null): Promise<boolean> {
+  const { data, error } = await supabase.from('mgp_tracking').select('stage_finances').eq('id', trackingId).single();
+  if (error || !data) {
+    toast.err(error ? errMsg(error) : 'Could not load the enterprise');
+    return false;
+  }
+  const sf = ((data.stage_finances as Record<string, unknown>) ?? {}) as Record<string, Record<string, unknown>>;
+  const ms = { ...(sf[stage] ?? {}) };
+  ms.report_resubmitted_date = new Date().toISOString().slice(0, 10);
+  ms.report_resubmitted_by = userId;
+  ms.report_resubmitted_at = new Date().toISOString();
+  const patch = { ...sf, [stage]: ms };
+  const { error: e2 } = await supabase.from('mgp_tracking').update({ stage_finances: patch }).eq('id', trackingId);
+  if (e2) {
+    toast.err(errMsg(e2));
+    return false;
+  }
+  await syncAutoStage(trackingId);
+  toast.ok(`${name} — ${stage.toUpperCase()} report pack sent to SADP`);
+  return true;
 }

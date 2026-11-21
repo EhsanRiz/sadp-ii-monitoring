@@ -59,6 +59,10 @@ export interface StageFinance {
   sadp_approved_date: string | null;
   sadp_approved_by: string | null;
   sadp_approved_at: string | null;
+  /** The whole report pack sent back to SADP after queries were addressed (who/when). */
+  report_resubmitted_date: string | null;
+  report_resubmitted_by: string | null;
+  report_resubmitted_at: string | null;
   ba_status: BaStatus | null;
   ba_submitted_date: string | null;
 }
@@ -117,6 +121,9 @@ export function emptyStageFinance(): StageFinance {
     sadp_approved_date: null,
     sadp_approved_by: null,
     sadp_approved_at: null,
+    report_resubmitted_date: null,
+    report_resubmitted_by: null,
+    report_resubmitted_at: null,
     ba_status: null,
     ba_submitted_date: null,
   };
@@ -161,6 +168,9 @@ function parseOne(raw: unknown): StageFinance {
     out[`${base}_by`] = typeof o[`${base}_by`] === 'string' ? (o[`${base}_by`] as string) : null;
     out[`${base}_at`] = coerceDate(o[`${base}_at`]);
   }
+  out.report_resubmitted_date = coerceDate(o.report_resubmitted_date);
+  out.report_resubmitted_by = typeof o.report_resubmitted_by === 'string' ? o.report_resubmitted_by : null;
+  out.report_resubmitted_at = coerceDate(o.report_resubmitted_at);
   out.depletion = Array.isArray(o.depletion) ? (o.depletion.map(parseSpend).filter(Boolean) as SpendEntry[]) : [];
   return out;
 }
@@ -216,7 +226,8 @@ export function hasAnyFinance(f: StageFinance): boolean {
     !!f.report_target_date ||
     !!f.pfo_submitted_date ||
     !!f.pfo_approved_date ||
-    !!f.sadp_approved_date
+    !!f.sadp_approved_date ||
+    !!f.report_resubmitted_date
   );
 }
 
