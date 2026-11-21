@@ -18,6 +18,7 @@ import {
   MONEY_STAGES,
   stageFinanceOrEmpty,
   pctDepleted,
+  currentDepleted,
   hasAnyFinance,
   formatLslShort,
   parseStageFinances,
@@ -84,22 +85,13 @@ function baNode(f: StageFinance): { status: NodeStatus; detail: string } {
 }
 
 function fdNode(f: StageFinance): { status: NodeStatus; detail: string } {
-  const inMotion =
-    (f.funds_allocated_lsl ?? 0) > 0 ||
-    (f.funds_depleted_lsl ?? 0) > 0 ||
-    (f.yet_to_report_lsl ?? 0) > 0;
   const pct = pctDepleted(f);
+  const dep = currentDepleted(f);
   if (f.report_status === 'approved') {
     return { status: 'done', detail: pct != null ? `${pct}% depleted` : 'Reported' };
   }
-  if (!inMotion) return { status: 'pending', detail: '—' };
-  if (f.yet_to_report_lsl != null && f.yet_to_report_lsl === 0 && (f.funds_depleted_lsl ?? 0) > 0) {
-    return { status: 'done', detail: pct != null ? `${pct}% depleted` : 'Reported' };
-  }
-  if (f.yet_to_report_lsl != null && f.yet_to_report_lsl > 0) {
-    return { status: 'active', detail: `${formatLslShort(f.yet_to_report_lsl)} to report` };
-  }
-  return { status: 'active', detail: pct != null ? `${pct}% depleted` : 'In progress' };
+  if (dep == null) return { status: 'pending', detail: '—' };
+  return { status: 'active', detail: pct != null ? `${pct}% depleted` : formatLslShort(dep) };
 }
 
 function reportNode(f: StageFinance): { status: NodeStatus; detail: string } {

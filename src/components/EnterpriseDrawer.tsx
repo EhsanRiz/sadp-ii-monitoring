@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Trash2, ArrowRight, Phone, AlertTriangle, Save, Plus } from 'lucide-react';
+import { Trash2, ArrowRight, Phone, AlertTriangle, Save, Plus, Lock } from 'lucide-react';
 import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow, type QueryStatus } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { STAGES, STAGE, type StageKey } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
-import { changeStage, setLifecycleStage } from '../lib/mutations';
+import { changeStage, setLifecycleStage, syncAutoStage } from '../lib/mutations';
 import { StageFinanceEditor, type FinanceEditorHandle } from './StageFinanceEditor';
 import { EnterpriseJourney } from './EnterpriseJourney';
 import { deriveRisk } from '../lib/risk';
@@ -66,7 +66,10 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
         .map((l) => l.trim())
         .filter(Boolean);
       if (lines.length) {
-        const { error } = await supabase.from('mgp_actions').insert(lines.map((description) => ({ tracking_id: it.id, kind: 'sadp_query', description, query_status: 'raised' })));
+        const today = new Date().toISOString().slice(0, 10);
+        const { error } = await supabase
+          .from('mgp_actions')
+          .insert(lines.map((description) => ({ tracking_id: it.id, kind: 'sadp_query', description, query_status: 'raised', sadp_received_date: today })));
         if (error) toast.err(errMsg(error));
       }
     }
@@ -386,10 +389,13 @@ function ActionPlan({
         owner: assignee === 'other' ? owner.trim() || null : null,
         due_date: due || null,
         query_status: kind === 'sadp_query' ? 'raised' : null,
+        // A SADP query is "received" the day it's logged (locked thereafter).
+        sadp_received_date: kind === 'sadp_query' ? new Date().toISOString().slice(0, 10) : null,
       });
     setBusy(false);
     if (error) return toast.err(errMsg(error));
     setDesc('');
+    if (kind === 'sadp_query') await syncAutoStage(trackingId);
     onChange();
     inputRef.current?.focus(); // ready for the next item
   }
@@ -405,7 +411,19 @@ function ActionPlan({
         return n;
       });
       toast.err(errMsg(error));
-    } else onChange();
+    } else {
+      if (a.kind === 'sadp_query') await syncAutoStage(trackingId);
+      onChange();
+    }
+  }
+
+  async function setQueryDate(a: ActionRow, field: 'sadp_received_date' | 'sadp_sent_back_date', date: string) {
+    const { error } = await supabase.from('mgp_actions').update({ [field]: date || null }).eq('id', a.id);
+    if (error) toast.err(errMsg(error));
+    else {
+      await syncAutoStage(trackingId);
+      onChange();
+    }
   }
 
   async function reassign(a: ActionRow, userId: string) {
@@ -537,7 +555,7 @@ function ActionPlan({
                 </div>
                 {a.kind === 'sadp_query' && (
                   <div className="border-t border-slate-100 px-3 py-2">
-                    <QueryWorkflow a={a} canEdit={canEdit} onStatus={setQueryStatus} onReasoning={setQueryReasoning} />
+                    <QueryWorkflow a={a} canEdit={canEdit} onStatus={setQueryStatus} onReasoning={setQueryReasoning} onDate={setQueryDate} userName={userName} />
                   </div>
                 )}
               </li>
@@ -588,34 +606,79 @@ function ActionPlan({
   );
 }
 
+/** A query date that locks (becomes read-only) once set, with an optional who/when stamp. */
+function QueryDate({
+  label,
+  value,
+  locked,
+  stamp,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  locked: boolean;
+  stamp?: string;
+  onChange: (date: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <span className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+        {label}
+        {value && <Lock size={10} className="text-slate-300" />}
+      </span>
+      {locked && value ? (
+        <div className="flex h-8 items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-xs tabular-nums text-slate-600">{fmtDate(value)}</div>
+      ) : (
+        <input type="date" className={`${inputCls} h-8`} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      )}
+      {stamp && <span className="block text-[10px] text-slate-400">{stamp}</span>}
+    </div>
+  );
+}
+
 function QueryWorkflow({
   a,
   canEdit,
   onStatus,
   onReasoning,
+  onDate,
+  userName,
 }: {
   a: ActionRow;
   canEdit: boolean;
   onStatus: (a: ActionRow, s: QueryStatus) => void;
   onReasoning: (a: ActionRow, t: string) => void;
+  onDate: (a: ActionRow, field: 'sadp_received_date' | 'sadp_sent_back_date', date: string) => void;
+  userName: (id: string | null) => string;
 }) {
   const status: QueryStatus = a.query_status ?? 'raised';
   const [reason, setReason] = useState(a.query_reasoning ?? '');
   useEffect(() => setReason(a.query_reasoning ?? ''), [a.query_reasoning]);
   const meta = QUERY_STATUS.find((q) => q.key === status)!;
   const showReason = status === 'addressing' || status === 'responded';
+  const sentStamp = a.sadp_sent_back_at ? `${userName(a.sadp_sent_back_by)} · ${fmtDate(a.sadp_sent_back_at.slice(0, 10))}` : undefined;
 
   if (!canEdit) {
     return (
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.chip}`}>{meta.label}</span>
-        {a.query_reasoning && <span className="text-slate-500">· {a.query_reasoning}</span>}
+      <div className="space-y-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.chip}`}>{meta.label}</span>
+          {a.query_reasoning && <span className="text-slate-500">· {a.query_reasoning}</span>}
+        </div>
+        <div className="flex flex-wrap gap-x-4 text-slate-500">
+          {a.sadp_received_date && <span>Received from SADP {fmtDate(a.sadp_received_date)}</span>}
+          {a.sadp_sent_back_date && <span>Sent back {fmtDate(a.sadp_sent_back_date)}</span>}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <QueryDate label="Received from SADP" value={a.sadp_received_date} locked={!!a.sadp_received_date} onChange={(d) => onDate(a, 'sadp_received_date', d)} />
+        <QueryDate label="Sent back to SADP" value={a.sadp_sent_back_date} locked={!!a.sadp_sent_back_date} stamp={sentStamp} onChange={(d) => onDate(a, 'sadp_sent_back_date', d)} />
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Query status</span>
         <div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-[11px]">

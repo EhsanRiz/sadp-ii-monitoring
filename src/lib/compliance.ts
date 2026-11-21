@@ -13,7 +13,7 @@
  * funds" rollup shows the totals; this reframes them as a compliance gap and
  * feeds a chase queue of the enterprises carrying exposure.
  */
-import { parseFinances, MONEY_STAGES, totalFarmerContributed } from './stage-finances';
+import { parseFinances, contractFarmer, totalFarmerContributed } from './stage-finances';
 import type { Item } from './data';
 
 export interface EntCompliance {
@@ -33,17 +33,12 @@ export interface EntCompliance {
 
 export function deriveCompliance(it: Item): EntCompliance {
   const { contract: c, stages: map } = parseFinances(it.stage_finances);
-  // Contract is a single enterprise-level farmer figure; contributions are summed
-  // across the milestones. Shortfall = contract − contributed (floored at 0).
-  const contract = c.farmer_lsl ?? 0;
+  // Contract is the fixed farmer figure; contributions are summed across the
+  // milestones. Shortfall = contract − contributed (floored at 0).
+  const contract = contractFarmer(c);
   const contributed = totalFarmerContributed(map);
-  const farmerShortfall = c.farmer_lsl != null ? Math.max(0, contract - contributed) : 0;
-  let unreported = 0;
-  for (const s of MONEY_STAGES) {
-    const f = map[s];
-    if (!f) continue;
-    if ((f.yet_to_report_lsl ?? 0) > 0) unreported += f.yet_to_report_lsl!;
-  }
+  const farmerShortfall = Math.max(0, contract - contributed);
+  const unreported = 0; // "funds spent but unreported" was retired with the depletion-history redesign
   const exposure = farmerShortfall + unreported;
   return {
     contract,

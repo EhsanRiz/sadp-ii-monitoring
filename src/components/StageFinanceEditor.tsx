@@ -1,43 +1,51 @@
 /**
- * Money editor for an enterprise (migration 410, reshaped 450).
+ * Money editor for an enterprise (migration 410, reshaped 460).
  *
- * A single enterprise-level contract value (SADP + farmer) at the top — not
- * split across milestones — then one card per money milestone (M1, M2) holding
- * contributions to date, budget allocation, funds, and the report → PFO → SADP
- * approval flow, including any rounds where SADP returned the report with
- * queries. Amounts in Maloti (M).
+ *  - Top: the FIXED contract (M1 200k / M2 300k / total 500k, read-only) with
+ *    SADP + farmer contributions entered against it and the deficit shown in red.
+ *    Shown once — not inside the milestone cards.
+ *  - M1 / M2 cards: a FROZEN allocated figure (the SADP grant) and a
+ *    fund-depletion history (cumulative readings, each locked with who/when),
+ *    plus the report → PFO → SADP approval flow.
  *
- * Explicit Save writes the whole stage_finances map atomically. When the M2
- * report is marked approved the enterprise auto-graduates (the agreed model:
- * graduation is automatic on M2 completion).
+ * Saving also auto-moves the board stage (and advances the lifecycle) from the
+ * report fields: submitted → At SADP, approved → Approved (M1 rolls to M2, M2
+ * graduates). Amounts in Maloti (M).
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Save, AlertCircle, Plus, X, RotateCcw } from 'lucide-react';
+import { Save, AlertCircle, Lock, History } from 'lucide-react';
 import {
   MONEY_STAGES,
   parseFinances,
   stageFinanceOrEmpty,
+  serializeFinances,
   pctDepleted,
+  currentDepleted,
   approvalTurnaroundDays,
   pfoApprovalDays,
-  contractTotal,
-  farmerOutstanding,
+  contractSadp,
+  contractFarmer,
+  contractGrandTotal,
+  totalSadpContributed,
+  totalFarmerContributed,
+  cellTotal,
+  hasSplit,
   formatLsl,
   emptyStageFinance,
-  STANDARD_CONTRACT,
-  BA_STATUS_META,
   REPORT_STATUS_META,
   type Json,
   type MoneyStage,
   type StageFinance,
   type StageFinancesMap,
   type ContractValue,
-  type SadpReturn,
-  type BaStatus,
+  type SpendEntry,
   type StageReportStatus,
 } from '../lib/stage-finances';
 import { LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
+import { deriveAutoStage } from '../lib/auto-stage';
 import { saveStageFinances } from '../lib/mutations';
+import { useData, fmtDate } from '../lib/data';
+import type { StageKey } from '../lib/stages';
 import { Button, inputCls, toast } from './ui';
 
 interface Props {
@@ -48,11 +56,9 @@ interface Props {
   currentStage: LifecycleStage;
   readOnly?: boolean;
   onSaved: () => void;
-  /** Reports whether there are unsaved changes, so a parent can show a sticky save bar. */
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-/** Imperative handle so a parent (e.g. the drawer's floating save bar) can trigger a save. */
 export interface FinanceEditorHandle {
   save: () => Promise<void>;
 }
@@ -67,8 +73,11 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
   { trackingId, name, stageFinances, currentStage, readOnly = false, onSaved, onDirtyChange },
   ref,
 ) {
-  const [contract, setContract] = useState<ContractValue>({ sadp_lsl: null, farmer_lsl: null });
+  const { me, userName, itemById } = useData();
+  const [contract, setContract] = useState<ContractValue>({ m1: null, m2: null, flat: null });
   const [draft, setDraft] = useState<StageFinancesMap>({});
+  // New depletion readings being typed (not yet appended to history), per milestone.
+  const [newDepleted, setNewDepleted] = useState<Partial<Record<MoneyStage, string>>>({});
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -76,17 +85,13 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
     const ef = parseFinances(stageFinances);
     setContract(ef.contract);
     setDraft(ef.stages);
+    setNewDepleted({});
     setDirty(false);
   }, [stageFinances, trackingId]);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
-
-  function setContractField<K extends keyof ContractValue>(key: K, value: ContractValue[K]) {
-    setContract((c) => ({ ...c, [key]: value }));
-    setDirty(true);
-  }
 
   function setField<K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) {
     setDraft((d) => {
@@ -96,42 +101,64 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
     setDirty(true);
   }
 
-  function mutateReturns(stage: MoneyStage, fn: (rounds: SadpReturn[]) => SadpReturn[]) {
-    setDraft((d) => {
-      const base = d[stage] ?? emptyStageFinance();
-      return { ...d, [stage]: { ...base, sadp_returns: fn(base.sadp_returns) } };
-    });
+  function setDepletedInput(stage: MoneyStage, v: string) {
+    setNewDepleted((n) => ({ ...n, [stage]: v }));
     setDirty(true);
+  }
+
+  /** Fold any typed depletion readings into the draft as new locked history rows. */
+  function draftWithDepletion(): StageFinancesMap {
+    const out: StageFinancesMap = { ...draft };
+    for (const s of MONEY_STAGES) {
+      const raw = newDepleted[s];
+      const amt = raw != null ? num(raw) : null;
+      if (amt == null) continue;
+      const base = out[s] ?? emptyStageFinance();
+      const latest = currentDepleted(base);
+      if (latest != null && amt === latest) continue; // unchanged — no new row
+      const entry: SpendEntry = { amount: amt, at: new Date().toISOString(), by: me?.id ?? null };
+      out[s] = { ...base, depletion: [...base.depletion, entry] };
+    }
+    return out;
   }
 
   async function onSave() {
     setBusy(true);
-    // Agreed model: approving the M2 report graduates the enterprise.
-    const autoGrad: LifecycleStage | undefined =
-      currentStage === 'm2' && draft.m2?.report_status === 'approved' ? 'graduated' : undefined;
-    const ok = await saveStageFinances(trackingId, name, { contract, stages: draft }, autoGrad);
+    const stages = draftWithDepletion();
+    const actions = itemById[trackingId]?.actions ?? [];
+
+    // Auto-advance lifecycle on report approval.
+    const curMs: MoneyStage = currentStage === 'm2' ? 'm2' : 'm1';
+    const curF = stages[curMs];
+    const approved = !!curF?.sadp_approved_date || curF?.report_status === 'approved';
+    let lifecycleStage: LifecycleStage | undefined;
+    if (approved && currentStage === 'm1') lifecycleStage = 'm2';
+    else if (approved && currentStage === 'm2') lifecycleStage = 'graduated';
+
+    // Auto-move the board stage from the report fields + open queries.
+    const serialized = serializeFinances({ contract, stages });
+    const autoStage: StageKey | undefined = deriveAutoStage(serialized, currentStage, actions) ?? undefined;
+
+    const ok = await saveStageFinances(trackingId, name, { contract, stages }, { lifecycleStage, stage: autoStage });
     setBusy(false);
     if (ok) {
-      if (autoGrad) toast.ok(`🎓 ${name} graduated`);
+      if (lifecycleStage === 'graduated') toast.ok(`🎓 ${name} graduated`);
+      setNewDepleted({});
       setDirty(false);
       onSaved();
     }
   }
 
-  // Expose the latest save() to a parent (floating save bar) without re-binding the handle.
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
   useImperativeHandle(ref, () => ({ save: () => onSaveRef.current() }), []);
-
-  const total = contractTotal(contract);
-  const outstanding = farmerOutstanding(contract, draft);
 
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Stage finances</h3>
-          <p className="text-xs text-slate-500">One contract value per enterprise; contributions, funds and reports per milestone. Amounts in Maloti (M).</p>
+          <p className="text-xs text-slate-500">Fixed contract with contributions &amp; deficit on top; allocated funds and depletion per milestone. Amounts in Maloti (M).</p>
         </div>
         {dirty && !readOnly && (
           <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-700">
@@ -140,35 +167,9 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
         )}
       </div>
 
-      {/* Contract value — single enterprise-level figure (SADP + Farmer), not split by milestone */}
-      <fieldset className="mb-3 space-y-2 rounded-lg border border-brand/30 bg-brand-light/40 p-3" disabled={readOnly}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-brand-dark">Contract value (whole enterprise)</legend>
-          {!readOnly && (
-            <button
-              type="button"
-              onClick={() => { setContract({ ...STANDARD_CONTRACT }); setDirty(true); }}
-              className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-white px-2 py-0.5 text-[11px] font-medium text-brand-dark transition hover:bg-brand-light"
-            >
-              Use standard M500,000
-            </button>
-          )}
-        </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <MoneyField label="SADP contract (M)" value={contract.sadp_lsl} onChange={(v) => setContractField('sadp_lsl', v)} id="contract-sadp" />
-          <MoneyField label="Farmer contract (M)" value={contract.farmer_lsl} onChange={(v) => setContractField('farmer_lsl', v)} id="contract-farmer" />
-          <ReadOut label="Contract value" value={total == null ? '—' : formatLsl(total)} warn={false} />
-        </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <ReadOut
-            label="Farmer outstanding"
-            value={outstanding == null ? '—' : formatLsl(outstanding)}
-            warn={outstanding != null && outstanding > 0}
-          />
-        </div>
-      </fieldset>
+      <ContractContributions contract={contract} draft={draft} readOnly={readOnly} onChange={setField} />
 
-      <div className="space-y-3">
+      <div className="mt-3 space-y-3">
         {MONEY_STAGES.map((stage) => (
           <StageMoneyCard
             key={stage}
@@ -177,16 +178,15 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
             active={currentStage === stage}
             readOnly={readOnly}
             onChange={setField}
-            onMutateReturns={mutateReturns}
+            newDepleted={newDepleted[stage] ?? ''}
+            onNewDepleted={(v) => setDepletedInput(stage, v)}
+            userName={userName}
           />
         ))}
       </div>
 
       {!readOnly && (
         <div className="mt-3 flex items-center justify-end gap-2">
-          {currentStage === 'm2' && draft.m2?.report_status === 'approved' && (
-            <span className="text-xs text-brand-dark">Approving the M2 report graduates this enterprise.</span>
-          )}
           <Button onClick={onSave} disabled={!dirty || busy} size="sm">
             <Save size={13} /> {busy ? 'Saving…' : 'Save finances'}
           </Button>
@@ -196,17 +196,152 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
   );
 });
 
+/** Red deficit, green when met. */
+function Deficit({ value }: { value: number }) {
+  if (value <= 0) return <span className="font-medium text-brand-dark">Met</span>;
+  return <span className="font-semibold text-red-600 tabular-nums">−{formatLsl(value)}</span>;
+}
+
+function ContractContributions({
+  contract,
+  draft,
+  readOnly,
+  onChange,
+}: {
+  contract: ContractValue;
+  draft: StageFinancesMap;
+  readOnly: boolean;
+  onChange: <K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) => void;
+}) {
+  const split = hasSplit(contract);
+  const totalSadp = contractSadp(contract);
+  const totalFarmer = contractFarmer(contract);
+  const grand = contractGrandTotal(contract);
+  const contribSadp = totalSadpContributed(draft);
+  const contribFarmer = totalFarmerContributed(draft);
+  const set = (stage: MoneyStage, key: 'sadp_contributed_lsl' | 'farmer_contributed_lsl', v: number | null) => onChange(stage, key, v);
+
+  return (
+    <div className="space-y-3 rounded-lg border border-brand/30 bg-brand-light/40 p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-brand-dark">Contract &amp; contributions</span>
+        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><Lock size={11} /> contract fixed</span>
+      </div>
+
+      {/* Fixed contract table */}
+      <div className="overflow-hidden rounded-md border border-brand/20 bg-white">
+        <table className="w-full text-sm tabular-nums">
+          <thead>
+            <tr className="bg-brand-light/60 text-xs text-slate-600">
+              <th className="px-3 py-1.5 text-left font-medium"> </th>
+              <th className="px-3 py-1.5 text-right font-medium">SADP</th>
+              <th className="px-3 py-1.5 text-right font-medium">Farmer</th>
+              <th className="px-3 py-1.5 text-right font-semibold">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {split ? (
+              <>
+                <ContractRow label="M1" sadp={contract.m1?.sadp ?? 0} farmer={contract.m1?.farmer ?? 0} total={cellTotal(contract.m1)} />
+                <ContractRow label="M2" sadp={contract.m2?.sadp ?? 0} farmer={contract.m2?.farmer ?? 0} total={cellTotal(contract.m2)} />
+              </>
+            ) : (
+              <ContractRow label="Contract" sadp={contract.flat?.sadp ?? 0} farmer={contract.flat?.farmer ?? 0} total={cellTotal(contract.flat)} nonStandard />
+            )}
+            <tr className="bg-slate-50 font-semibold text-slate-800">
+              <td className="px-3 py-1.5">Total</td>
+              <td className="px-3 py-1.5 text-right">{formatLsl(totalSadp)}</td>
+              <td className="px-3 py-1.5 text-right">{formatLsl(totalFarmer)}</td>
+              <td className="px-3 py-1.5 text-right">{formatLsl(grand)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Contributions entered against the contract */}
+      <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+        <table className="w-full text-sm tabular-nums">
+          <thead>
+            <tr className="bg-slate-50 text-xs text-slate-600">
+              <th className="px-3 py-1.5 text-left font-medium">Contributed to date</th>
+              <th className="px-3 py-1.5 text-right font-medium">SADP</th>
+              <th className="px-3 py-1.5 text-right font-medium">Farmer</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {MONEY_STAGES.map((s) => (
+              <tr key={s}>
+                <td className="px-3 py-1.5 text-xs font-medium text-slate-500">{s.toUpperCase()}</td>
+                <td className="px-2 py-1">
+                  <ContribInput value={draft[s]?.sadp_contributed_lsl ?? null} onChange={(v) => set(s, 'sadp_contributed_lsl', v)} readOnly={readOnly} id={`${s}-csadp`} />
+                </td>
+                <td className="px-2 py-1">
+                  <ContribInput value={draft[s]?.farmer_contributed_lsl ?? null} onChange={(v) => set(s, 'farmer_contributed_lsl', v)} readOnly={readOnly} id={`${s}-cfarmer`} />
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-slate-50 font-medium">
+              <td className="px-3 py-1.5 text-xs text-slate-600">Total contributed</td>
+              <td className="px-3 py-1.5 text-right">{formatLsl(contribSadp)}</td>
+              <td className="px-3 py-1.5 text-right">{formatLsl(contribFarmer)}</td>
+            </tr>
+            <tr className="bg-red-50/40">
+              <td className="px-3 py-1.5 text-xs font-semibold text-slate-600">Deficit</td>
+              <td className="px-3 py-1.5 text-right"><Deficit value={Math.max(0, totalSadp - contribSadp)} /></td>
+              <td className="px-3 py-1.5 text-right"><Deficit value={Math.max(0, totalFarmer - contribFarmer)} /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ContractRow({ label, sadp, farmer, total, nonStandard }: { label: string; sadp: number; farmer: number; total: number; nonStandard?: boolean }) {
+  return (
+    <tr>
+      <td className="px-3 py-1.5 text-xs font-medium text-slate-500">
+        {label}
+        {nonStandard && <span className="ml-1 rounded bg-amber-100 px-1 text-[9px] font-semibold uppercase text-amber-800">non-standard</span>}
+      </td>
+      <td className="px-3 py-1.5 text-right text-slate-700">{formatLsl(sadp)}</td>
+      <td className="px-3 py-1.5 text-right text-slate-700">{formatLsl(farmer)}</td>
+      <td className="px-3 py-1.5 text-right font-medium text-slate-800">{formatLsl(total)}</td>
+    </tr>
+  );
+}
+
+function ContribInput({ value, onChange, readOnly, id }: { value: number | null; onChange: (v: number | null) => void; readOnly: boolean; id: string }) {
+  return (
+    <input
+      id={id}
+      type="number"
+      inputMode="numeric"
+      min={0}
+      step={1000}
+      disabled={readOnly}
+      className={`${inputCls} h-8 w-full text-right tabular-nums`}
+      placeholder="—"
+      value={value ?? ''}
+      onChange={(e) => onChange(num(e.target.value))}
+    />
+  );
+}
+
 interface CardProps {
   stage: MoneyStage;
   value: StageFinance;
   active: boolean;
   readOnly: boolean;
   onChange: <K extends keyof StageFinance>(stage: MoneyStage, key: K, value: StageFinance[K]) => void;
-  onMutateReturns: (stage: MoneyStage, fn: (rounds: SadpReturn[]) => SadpReturn[]) => void;
+  newDepleted: string;
+  onNewDepleted: (v: string) => void;
+  userName: (id: string | null) => string;
 }
 
-function StageMoneyCard({ stage, value: f, active, readOnly, onChange, onMutateReturns }: CardProps) {
-  const depleted = pctDepleted(f);
+function StageMoneyCard({ stage, value: f, active, readOnly, onChange, newDepleted, onNewDepleted, userName }: CardProps) {
+  const depleted = currentDepleted(f);
+  const pct = pctDepleted(f);
   const pfoDays = pfoApprovalDays(f);
   const turnaround = approvalTurnaroundDays(f);
   const set = <K extends keyof StageFinance>(key: K, v: StageFinance[K]) => onChange(stage, key, v);
@@ -218,40 +353,59 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange, onMutateR
         {active && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold text-brand-dark">Current milestone</span>}
       </div>
 
-      {/* Contributions to date (this milestone) */}
+      {/* Fund depletion: frozen allocated + locked cumulative history */}
       <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contributions to date</legend>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <MoneyField label="SADP contributed (M)" value={f.sadp_contributed_lsl} onChange={(v) => set('sadp_contributed_lsl', v)} id={`${stage}-sadp`} />
-          <MoneyField label="Farmer contributed (M)" value={f.farmer_contributed_lsl} onChange={(v) => set('farmer_contributed_lsl', v)} id={`${stage}-fp`} />
-        </div>
-      </fieldset>
-
-      {/* Budget allocation */}
-      <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Budget allocation</legend>
+        <legend className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Fund depletion <span className="inline-flex items-center gap-0.5 text-[10px] font-normal normal-case text-slate-400"><Lock size={10} /> allocated frozen</span>
+        </legend>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Field label="BA status">
-            <select className={inputCls} value={f.ba_status ?? ''} onChange={(e) => set('ba_status', (e.target.value || null) as BaStatus | null)}>
-              <option value="">Not set</option>
-              {(Object.keys(BA_STATUS_META) as BaStatus[]).map((s) => (
-                <option key={s} value={s}>{BA_STATUS_META[s].label}</option>
+          <ReadOut label="Allocated (SADP grant)" value={formatLsl(f.allocated_lsl)} warn={false} />
+          <ReadOut label="Depleted to date" value={formatLsl(depleted)} warn={false} />
+          <ReadOut label="% depleted" value={pct == null ? '—' : `${pct}%`} warn={pct != null && pct >= 90} />
+        </div>
+
+        {f.depletion.length > 0 && (
+          <div className="rounded-md border border-slate-200 bg-slate-50/70">
+            <div className="flex items-center gap-1.5 border-b border-slate-200 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <History size={11} /> Depletion history
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {f.depletion.map((d, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 px-2.5 py-1.5 text-xs">
+                  <span className="font-medium tabular-nums text-slate-700">{formatLsl(d.amount)}</span>
+                  <span className="text-slate-400">
+                    {userName(d.by)}{d.at ? ` · ${fmtDate(d.at.slice(0, 10))}` : ''}
+                    <Lock size={10} className="ml-1 inline text-slate-300" />
+                  </span>
+                </li>
               ))}
-            </select>
-          </Field>
-          <Field label="BA submitted">
-            <input type="date" className={inputCls} value={f.ba_submitted_date ?? ''} onChange={(e) => set('ba_submitted_date', e.target.value || null)} />
-          </Field>
-        </div>
+            </ul>
+          </div>
+        )}
+
+        {!readOnly && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label="Record new depleted total (cumulative)">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1000}
+                className={`${inputCls} tabular-nums`}
+                placeholder={depleted != null ? `was ${formatLsl(depleted)}` : '—'}
+                value={newDepleted}
+                onChange={(e) => onNewDepleted(e.target.value)}
+              />
+            </Field>
+            <p className="self-end pb-2 text-[11px] text-slate-400">Saved as a new locked entry stamped with your name and the date.</p>
+          </div>
+        )}
       </fieldset>
 
-      {/* Funds & report */}
+      {/* Report approval: Submitted to PFO → Approved by PFO → Approved by SADP */}
       <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Funds &amp; report</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stage.toUpperCase()} report approval (PFO → SADP)</legend>
         <div className="grid gap-2 sm:grid-cols-3">
-          <MoneyField label="Allocated (M)" value={f.funds_allocated_lsl} onChange={(v) => set('funds_allocated_lsl', v)} id={`${stage}-alloc`} />
-          <MoneyField label="Depleted (M)" value={f.funds_depleted_lsl} onChange={(v) => set('funds_depleted_lsl', v)} id={`${stage}-depl`} />
-          <MoneyField label="Yet to report (M)" value={f.yet_to_report_lsl} onChange={(v) => set('yet_to_report_lsl', v)} id={`${stage}-ytr`} />
           <Field label="Report status">
             <select className={inputCls} value={f.report_status ?? ''} onChange={(e) => set('report_status', (e.target.value || null) as StageReportStatus | null)}>
               <option value="">Not set</option>
@@ -260,20 +414,12 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange, onMutateR
               ))}
             </select>
           </Field>
-          <Field label="Report date">
-            <input type="date" className={inputCls} value={f.report_date ?? ''} onChange={(e) => set('report_date', e.target.value || null)} />
-          </Field>
           <Field label="Report target date">
             <input type="date" className={inputCls} value={f.report_target_date ?? ''} onChange={(e) => set('report_target_date', e.target.value || null)} />
           </Field>
-          <ReadOut label="Depleted" value={depleted == null ? '—' : `${depleted}%`} warn={depleted != null && depleted >= 90} />
-        </div>
-      </fieldset>
-
-      {/* Report approval: Submitted to PFO → Approved by PFO → Approved by SADP */}
-      <fieldset className="space-y-2" disabled={readOnly}>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stage.toUpperCase()} report approval (PFO → SADP)</legend>
-        <div className="grid gap-2 sm:grid-cols-3">
+          <Field label="Report date">
+            <input type="date" className={inputCls} value={f.report_date ?? ''} onChange={(e) => set('report_date', e.target.value || null)} />
+          </Field>
           <Field label="Submitted to PFO">
             <input type="date" className={inputCls} value={f.pfo_submitted_date ?? ''} onChange={(e) => set('pfo_submitted_date', e.target.value || null)} />
           </Field>
@@ -286,87 +432,11 @@ function StageMoneyCard({ stage, value: f, active, readOnly, onChange, onMutateR
           <ReadOut label="PFO turnaround" value={pfoDays == null ? '—' : `${pfoDays} day${pfoDays === 1 ? '' : 's'}`} warn={pfoDays != null && pfoDays > 14} />
           <ReadOut label="Full turnaround (→ SADP)" value={turnaround == null ? '—' : `${turnaround} day${turnaround === 1 ? '' : 's'}`} warn={turnaround != null && turnaround > 30} />
         </div>
-      </fieldset>
-
-      {/* Returned by SADP — queries (zero or more rounds) */}
-      <SadpReturnsBlock stage={stage} rounds={f.sadp_returns} readOnly={readOnly} onMutate={onMutateReturns} />
-    </div>
-  );
-}
-
-function emptyReturn(): SadpReturn {
-  return { returned_date: null, queries: null, resubmitted_date: null };
-}
-
-function SadpReturnsBlock({
-  stage,
-  rounds,
-  readOnly,
-  onMutate,
-}: {
-  stage: MoneyStage;
-  rounds: SadpReturn[];
-  readOnly: boolean;
-  onMutate: (stage: MoneyStage, fn: (r: SadpReturn[]) => SadpReturn[]) => void;
-}) {
-  const setRound = <K extends keyof SadpReturn>(idx: number, key: K, v: SadpReturn[K]) =>
-    onMutate(stage, (r) => r.map((x, i) => (i === idx ? { ...x, [key]: v } : x)));
-  const addRound = () => onMutate(stage, (r) => [...r, emptyReturn()]);
-  const removeRound = (idx: number) => onMutate(stage, (r) => r.filter((_, i) => i !== idx));
-
-  if (readOnly && rounds.length === 0) return null;
-
-  return (
-    <fieldset className="space-y-2 rounded-md border border-amber-200 bg-amber-50/60 p-2.5" disabled={readOnly}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <legend className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
-          <RotateCcw size={12} /> Returned by SADP — queries
-          {rounds.length > 0 && <span className="rounded-full bg-amber-200 px-1.5 text-[10px] font-semibold text-amber-900">{rounds.length}</span>}
-        </legend>
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={addRound}
-            className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 transition hover:bg-amber-100"
-          >
-            <Plus size={12} /> {rounds.length === 0 ? 'Record a return' : 'Add another return'}
-          </button>
+        {active && (f.sadp_approved_date || f.report_status === 'approved') && (
+          <p className="text-[11px] text-brand-dark">On save this {stage === 'm1' ? 'advances the enterprise to M2' : 'graduates the enterprise'} and marks it Approved.</p>
         )}
-      </div>
-
-      {rounds.length === 0 && <p className="text-[11px] text-amber-700/80">Not returned — the report has not come back from SADP with queries.</p>}
-
-      <div className="space-y-2.5">
-        {rounds.map((r, idx) => (
-          <div key={idx} className="space-y-2 rounded-md border border-amber-200 bg-white p-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-amber-800">Return {idx + 1}</span>
-              {!readOnly && (
-                <button type="button" onClick={() => removeRound(idx)} className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-red-600" aria-label="Remove this return">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Field label="Received back from SADP">
-                <input type="date" className={inputCls} value={r.returned_date ?? ''} onChange={(e) => setRound(idx, 'returned_date', e.target.value || null)} />
-              </Field>
-              <Field label="Sent back to SADP">
-                <input type="date" className={inputCls} value={r.resubmitted_date ?? ''} onChange={(e) => setRound(idx, 'resubmitted_date', e.target.value || null)} />
-              </Field>
-            </div>
-            <Field label="Queries raised">
-              <textarea
-                className={`${inputCls} min-h-[56px] resize-y`}
-                placeholder="What did SADP ask to be fixed or clarified?"
-                value={r.queries ?? ''}
-                onChange={(e) => setRound(idx, 'queries', e.target.value || null)}
-              />
-            </Field>
-          </div>
-        ))}
-      </div>
-    </fieldset>
+      </fieldset>
+    </div>
   );
 }
 
@@ -383,14 +453,6 @@ function ReadOut({ label, value, warn }: { label: string; value: string; warn: b
   return (
     <Field label={label}>
       <div className={`flex h-[38px] items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm tabular-nums ${warn ? 'font-medium text-amber-700' : 'text-slate-500'}`}>{value}</div>
-    </Field>
-  );
-}
-
-function MoneyField({ label, value, onChange, id }: { label: string; value: number | null; onChange: (v: number | null) => void; id: string }) {
-  return (
-    <Field label={label}>
-      <input id={id} type="number" inputMode="numeric" min={0} step={1000} className={`${inputCls} tabular-nums`} placeholder="—" value={value ?? ''} onChange={(e) => onChange(num(e.target.value))} />
     </Field>
   );
 }

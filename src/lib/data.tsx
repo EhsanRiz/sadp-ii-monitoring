@@ -51,6 +51,12 @@ export interface ActionRow {
   /** SADP-query workflow (null = raised). */
   query_status: QueryStatus | null;
   query_reasoning: string | null;
+  /** SADP query audit — when SADP returned it (locked once set). */
+  sadp_received_date: string | null;
+  /** SADP query audit — when the response was sent back to SADP (locked once set). */
+  sadp_sent_back_date: string | null;
+  sadp_sent_back_by: string | null;
+  sadp_sent_back_at: string | null;
 }
 
 export interface HistoryRow {
