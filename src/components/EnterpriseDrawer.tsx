@@ -3,8 +3,8 @@ import { Trash2, Phone, AlertTriangle, Save, Plus } from 'lucide-react';
 import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { STAGE } from '../lib/stages';
-import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
-import { setLifecycleStage, syncAutoStage } from '../lib/mutations';
+import { LIFECYCLE_STAGES, LIFECYCLE_META } from '../lib/lifecycle';
+import { syncAutoStage } from '../lib/mutations';
 import { StageFinanceEditor, type FinanceEditorHandle } from './StageFinanceEditor';
 import { EnterpriseJourney } from './EnterpriseJourney';
 import { deriveRisk } from '../lib/risk';
@@ -20,7 +20,6 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   const [removeReason, setRemoveReason] = useState('Withdrawn');
   const it = trackingId ? itemById[trackingId] : undefined;
 
-  const [busyLc, setBusyLc] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Floating save for the finance editor — save without scrolling to the bottom.
@@ -44,14 +43,6 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   const risk = deriveRisk(it);
   const readiness = deriveReadiness(it);
   const sla = deriveReportSla(it);
-
-  async function changeLifecycle(s: LifecycleStage) {
-    if (!it || s === it.lifecycle_stage || busyLc) return;
-    setBusyLc(true);
-    await setLifecycleStage(it.id, it.name, s);
-    setBusyLc(false);
-    reload();
-  }
 
   async function remove() {
     if (it!.enterprise_id) {
@@ -129,30 +120,28 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
           </div>
         )}
 
-        {/* Lifecycle milestone */}
+        {/* Lifecycle milestone — automatic, driven by the SADP approval dates */}
         <section>
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-sm font-semibold">Milestone</h3>
-            <span className="text-xs text-slate-400">M1 → M2 → Graduation</span>
+            <span className="text-xs text-slate-400">M1 → M2 → Graduation · automatic</span>
           </div>
           <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
             {LIFECYCLE_STAGES.map((s) => {
               const active = s === it.lifecycle_stage;
               return (
-                <button
+                <span
                   key={s}
-                  disabled={!canEdit || busyLc || active}
-                  onClick={() => changeLifecycle(s)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-default ${
-                    active ? 'bg-white text-brand-dark shadow-sm ring-1 ring-brand/20' : 'text-slate-600 enabled:hover:bg-white/60'
-                  }`}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${active ? 'bg-white text-brand-dark shadow-sm ring-1 ring-brand/20' : 'text-slate-400'}`}
                 >
                   {LIFECYCLE_META[s].label}
-                </button>
+                </span>
               );
             })}
           </div>
-          <p className="mt-1.5 text-xs text-slate-500">{LIFECYCLE_META[it.lifecycle_stage].description}</p>
+          <p className="mt-1.5 text-xs text-slate-500">
+            {LIFECYCLE_META[it.lifecycle_stage].description} It advances on its own: recording the <b>Approved by SADP</b> date moves M1 → M2, and M2 → Graduated.
+          </p>
         </section>
 
         {/* Graduation readiness */}
