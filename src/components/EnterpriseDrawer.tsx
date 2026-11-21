@@ -4,7 +4,7 @@ import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow } from
 import { supabase } from '../lib/supabase';
 import { STAGE } from '../lib/stages';
 import { LIFECYCLE_STAGES, LIFECYCLE_META, type LifecycleStage } from '../lib/lifecycle';
-import { setLifecycleStage } from '../lib/mutations';
+import { setLifecycleStage, syncAutoStage } from '../lib/mutations';
 import { StageFinanceEditor, type FinanceEditorHandle } from './StageFinanceEditor';
 import { EnterpriseJourney } from './EnterpriseJourney';
 import { deriveRisk } from '../lib/risk';
@@ -277,8 +277,8 @@ function ActionPlan({
 
   useEffect(() => setPendingTick({}), [actions]);
 
-  // General follow-ups only — SADP queries live in the milestone tabs now.
-  const list = actions.filter((a) => a.kind === 'action').sort((a, b) => a.created_at.localeCompare(b.created_at));
+  // Follow-ups and the auto-generated SADP-query items (managed in the milestone tabs).
+  const list = [...actions].sort((a, b) => a.created_at.localeCompare(b.created_at));
   const statusOf = (a: ActionRow) => pendingTick[a.id] ?? a.status;
   const doneCount = list.filter((a) => statusOf(a) === 'done').length;
   const pct = list.length ? Math.round((doneCount / list.length) * 100) : 0;
@@ -316,7 +316,10 @@ function ActionPlan({
         return n;
       });
       toast.err(errMsg(error));
-    } else onChange();
+    } else {
+      if (a.kind === 'sadp_query') await syncAutoStage(trackingId);
+      onChange();
+    }
   }
 
   async function reassign(a: ActionRow, userId: string) {
@@ -379,7 +382,14 @@ function ActionPlan({
                 <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
                   <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#008C44]" checked={done} disabled={!canEdit} onChange={() => toggle(a)} />
                   <div className="min-w-0 flex-1">
-                    <div className={`text-sm ${done ? 'text-slate-400 line-through' : ''}`}>{a.description}</div>
+                    <div className={`text-sm ${done ? 'text-slate-400 line-through' : ''}`}>
+                      {a.kind === 'sadp_query' && (
+                        <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900 no-underline">
+                          SADP query{a.milestone ? ` · ${a.milestone.toUpperCase()}` : ''}
+                        </span>
+                      )}
+                      {a.description}
+                    </div>
                     {(a.owner || a.due_date || (done && a.done_at)) && (
                       <div className="text-xs text-slate-500">
                         {a.assigned_to ? (

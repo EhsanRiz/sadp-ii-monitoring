@@ -194,6 +194,8 @@ export const StageFinanceEditor = forwardRef<FinanceEditorHandle, Props>(functio
             onNewDepleted={(v) => setDepletedInput(stage, v)}
             userName={userName}
             trackingId={trackingId}
+            name={name}
+            meId={me?.id ?? null}
             queries={actions.filter((a) => a.kind === 'sadp_query' && (a.milestone ?? 'm1') === stage)}
             onQueriesChanged={onSaved}
           />
@@ -404,11 +406,13 @@ interface CardProps {
   onNewDepleted: (v: string) => void;
   userName: (id: string | null) => string;
   trackingId: string;
+  name: string;
+  meId: string | null;
   queries: ActionRow[];
   onQueriesChanged: () => void;
 }
 
-function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, onStampedDate, newDepleted, onNewDepleted, userName, trackingId, queries, onQueriesChanged }: CardProps) {
+function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, onStampedDate, newDepleted, onNewDepleted, userName, trackingId, name, meId, queries, onQueriesChanged }: CardProps) {
   const depleted = currentDepleted(f);
   const pct = pctDepleted(f);
   const pfoDays = pfoApprovalDays(f);
@@ -486,7 +490,7 @@ function StageMoneyCard({ stage, value: f, active, readOnly, isAdmin, onChange, 
       </fieldset>
 
       {/* SADP queries for this milestone */}
-      <MilestoneQueries trackingId={trackingId} stage={stage} queries={queries} canEdit={!readOnly} userName={userName} onChanged={onQueriesChanged} />
+      <MilestoneQueries trackingId={trackingId} name={name} stage={stage} f={f} queries={queries} canEdit={!readOnly} meId={meId} userName={userName} onChanged={onQueriesChanged} />
     </div>
   );
 }

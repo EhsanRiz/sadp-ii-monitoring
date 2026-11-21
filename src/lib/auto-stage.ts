@@ -22,8 +22,6 @@ export interface AutoStageActionLite {
   kind: string;
   status: string;
   milestone: string | null;
-  sadp_received_date: string | null;
-  sadp_sent_back_date: string | null;
 }
 
 export function deriveAutoStage(
@@ -40,14 +38,14 @@ export function deriveAutoStage(
 
   // Only the current milestone's queries drive the stage.
   const queries = actions.filter((a) => a.kind === 'sadp_query' && (a.milestone ?? 'm1') === cur);
+  const openQueries = queries.filter((a) => a.status === 'open');
 
-  // A SADP query has come back and hasn't been sent back yet → resolving queries.
-  const openReceived = queries.some((a) => a.status === 'open' && !!a.sadp_received_date && !a.sadp_sent_back_date);
-  if (openReceived) return 'sadp_queries';
+  // Unaddressed queries, or addressed but the report pack hasn't been resent yet.
+  if (openQueries.length > 0) return 'sadp_queries';
+  if (queries.length > 0 && !f.report_resubmitted_date) return 'sadp_queries';
 
-  // A query response is back with SADP, or the report was submitted → At SADP.
-  const resent = queries.some((a) => a.status === 'open' && !!a.sadp_sent_back_date);
-  if (resent || f.pfo_submitted_date) return 'at_sadp';
+  // Report pack resent after queries, or the report was submitted → At SADP.
+  if (f.report_resubmitted_date || f.pfo_submitted_date) return 'at_sadp';
 
   return null;
 }
