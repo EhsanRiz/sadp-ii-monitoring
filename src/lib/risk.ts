@@ -74,7 +74,7 @@ export function deriveRisk(it: Item): Risk {
   if (deficit > 0) flags.push({ id: 'farmer', severity: 'med', label: `Farmer short ${formatLslShort(deficit)}` });
 
   // Report past its target date (and not yet approved).
-  if (f.report_target_date && f.report_status !== 'approved' && !f.sadp_approved_date && f.report_target_date < today) {
+  if (f.report_target_date && !f.sadp_approved_date && f.report_target_date < today) {
     flags.push({ id: 'target', severity: 'med', label: `${ms.toUpperCase()} report past target ${daysSince(f.report_target_date)}d` });
   }
 

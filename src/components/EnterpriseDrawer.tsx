@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Trash2, ArrowRight, Phone, AlertTriangle, Save, Plus, Lock } from 'lucide-react';
+import { Trash2, Phone, AlertTriangle, Save, Plus, Lock } from 'lucide-react';
 import { useData, daysSince, fmtDate, fmtDateTime, errMsg, type ActionRow, type QueryStatus } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { STAGES, STAGE, type StageKey } from '../lib/stages';
@@ -15,28 +15,23 @@ import { deriveReportSla, SLA_TARGET_DAYS } from '../lib/sla';
 import { SlaBadge } from './ReportSla';
 import { Button, Drawer, Modal, StageChip, LifecycleChip, inputCls, toast } from './ui';
 
+/** Stages that can't be derived from the data — set manually (pre-submission). */
+const MANUAL_STAGE_KEYS: StageKey[] = ['under_review', 'with_isp', 'blocked_infra'];
+const MANUAL_STAGES = STAGES.filter((s) => MANUAL_STAGE_KEYS.includes(s.key));
+
 export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string | null; onClose: () => void }) {
   const { itemById, history, users, items, canEdit, isAdmin, userName, reload, me } = useData();
   const [removeReason, setRemoveReason] = useState('Withdrawn');
   const it = trackingId ? itemById[trackingId] : undefined;
 
-  const [target, setTarget] = useState<StageKey | null>(null);
-  const [note, setNote] = useState('');
-  const [queries, setQueries] = useState('');
-  const [busy, setBusy] = useState(false);
   const [busyLc, setBusyLc] = useState(false);
+  const [busyStage, setBusyStage] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Floating save for the finance editor — save without scrolling to the bottom.
   const financeRef = useRef<FinanceEditorHandle>(null);
   const [financesDirty, setFinancesDirty] = useState(false);
   const [savingFinances, setSavingFinances] = useState(false);
-
-  useEffect(() => {
-    setTarget(null);
-    setNote('');
-    setQueries('');
-  }, [trackingId]);
 
   async function saveFinances() {
     setSavingFinances(true);
@@ -51,32 +46,15 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
   );
 
   if (!it) return null;
-  const openQueries = it.actions.filter((a) => a.kind === 'sadp_query' && a.status === 'open');
   const risk = deriveRisk(it);
   const readiness = deriveReadiness(it);
   const sla = deriveReportSla(it);
 
-  async function confirmMove() {
-    if (!it || !target) return;
-    setBusy(true);
-    const ok = await changeStage(it.id, it.name, target, note.trim() || null);
-    if (ok && target === 'sadp_queries') {
-      const lines = queries
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean);
-      if (lines.length) {
-        const today = new Date().toISOString().slice(0, 10);
-        const { error } = await supabase
-          .from('mgp_actions')
-          .insert(lines.map((description) => ({ tracking_id: it.id, kind: 'sadp_query', description, query_status: 'raised', sadp_received_date: today })));
-        if (error) toast.err(errMsg(error));
-      }
-    }
-    setBusy(false);
-    setTarget(null);
-    setNote('');
-    setQueries('');
+  async function manualMove(stage: StageKey) {
+    if (!it || stage === it.stage || busyStage) return;
+    setBusyStage(true);
+    await changeStage(it.id, it.name, stage, null);
+    setBusyStage(false);
     reload();
   }
 
@@ -220,56 +198,39 @@ export function EnterpriseDrawer({ trackingId, onClose }: { trackingId: string |
           onDirtyChange={setFinancesDirty}
         />
 
-        {/* Move */}
+        {/* Section — mostly automatic; manual only for the pre-submission stages */}
         {canEdit && (
           <section>
-            <h3 className="mb-2 text-sm font-semibold">Move to</h3>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-              {STAGES.map((s) => (
-                <button
-                  key={s.key}
-                  disabled={s.key === it.stage}
-                  onClick={() => setTarget(s.key)}
-                  className={`rounded-md border px-2 py-1.5 text-left text-xs font-medium transition disabled:cursor-default disabled:opacity-40 ${
-                    target === s.key ? 'border-brand bg-brand-light ring-1 ring-brand' : 'border-slate-200 hover:border-brand'
-                  }`}
-                >
-                  <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${s.dot}`} />
-                  {s.short}
-                </button>
-              ))}
+            <h3 className="mb-1 text-sm font-semibold">Section</h3>
+            <p className="mb-2 text-xs text-slate-500">
+              Moves to <b>At SADP</b>, <b>SADP Queries</b> and <b>Approved</b> happen automatically from the report dates and queries. Set a pre-submission section here if needed.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {MANUAL_STAGES.map((s) => {
+                const current = s.key === it.stage;
+                return (
+                  <button
+                    key={s.key}
+                    disabled={current || busyStage}
+                    onClick={() => manualMove(s.key)}
+                    className={`inline-flex items-center rounded-md border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-default ${
+                      current ? 'border-brand bg-brand-light text-brand-dark ring-1 ring-brand/30' : 'border-slate-200 text-slate-600 hover:border-brand'
+                    }`}
+                  >
+                    <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${s.dot}`} />
+                    {s.short}
+                    {current && <span className="ml-1.5 text-[10px] text-slate-400">· current</span>}
+                  </button>
+                );
+              })}
             </div>
-            {target && (
-              <div className="mt-3 space-y-2 rounded-lg border border-brand/30 bg-brand-light/40 p-3">
-                <div className="flex items-center gap-2 text-sm">
-                  {STAGE[it.stage].short} <ArrowRight size={14} /> <b>{STAGE[target].label}</b>
-                </div>
-                {target === 'approved' && openQueries.length > 0 && (
-                  <div className="flex items-start gap-2 rounded bg-amber-50 p-2 text-xs text-amber-900">
-                    <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {openQueries.length} SADP quer{openQueries.length === 1 ? 'y is' : 'ies are'} still open. Tick them as done if resolved.
-                  </div>
-                )}
-                {target === 'sadp_queries' && (
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-slate-600">Queries from SADP — one per line (optional, you can add more later)</span>
-                    <textarea className={inputCls} rows={4} value={queries} onChange={(e) => setQueries(e.target.value)} placeholder={'e.g. Bank reconciliation does not balance\nMissing supplier quotations'} />
-                  </label>
-                )}
-                <input className={inputCls} placeholder="Note (optional) — e.g. “submitted to SADP 3 Nov”" value={note} onChange={(e) => setNote(e.target.value)} />
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setTarget(null)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={confirmMove} disabled={busy}>
-                    {busy ? 'Saving…' : 'Confirm move'}
-                  </Button>
-                </div>
-              </div>
+            {!MANUAL_STAGE_KEYS.includes(it.stage) && (
+              <p className="mt-2 text-xs text-slate-400">Currently <b className="text-slate-600">{STAGE[it.stage].short}</b> (set automatically).</p>
             )}
           </section>
         )}
 
-        {it.note && !target && (
+        {it.note && (
           <div className="rounded-md bg-slate-50 px-3 py-2 text-sm italic text-slate-600">
             “{it.note}” <span className="not-italic text-xs text-slate-400">— latest note</span>
           </div>
