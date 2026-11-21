@@ -1,14 +1,18 @@
 /**
- * Enterprise money tracking (migration 410, reshaped 450).
+ * Enterprise money tracking (migration 410, reshaped 450 / 460).
  *
  * Stored as `mgp_tracking.stage_finances` jsonb:
- *   - `contract`  — the single enterprise-level contract value (SADP + farmer),
- *     NOT split across milestones. Standard programme contract is M500,000
- *     (SADP M400,000 + farmer M100,000).
- *   - `m1` / `m2` — per-milestone records: contributions to date, budget
- *     allocation, funds, and the report → PFO → SADP approval flow, including
- *     any rounds where SADP returned the report with queries.
+ *   - `contract` — the FIXED contract value, shown once at the top of the editor.
+ *     Standard enterprises carry a per-milestone split
+ *     `{ m1: {sadp,farmer}, m2: {sadp,farmer} }` (M1 160/40 = 200k, M2 240/60 =
+ *     300k, total 500k). A couple of non-standard enterprises carry a flat
+ *     `{ sadp_lsl, farmer_lsl }` instead and are left as-is. Read-only.
+ *   - `m1` / `m2` — per-milestone records: the SADP + farmer contributions entered
+ *     against the contract (shown together at the top, not here), a FROZEN
+ *     `allocated_lsl` (the SADP grant), the `depletion[]` history (cumulative
+ *     readings, each locked with who/when), and the report → PFO → SADP flow.
  *
+ * SADP queries live on `mgp_actions` (kind='sadp_query'), not here.
  * All amounts are Maloti (LSL).
  */
 
@@ -19,98 +23,95 @@ export type Json = unknown;
 export type MoneyStage = 'm1' | 'm2';
 export const MONEY_STAGES: MoneyStage[] = ['m1', 'm2'];
 
-/** Budget-allocation approval state (from the SADP budget sheet). */
+/** Budget-allocation approval state (kept in the data, not surfaced in the editor). */
 export type BaStatus = 'pending' | 'submitted' | 'approved' | 'partially_paid';
 
 /** Stage report (M1/M2) approval state — the journey gate. */
 export type StageReportStatus = 'pending' | 'submitted' | 'approved';
 
-/**
- * One round of SADP returning a milestone report with queries. Staff address
- * the queries and resend; if SADP returns it again a further round is added.
- */
-export interface SadpReturn {
-  /** When SADP returned the report with queries. */
-  returned_date: string | null;
-  /** What SADP queried / asked to be fixed. */
-  queries: string | null;
-  /** When the (corrected) report was sent back to SADP. */
-  resubmitted_date: string | null;
+/** One reading in a milestone's fund-depletion history (cumulative total to date). */
+export interface SpendEntry {
+  /** Cumulative funds depleted as at this reading. */
+  amount: number;
+  /** When the reading was recorded (ISO). */
+  at: string;
+  /** Who recorded it (mgp_users.id). */
+  by: string | null;
 }
 
 export interface StageFinance {
-  /** Farmer (counterpart) contribution paid in for this milestone. */
-  farmer_contributed_lsl: number | null;
-  /** SADP contribution received for this milestone. */
+  /** SADP contribution received for this milestone (entered against the contract). */
   sadp_contributed_lsl: number | null;
-  ba_status: BaStatus | null;
-  ba_submitted_date: string | null;
-  funds_allocated_lsl: number | null;
-  funds_depleted_lsl: number | null;
-  yet_to_report_lsl: number | null;
+  /** Farmer counterpart contribution paid in for this milestone. */
+  farmer_contributed_lsl: number | null;
+  /** FROZEN allocated funds (the SADP grant: M1 160k, M2 240k). */
+  allocated_lsl: number | null;
+  /** Fund-depletion history — cumulative readings, each locked with who/when. */
+  depletion: SpendEntry[];
   report_status: StageReportStatus | null;
   report_date: string | null;
-  /** Target date for this milestone's report. */
   report_target_date: string | null;
-  /** Report submitted to the PFO (Project Field Officer, SADP). */
   pfo_submitted_date: string | null;
-  /** Report approved by the PFO. */
   pfo_approved_date: string | null;
-  /** Report approved by SADP. */
   sadp_approved_date: string | null;
-  /** Rounds where SADP returned the report with queries (oldest first). */
-  sadp_returns: SadpReturn[];
+  ba_status: BaStatus | null;
+  ba_submitted_date: string | null;
 }
 
-/** The single enterprise-level contract value (not per milestone). */
+/** One side's contract amounts for a milestone. */
+export interface ContractCell {
+  sadp: number | null;
+  farmer: number | null;
+}
+
+/** The FIXED contract value. `m1`/`m2` for the standard split; `flat` for non-standard. */
 export interface ContractValue {
-  sadp_lsl: number | null;
-  farmer_lsl: number | null;
+  m1: ContractCell | null;
+  m2: ContractCell | null;
+  flat: ContractCell | null;
 }
 
 export type StageFinancesMap = Partial<Record<MoneyStage, StageFinance>>;
 
-/** The whole money record for an enterprise: one contract + the milestone records. */
+/** The whole money record for an enterprise: fixed contract + milestone records. */
 export interface EnterpriseFinances {
   contract: ContractValue;
   stages: StageFinancesMap;
 }
 
-/** A blank record — every field unset. */
+/** The standard per-milestone contract split. */
+export const STANDARD_CONTRACT: ContractValue = {
+  m1: { sadp: 160000, farmer: 40000 },
+  m2: { sadp: 240000, farmer: 60000 },
+  flat: null,
+};
+
+/** The standard frozen allocation (SADP grant) per milestone. */
+export const STANDARD_ALLOCATED: Record<MoneyStage, number> = { m1: 160000, m2: 240000 };
+
+/** A blank milestone record. */
 export function emptyStageFinance(): StageFinance {
   return {
-    farmer_contributed_lsl: null,
     sadp_contributed_lsl: null,
-    ba_status: null,
-    ba_submitted_date: null,
-    funds_allocated_lsl: null,
-    funds_depleted_lsl: null,
-    yet_to_report_lsl: null,
+    farmer_contributed_lsl: null,
+    allocated_lsl: null,
+    depletion: [],
     report_status: null,
     report_date: null,
     report_target_date: null,
     pfo_submitted_date: null,
     pfo_approved_date: null,
     sadp_approved_date: null,
-    sadp_returns: [],
+    ba_status: null,
+    ba_submitted_date: null,
   };
 }
 
-/** A blank contract value. */
 export function emptyContract(): ContractValue {
-  return { sadp_lsl: null, farmer_lsl: null };
+  return { m1: null, m2: null, flat: null };
 }
 
-/** The standard programme contract: SADP M400,000 + farmer M100,000 = M500,000. */
-export const STANDARD_CONTRACT: ContractValue = { sadp_lsl: 400000, farmer_lsl: 100000 };
-
-const NUM_FIELDS = [
-  'farmer_contributed_lsl',
-  'sadp_contributed_lsl',
-  'funds_allocated_lsl',
-  'funds_depleted_lsl',
-  'yet_to_report_lsl',
-] as const;
+const NUM_FIELDS = ['sadp_contributed_lsl', 'farmer_contributed_lsl', 'allocated_lsl'] as const;
 
 const BA_STATUSES: BaStatus[] = ['pending', 'submitted', 'approved', 'partially_paid'];
 const REPORT_STATUSES: StageReportStatus[] = ['pending', 'submitted', 'approved'];
@@ -125,14 +126,12 @@ function coerceDate(v: unknown): string | null {
   return typeof v === 'string' && v ? v : null;
 }
 
-/** Parse one SADP-return round from arbitrary jsonb. */
-function parseReturn(raw: unknown): SadpReturn {
-  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  return {
-    returned_date: coerceDate(o.returned_date),
-    queries: typeof o.queries === 'string' ? o.queries : null,
-    resubmitted_date: coerceDate(o.resubmitted_date),
-  };
+function parseSpend(raw: unknown): SpendEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const amount = coerceNum(o.amount);
+  if (amount == null) return null;
+  return { amount, at: coerceDate(o.at) ?? '', by: typeof o.by === 'string' ? o.by : null };
 }
 
 /** Safely parse one stage's record from arbitrary jsonb. */
@@ -149,17 +148,33 @@ function parseOne(raw: unknown): StageFinance {
   out.pfo_submitted_date = coerceDate(o.pfo_submitted_date);
   out.pfo_approved_date = coerceDate(o.pfo_approved_date);
   out.sadp_approved_date = coerceDate(o.sadp_approved_date);
-  out.sadp_returns = Array.isArray(o.sadp_returns) ? o.sadp_returns.map(parseReturn) : [];
+  out.depletion = Array.isArray(o.depletion) ? (o.depletion.map(parseSpend).filter(Boolean) as SpendEntry[]) : [];
   return out;
 }
 
-/** Parse the enterprise-level contract value. */
+function parseCell(raw: unknown): ContractCell | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const sadp = coerceNum(o.sadp);
+  const farmer = coerceNum(o.farmer);
+  if (sadp == null && farmer == null) return null;
+  return { sadp, farmer };
+}
+
+/** Parse the fixed contract value (split or flat). */
 export function parseContract(json: Json | null | undefined): ContractValue {
   if (!json || typeof json !== 'object') return emptyContract();
   const c = (json as Record<string, unknown>).contract;
   if (!c || typeof c !== 'object') return emptyContract();
   const o = c as Record<string, unknown>;
-  return { sadp_lsl: coerceNum(o.sadp_lsl), farmer_lsl: coerceNum(o.farmer_lsl) };
+  const m1 = parseCell(o.m1);
+  const m2 = parseCell(o.m2);
+  if (m1 || m2) return { m1, m2, flat: null };
+  // Legacy / non-standard flat form: { sadp_lsl, farmer_lsl }
+  const sadp = coerceNum(o.sadp_lsl);
+  const farmer = coerceNum(o.farmer_lsl);
+  if (sadp != null || farmer != null) return { m1: null, m2: null, flat: { sadp, farmer } };
+  return emptyContract();
 }
 
 /** Parse the milestone records from `stage_finances` jsonb into a typed map. */
@@ -178,28 +193,46 @@ export function parseFinances(json: Json | null | undefined): EnterpriseFinances
   return { contract: parseContract(json), stages: parseStageFinances(json) };
 }
 
-/** True when a SADP-return round has any value worth keeping. */
-export function hasReturnData(r: SadpReturn): boolean {
-  return !!r.returned_date || !!r.resubmitted_date || !!(r.queries && r.queries.trim());
+/** True when a stage record has at least one value entered. */
+export function hasAnyFinance(f: StageFinance): boolean {
+  return (
+    NUM_FIELDS.some((k) => f[k] != null) ||
+    f.depletion.length > 0 ||
+    f.ba_status != null ||
+    f.report_status != null ||
+    !!f.ba_submitted_date ||
+    !!f.report_date ||
+    !!f.report_target_date ||
+    !!f.pfo_submitted_date ||
+    !!f.pfo_approved_date ||
+    !!f.sadp_approved_date
+  );
 }
 
-/** Serialise a map back to jsonb, dropping stages with no data entered. */
+/** Serialise a stage map back to jsonb, dropping stages with no data. */
 export function serializeStageFinances(map: StageFinancesMap): Record<string, StageFinance> {
   const out: Record<string, StageFinance> = {};
   for (const s of MONEY_STAGES) {
     const f = map[s];
-    if (!f || !hasAnyFinance(f)) continue;
-    out[s] = { ...f, sadp_returns: f.sadp_returns.filter(hasReturnData) };
+    if (f && hasAnyFinance(f)) out[s] = f;
   }
   return out;
+}
+
+/** Serialise the contract value back to jsonb (split or flat), or null when empty. */
+export function serializeContract(c: ContractValue): Record<string, unknown> | null {
+  if (c.m1 || c.m2) {
+    return { m1: c.m1 ?? null, m2: c.m2 ?? null };
+  }
+  if (c.flat) return { sadp_lsl: c.flat.sadp, farmer_lsl: c.flat.farmer };
+  return null;
 }
 
 /** Serialise the whole money record (contract + milestones) to jsonb. */
 export function serializeFinances(ef: EnterpriseFinances): Record<string, unknown> {
   const out: Record<string, unknown> = serializeStageFinances(ef.stages);
-  if (ef.contract.sadp_lsl != null || ef.contract.farmer_lsl != null) {
-    out.contract = { sadp_lsl: ef.contract.sadp_lsl, farmer_lsl: ef.contract.farmer_lsl };
-  }
+  const contract = serializeContract(ef.contract);
+  if (contract) out.contract = contract;
   return out;
 }
 
@@ -208,15 +241,33 @@ export function stageFinanceOrEmpty(map: StageFinancesMap, stage: MoneyStage): S
   return map[stage] ?? emptyStageFinance();
 }
 
-/** The contract value total (SADP + farmer), or null when neither is set. */
-export function contractTotal(c: ContractValue): number | null {
-  if (c.sadp_lsl == null && c.farmer_lsl == null) return null;
-  return (c.sadp_lsl ?? 0) + (c.farmer_lsl ?? 0);
+// ---- Contract / deficit helpers ----
+
+export function cellTotal(cell: ContractCell | null): number {
+  if (!cell) return 0;
+  return (cell.sadp ?? 0) + (cell.farmer ?? 0);
 }
 
-/** Total farmer contribution paid in across the milestones. */
-export function totalFarmerContributed(map: StageFinancesMap): number {
-  return MONEY_STAGES.reduce((a, s) => a + (map[s]?.farmer_contributed_lsl ?? 0), 0);
+/** True when the enterprise carries the standard per-milestone split. */
+export function hasSplit(c: ContractValue): boolean {
+  return !!(c.m1 || c.m2);
+}
+
+/** Total contracted SADP across the contract (split or flat). */
+export function contractSadp(c: ContractValue): number {
+  if (hasSplit(c)) return (c.m1?.sadp ?? 0) + (c.m2?.sadp ?? 0);
+  return c.flat?.sadp ?? 0;
+}
+
+/** Total contracted farmer across the contract (split or flat). */
+export function contractFarmer(c: ContractValue): number {
+  if (hasSplit(c)) return (c.m1?.farmer ?? 0) + (c.m2?.farmer ?? 0);
+  return c.flat?.farmer ?? 0;
+}
+
+/** Grand total contract value. */
+export function contractGrandTotal(c: ContractValue): number {
+  return contractSadp(c) + contractFarmer(c);
 }
 
 /** Total SADP contribution received across the milestones. */
@@ -224,45 +275,49 @@ export function totalSadpContributed(map: StageFinancesMap): number {
   return MONEY_STAGES.reduce((a, s) => a + (map[s]?.sadp_contributed_lsl ?? 0), 0);
 }
 
-/**
- * Outstanding farmer contribution for the enterprise: contract farmer amount −
- * total paid in across milestones. Null when no farmer contract is captured.
- */
-export function farmerOutstanding(c: ContractValue, map: StageFinancesMap): number | null {
-  if (c.farmer_lsl == null) return null;
-  return c.farmer_lsl - totalFarmerContributed(map);
+/** Total farmer contribution paid in across the milestones. */
+export function totalFarmerContributed(map: StageFinancesMap): number {
+  return MONEY_STAGES.reduce((a, s) => a + (map[s]?.farmer_contributed_lsl ?? 0), 0);
 }
 
-/** Percent of allocated funds depleted (0–100+), or null if nothing allocated. */
+/** SADP deficit for the enterprise: contracted − contributed (floored at 0). */
+export function sadpDeficit(c: ContractValue, map: StageFinancesMap): number {
+  return Math.max(0, contractSadp(c) - totalSadpContributed(map));
+}
+
+/** Farmer deficit for the enterprise: contracted − contributed (floored at 0). */
+export function farmerDeficit(c: ContractValue, map: StageFinancesMap): number {
+  return Math.max(0, contractFarmer(c) - totalFarmerContributed(map));
+}
+
+/** Total outstanding deficit (SADP + farmer). */
+export function totalDeficit(c: ContractValue, map: StageFinancesMap): number {
+  return sadpDeficit(c, map) + farmerDeficit(c, map);
+}
+
+// ---- Depletion helpers ----
+
+/** The current (latest) cumulative funds depleted for a milestone, or null. */
+export function currentDepleted(f: StageFinance): number | null {
+  return f.depletion.length ? f.depletion[f.depletion.length - 1].amount : null;
+}
+
+/** Percent of allocated funds depleted (latest ÷ allocated), or null. */
 export function pctDepleted(f: StageFinance): number | null {
-  if (!f.funds_allocated_lsl || f.funds_allocated_lsl <= 0) return null;
-  return Math.round(((f.funds_depleted_lsl ?? 0) / f.funds_allocated_lsl) * 100);
+  const dep = currentDepleted(f);
+  if (dep == null || !f.allocated_lsl || f.allocated_lsl <= 0) return null;
+  return Math.round((dep / f.allocated_lsl) * 100);
 }
 
-/** True when a stage record has at least one value entered. */
-export function hasAnyFinance(f: StageFinance): boolean {
-  return (
-    NUM_FIELDS.some((k) => f[k] != null) ||
-    f.ba_status != null ||
-    f.report_status != null ||
-    !!f.ba_submitted_date ||
-    !!f.report_date ||
-    !!f.report_target_date ||
-    !!f.pfo_submitted_date ||
-    !!f.pfo_approved_date ||
-    !!f.sadp_approved_date ||
-    f.sadp_returns.some(hasReturnData)
-  );
-}
+// ---- Date helpers ----
 
-/** Days between two YYYY-MM-DD dates (to − from), or null when either is missing/invalid/negative. */
 function dateDiffDays(from: string | null, to: string | null): number | null {
   if (!from || !to) return null;
   const a = new Date(`${from}T00:00:00`).getTime();
   const b = new Date(`${to}T00:00:00`).getTime();
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   const days = Math.round((b - a) / 86_400_000);
-  return days >= 0 ? days : null; // ignore approved-before-submitted (data-entry slip)
+  return days >= 0 ? days : null;
 }
 
 /** Days from PFO submission to SADP approval (the full approval turnaround), or null. */
@@ -273,11 +328,6 @@ export function approvalTurnaroundDays(f: StageFinance): number | null {
 /** Days from PFO submission to PFO approval (the PFO leg), or null. */
 export function pfoApprovalDays(f: StageFinance): number | null {
   return dateDiffDays(f.pfo_submitted_date, f.pfo_approved_date);
-}
-
-/** How many times SADP returned this milestone's report with queries. */
-export function returnCount(f: StageFinance): number {
-  return f.sadp_returns.filter(hasReturnData).length;
 }
 
 /** Format an LSL amount as "M100,000"; em-dash when unset. */

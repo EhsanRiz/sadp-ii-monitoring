@@ -10,7 +10,7 @@
  * are only *expected* once a report has been submitted/approved, so an
  * enterprise isn't dinged for data it can't have yet.
  */
-import { parseStageFinances, parseContract, stageFinanceOrEmpty, type MoneyStage } from './stage-finances';
+import { parseStageFinances, parseContract, contractFarmer, stageFinanceOrEmpty, type MoneyStage } from './stage-finances';
 import type { Item } from './data';
 
 export type FieldGroup = 'profile' | 'finance' | 'dates';
@@ -59,10 +59,10 @@ export function deriveCompleteness(it: Item): Completeness {
   const checks: { id: string; expected: boolean; filled: boolean }[] = [
     { id: 'service_provider', expected: true, filled: !!it.service_provider?.trim() },
     { id: 'enterprise_type', expected: true, filled: !!it.enterprise_type?.trim() },
-    { id: 'farmer_contract', expected: true, filled: contract.farmer_lsl != null },
+    { id: 'farmer_contract', expected: true, filled: contractFarmer(contract) > 0 },
     { id: 'farmer_contributed', expected: true, filled: f.farmer_contributed_lsl != null },
-    { id: 'funds_allocated', expected: true, filled: f.funds_allocated_lsl != null },
-    { id: 'funds_depleted', expected: true, filled: f.funds_depleted_lsl != null },
+    { id: 'funds_allocated', expected: true, filled: f.allocated_lsl != null },
+    { id: 'funds_depleted', expected: true, filled: f.depletion.length > 0 },
     { id: 'report_status', expected: true, filled: f.report_status != null },
     { id: 'pfo_submitted', expected: reportSubmitted, filled: !!f.pfo_submitted_date },
     { id: 'sadp_approved', expected: f.report_status === 'approved', filled: !!f.sadp_approved_date },
